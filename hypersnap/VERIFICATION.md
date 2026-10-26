@@ -1,3 +1,55 @@
+# Individual cast and profile previews deployed · 2026-10-26
+
+Release `9807b4c7252366d9036ba572aa6a8c3afac90ade` is live at 100% traffic as
+Worker **`5cc44b68-f7e5-4315-a7bc-2ae11b92497c`**, deployment
+`6ace4260-5436-4067-93df-c5f23e59e507`. The individual-preview milestone links
+implementation `91b374d7edd3b8263226590970ff664edd5242eb`, authored
+`2026-10-26T17:40:41-03:00`. This release also includes the previously prepared
+custom public timelines implementation and its milestone described below.
+
+The actual release base was `11f8ad59a477bb112f05adb6fabf07b6fbff2c4c`, Worker
+`234ac97d-665b-4d00-8669-70614a872788`. The dev-log guard passed against that
+base for both milestones. From the clean external release checkout, complete
+`yarn verify` passed **1,711 tests across 68 files**, browser/Worker/dashboard
+typechecks, production build and offline signer typecheck/build. The dependency
+installation matches the committed manifest and frozen Yarn lockfile; all 221
+tracked inputs matched committed blobs, and the signer manifest records a clean
+source tree. Existing WalletConnect annotation and bundle-size advisories remain.
+
+The fresh external production directory contains 31 files, with no fixture
+wrappers, source maps, symlinks or browser-bundled renderer. The public
+WalletConnect project ID was preserved in compiled assets and removed from the
+deployment environment. That exact directory was deployed; all 30 non-HTML
+live asset hashes match. Existing gateway settings, server-only secret binding,
+media bucket/quota namespace and analytics bindings match the previous version.
+
+Real local Worker and production public reads verified `/pichi`, the numeric
+profile, `/cast/0xbd787413995e9136d8cc636c6f1ee5331b94ec6d` and the existing
+`/pichi/0xbd787413` short link. Telegram and X user-agent requests receive public
+profile/cast metadata. Generated 1200×630 PNGs show the actual avatar, profile
+bio or cast text; supported image-attachment layout also passed synthetic
+raster rendering checks. The live profile and cast PNGs measured 228,866 and
+164,131 bytes in this run. HEAD, invalid content-bearing image queries, the
+existing API info read and image response protections passed. The browser live
+dev log shows the individual-preview milestone first among 44 updates.
+
+Lookups have a four-second shared deadline; short aliases inspect at most 500
+recent native receipts, check observed collisions and hydrate the exact
+FID/hash. Newly copied cast links use the full hash. Public PNGs expire after
+five minutes at our edge; third-party display/caches were not tested by posting
+links. Only bounded PNG/JPEG images from our content-addressed storage or the
+fixed image CDN are embedded; other imagery uses initials/text. Some Unicode
+glyphs are unavailable in the bundled image font; metadata retains the text.
+All production checks were public reads and navigation. No wallet approval,
+account mutation, upload or social post occurred. Retained Quorum was neither
+changed nor verified; unrelated root guidance edits were preserved.
+
+Receipts: `/tmp/opencaster-entity-preview-release-receipt.json`,
+`/tmp/opencaster-entity-preview-assets-manifest.json`,
+`/tmp/opencaster-entity-preview-live-verification.json`,
+`/tmp/opencaster-entity-preview-local-verification.json` and
+`/tmp/opencaster-entity-preview-verify.log`.
+
 # Custom public timelines prepared · 2026-10-26
 
 Implementation `693433f9c354551cac05dc1917108554f94fa137`, authored
