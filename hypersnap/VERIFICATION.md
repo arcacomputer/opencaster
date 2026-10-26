@@ -1,3 +1,50 @@
+# Immediate pending casts and readable refresh prepared · 2026-10-26
+
+Implementation `ef9ac9334e2c511c7d8b2de03719dab83728b044`, authored
+`2026-10-26T17:33:03-03:00`, retains the current feed during refresh and read
+failures, shows an explicitly unconfirmed local card immediately after Publish,
+and returns one filtered profile-feed page without scanning five pages first.
+The existing automatic pagination continues from its original node cursor.
+Post-submit reads refresh the feed/conversation rather than sidebar data.
+
+The implementation is isolated on `codex/cast-publishing-feedback` in the
+attached worktree at
+`/Users/felirami/.codex/worktrees/cast-publishing-feedback/hypersnap-web`, based
+on local commit `11f8ad59a477bb112f05adb6fabf07b6fbff2c4c`. It is prepared
+locally and **has not been deployed**. Other in-progress application changes in
+the primary checkout were preserved; only this task’s changes were transferred
+to the isolated worktree and removed from that shared checkout.
+
+Standalone `yarn verify` passed **1,456 tests across 62 files**, browser/Worker
+typechecks and production build, and offline signer typecheck/build. Node 22
+and Yarn 1.22 used a fresh frozen-lockfile installation in this external
+worktree; no dependency manifest or lockfile changed. Existing Rollup pure
+annotation and large-chunk advisories remain. The retained Quorum application
+was not changed or verified.
+
+Regression coverage includes same-feed refresh/retry, immediate pending state,
+canonical author/hash reconciliation, receipt-before/after-read races, closing
+an in-flight composer, stale account/context completions, lock/new-account
+isolation, replies and quotes in their proper destinations, one-page sparse
+profile reads with continuation, cancellation and errors. Submission uncertainty
+retains the draft and never triggers an automatic retry. Pending data is public
+draft content in memory only; no key persistence, permissions or authorization
+checks changed.
+
+A self-only-CSP localhost preview served the real application with synthetic
+accounts and loopback-only API fixtures. Browser checks confirmed immediate
+Publishing feedback before a delayed synthetic receipt, Submitted · waiting to
+appear afterward, and existing cards still visible alongside Refreshing casts.
+Screenshot: `/tmp/opencaster-pending-refresh-preview.png`. Preview assets at
+`/private/tmp/opencaster-publishing-preview-g7mmmpku/dist` are fixtures and must
+never be deployed. No production account action, upload, wallet approval or
+real signed submission was performed.
+
+The dev-log guard is checked against the pre-implementation local base above.
+That is not a newly established production release base. Deployment still
+requires the actual deployed base and the repository’s fresh-asset release
+procedure.
+
 # Infinite timeline browsing prepared · 2026-10-26
 
 Implementation `cb71fddd38ba4e4930cd100d5bef362320a5e2bb`, authored

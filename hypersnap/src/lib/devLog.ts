@@ -19,6 +19,21 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'immediate-pending-casts-and-readable-refresh',
+    date: '2026-10-26',
+    title: 'See your cast while the network catches up',
+    summary: 'Keep conversations readable during refresh, see a new cast immediately, and open profile tabs without waiting for several history pages.',
+    changes: [
+      'Keep the current feed visible during refresh and after a read failure, with inline refresh feedback and an explicit retry. Changing feeds, tabs or accounts clears the previous destination’s casts.',
+      'Show an account-scoped pending card as soon as you publish a cast, reply or quote. Distinguish publishing, a node-acknowledged submission, an uncertain outcome and a rejected attempt; replace the card when a read returns the matching author and full cast hash.',
+      'Keep pending cards only in this tab’s memory, clear them when the signing session changes or locks, and preserve failed drafts. Closing a composer does not lose its submission outcome or the next feed refresh. Never automatically replay a write or present a submission acknowledgement as finalization.',
+      'Display the first available Casts, Replies or Photos page after one profile-feed request. Continue through sparse or filtered pages as you scroll, preserving the node’s continuation and existing ordering.',
+      'Refresh feed and conversation reads after an acknowledged cast without refetching unrelated sidebar data. Authorization checks, signing permissions, public media behavior and Hypersnap availability and propagation limits remain unchanged.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/ef9ac9334e2c511c7d8b2de03719dab83728b044',
+    tag: 'Reliability',
+  },
+  {
     id: 'automatic-timeline-browsing',
     date: '2026-10-26',
     title: 'Keep scrolling through conversations',
