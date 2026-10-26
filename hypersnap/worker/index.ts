@@ -5,6 +5,7 @@ import { handleMediaRequest, type MediaEnv } from './media';
 import { normalizeHypersnapEnsName } from '../src/lib/ensName';
 import { handleAnalyticsEvents, recordRequestMetric, type AnalyticsEnv } from './analytics';
 import { fetchUpstream, InvalidUpstreamResponseError, parseUpstreamObject, resolveReadFallback, resolveUpstream, type UpstreamConfig } from './upstream';
+import { withShareUrl } from './sharing';
 export { MediaUploadQuota } from './media';
 export interface Env extends MediaEnv, AnalyticsEnv {
   ASSETS: { fetch(request: Request): Promise<Response> };
@@ -16,6 +17,7 @@ const LEGACY_HOST = 'quorum.arca.computer';
 const STATIC_ASSET_PATHS = new Set([
   '/index.html', '/favicon.ico', '/robots.txt', '/sitemap.xml',
   '/manifest.json', '/manifest.webmanifest', '/opencaster-symbol.svg',
+  '/opencaster-social-v1.png', '/opencaster-social-v1.svg',
   '/quorum-symbol.svg', '/unknown-dark.png', '/unknown-light.png',
   '/InterVariable.ttf', '/Sen-VariableFont_wght.ttf', '/THIRD_PARTY_DEPENDENCY_LICENSES.txt',
 ]);
@@ -475,7 +477,12 @@ async function routeRequest(request: Request, env: Env, ctx?: WorkerExecutionCon
   if (url.pathname === '/media' || url.pathname.startsWith('/media/')) return handleMediaRequest(request, env);
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return proxy(request, url, env, ctx);
   if (request.method !== 'GET' && request.method !== 'HEAD') return failure(405, 'method_not_allowed', 'This method is unavailable.');
-  return secure(await env.ASSETS.fetch(request));
+  const response = secure(await withShareUrl(await env.ASSETS.fetch(request), url, request.method));
+  // The public card can also be embedded directly by link-preview services.
+  if (url.pathname === '/opencaster-social-v1.png' || url.pathname === '/opencaster-social-v1.svg') {
+    response.headers.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  }
+  return response;
 }
 
 export async function handleRequest(request: Request, env: Env, ctx?: WorkerExecutionContext): Promise<Response> {

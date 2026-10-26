@@ -31,6 +31,7 @@ const RESERVED_NAMES = new Set([
   'api', 'assets', 'media', 'licenses', '.well-known',
   'index.html', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'manifest.json', 'manifest.webmanifest', 'sw.js', 'service-worker.js',
   'unknown-dark.png', 'unknown-light.png', 'intervariable.ttf', 'sen-variablefont_wght.ttf', 'quorum-symbol.svg', 'opencaster-symbol.svg', 'third_party_dependency_licenses.txt',
+  'opencaster-social-v1.png', 'opencaster-social-v1.svg',
 ]);
 
 function normalizedHash(hash: string): string | undefined {

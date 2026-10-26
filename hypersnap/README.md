@@ -65,10 +65,27 @@ CI runs the guard for PRs and pushes. Default-branch pushes compare the event's 
 
 CI validates that an entry exists and its source is real; release review still checks that the prose accurately covers the changes. It does not intercept a direct manual Wrangler command. Contributors and coding agents must run this checklist for every deployment, including hotfixes. See [AGENTS.md](AGENTS.md).
 
+## Link previews
+
+Shared links include Open Graph metadata for Telegram and other link-preview
+clients, plus an X large-image card. The initial HTML contains the title,
+description, image URL and image alt text; crawlers do not need JavaScript or a
+Hypersnap API request. The public 1200×630 PNG introduces Opencaster as an open
+source social client for Hypersnap, powered by Arca Computer.
+
+The gateway preserves recognized profile, cast, channel and other page URLs in
+the canonical and Open Graph URL fields, using `https://opencaster.org` and only
+supported query fields. These links currently share the platform introduction;
+they do not generate individual author portraits or cast excerpts. Preview
+appearance and refresh timing depend on each sharing app's cache and settings.
+The versioned image lives beside its editable SVG in `public/`; use a new image
+filename and update both metadata sets when replacing published artwork.
+
 ## Supported behavior
 
 Implemented:
 
+- Automatically loading timelines for Discover, Following, channels and profile tabs, with inline loading/retry feedback and continuation through sparse or locally filtered pages. Scrolling loads the next page near the bottom until Hypersnap returns no continuation; repeated cursors stop safely. Browser history, node availability and indexed-history limits still apply.
 - Public trending feeds with 1-hour to 7-day windows and following home tabs, shareable profile Casts/Replies/Photos/Likes/Recasts tabs, indexed channel discovery/search/detail/feeds and channel posting, bookmarks, dark/light theme, responsive navigation, and session locking.
 - Search public casts or people at `/search`; shareable queries and profile tabs survive Back/Forward and direct loads. Cast search is a bounded ranked result set; people search uses the node’s prefix index.
 - Recent notifications at `/notifications` for follows, reactions, replies and mentions, with All/Unread/type filters and per-account read state stored on this device. Hypersnap’s bounded activity scan is not a complete historical inbox; the client never calls the node’s placeholder mark-seen POST.
