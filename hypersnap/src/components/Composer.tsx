@@ -5,10 +5,11 @@ import type { WalletSession } from '../lib/auth';
 import { composeCastContent } from '../lib/content';
 import { composerDraftScope, inlineMentionQuery, readComposerDraft, removeComposerDraft, saveComposerDraft, type SavedComposerDraft } from '../lib/composerDraft';
 import { uploadMedia } from '../lib/media';
+import type { CastPublicationEvent } from '../lib/pendingCasts';
 import { Button, Input } from './ui';
 import '../composer.scss';
 
-export interface ComposerProps { session: WalletSession | null; onSignIn(): void; onPosted(): void; parent?: Cast; parentUrl?: string; quote?: Cast; notify(text: string): void }
+export interface ComposerProps { session: WalletSession | null; onSignIn(): void; onPosted?(): void; onPublication?(event: CastPublicationEvent): void; parent?: Cast; parentUrl?: string; quote?: Cast; notify(text: string): void }
 const errorMessage = (cause: unknown) => cause instanceof Error ? cause.message.slice(0, 240) : 'This action could not be completed.';
 function ComposerAvatar({ user }: { user?: User }) {
   const [failed, setFailed] = useState('');
@@ -29,7 +30,7 @@ export default function Composer(props: ComposerProps) {
   // briefly rendering its predecessor's draft until a passive effect runs.
   return <ComposerEditor key={context} {...props} scope={scope} context={context} />;
 }
-function ComposerEditor({ session, onSignIn, onPosted, parent, parentUrl, quote, notify, scope, context }: ComposerProps & { scope: string; context: string }) {
+function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, parentUrl, quote, notify, scope, context }: ComposerProps & { scope: string; context: string }) {
   const attachmentLimit = quote ? 1 : 2;
   const [text, setText] = useState('');
   const [embeds, setEmbeds] = useState<string[]>([]);
@@ -107,13 +108,23 @@ function ComposerEditor({ session, onSignIn, onPosted, parent, parentUrl, quote,
     const run = generation.current; const capturedContext = context; const savedRevision = savedDraft?.id;
     publishing.current = true; setBusy(true); setDraftError('');
     mentionController.current?.abort(); setMentionLoading(false); setMentionCandidate(null);
+    const publicationId = crypto.randomUUID();
+    const reportPublication = (event: CastPublicationEvent) => {
+      try { onPublication?.(event); }
+      catch { /* Local display callbacks cannot change a network submission's outcome. */ }
+    };
+    reportPublication({ type: 'started', publication: { id: publicationId, sessionKey: session.publicKey, author: { ...session.user }, text, images: [...embeds], ...(parent ? { parent: { fid: parent.author.fid, hash: parent.hash } } : {}), ...(parentUrl ? { parentUrl } : {}), ...(quote ? { quote } : {}), timestamp: new Date().toISOString(), status: 'publishing' } });
+    let submitted = false;
     try {
-      await session.cast(draft.text, parent ? { fid: parent.author.fid, hash: parent.hash } : undefined, { embeds: [...embeds.map(url => ({ url })), ...(quote ? [{ castId: { fid: quote.author.fid, hash: quote.hash } }] : [])], ...(parentUrl ? { parentUrl } : {}), mentions: draft.mentions, mentionsPositions: draft.mentionsPositions });
+      const receipt = await session.cast(draft.text, parent ? { fid: parent.author.fid, hash: parent.hash } : undefined, { embeds: [...embeds.map(url => ({ url })), ...(quote ? [{ castId: { fid: quote.author.fid, hash: quote.hash } }] : [])], ...(parentUrl ? { parentUrl } : {}), mentions: draft.mentions, mentionsPositions: draft.mentionsPositions });
+      submitted = true;
+      reportPublication({ type: 'submitted', id: publicationId, hash: receipt.hash });
       if (scope && savedRevision) { try { removeComposerDraft(scope, savedRevision); } catch { /* A confirmed post must not become an apparent failed write because local storage is unavailable. */ } }
       if (run !== generation.current || activeContext.current !== capturedContext) return;
       setText(''); setEmbeds([]); setMentionedUsers([]); setMentionQuery(''); setMentionCandidate(null); setSavedDraft(null); setDraftStatus(''); setConfirmRestore(false); setCaret(0);
-      notify(quote ? 'Quote submitted to Hypersnap. It may take a moment to appear.' : parent ? 'Reply submitted to Hypersnap. It may take a moment to appear.' : 'Cast submitted to Hypersnap. It may take a moment to appear.'); onPosted();
+      notify(quote ? 'Quote submitted to Hypersnap. It may take a moment to appear.' : parent ? 'Reply submitted to Hypersnap. It may take a moment to appear.' : 'Cast submitted to Hypersnap. It may take a moment to appear.'); onPosted?.();
     } catch (cause) {
+      if (!submitted) reportPublication({ type: cause instanceof ApiError && cause.code === 'submission_unknown' ? 'unknown' : 'failed', id: publicationId });
       if (run === generation.current && activeContext.current === capturedContext) setDraftError(cause instanceof ApiError && cause.code === 'submission_unknown' ? 'Submission status is unknown. Your draft is retained. Check your profile before publishing again to avoid a duplicate cast.' : errorMessage(cause));
     } finally { if (run === generation.current && activeContext.current === capturedContext) { publishing.current = false; setBusy(false); } }
   }

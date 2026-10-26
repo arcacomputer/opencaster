@@ -109,25 +109,68 @@ describe('browser API client', () => {
     await expect(searchCasts({ query: 'hello' })).rejects.toMatchObject({ status: 503, code: 'feature_unavailable' });
   });
 
-  it('scans profile replies across actual pages, classifies channel roots correctly and never drops overflow', async () => {
+  it.each(['casts', 'replies', 'media'] as const)('returns the first %s profile page without waiting for older history', async tab => {
     const root = cast('a', { parent_url: 'https://warpcast.com/~/channel/test' });
     const reply = cast('b', { parent_hash: 'c'.repeat(40) });
-    const second = cast('d', { parent_hash: 'c'.repeat(40) });
-    const fetch = vi.fn().mockResolvedValueOnce(response({ casts: [root, reply], next: { cursor: 'aa' } }))
-      .mockResolvedValueOnce(response({ casts: [second], next: { cursor: 'bb' } }));
+    const image = cast('d', { embeds: [{ url: 'https://example.com/photo.png' }] });
+    const fetch = vi.fn().mockResolvedValueOnce(response({ casts: [root, reply, image], next: { cursor: 'aa' } }))
+      .mockImplementation(() => new Promise(() => {}));
     vi.stubGlobal('fetch', fetch);
-    expect(await getProfileFeed({ fid: 3, tab: 'replies', limit: 2 })).toEqual({ casts: [reply, second], next: { cursor: 'bb' } });
-    expect(fetch.mock.calls[1][0]).toBe('/api/v2/farcaster/feed/user/casts?limit=1&cursor=aa&fid=3');
-    fetch.mockResolvedValueOnce(response({ casts: [root, reply], next: {} }));
-    expect((await getProfileFeed({ fid: 3, tab: 'casts', limit: 2 })).casts).toEqual([root]);
+    const expected = tab === 'casts' ? [root, image] : tab === 'replies' ? [reply] : [image];
+    expect(await getProfileFeed({ fid: 3, tab, limit: 3 })).toEqual({ casts: expected, next: { cursor: 'aa' } });
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0][0]).toBe('/api/v2/farcaster/feed/user/casts?limit=3&fid=3');
   });
 
-  it('bounds sparse profile scans and preserves a continuation even when no images match', async () => {
-    let cursor = 0;
-    const fetch = vi.fn().mockImplementation(async () => response({ casts: [cast('a')], next: { cursor: String(++cursor) } }));
+  it.each(['casts', 'replies', 'media'] as const)('keeps an empty %s profile page continuable without skipping later matches', async tab => {
+    const root = cast('a');
+    const reply = cast('b', { parent_hash: 'c'.repeat(40) });
+    const image = cast('d', { embeds: [{ url: 'https://example.com/photo.png' }] });
+    const match = tab === 'casts' ? root : tab === 'replies' ? reply : image;
+    const unmatched = tab === 'casts' ? reply : root;
+    const fetch = vi.fn().mockResolvedValueOnce(response({ casts: [unmatched], next: { cursor: 'aa' } }))
+      .mockResolvedValueOnce(response({ casts: [match], next: {} }));
     vi.stubGlobal('fetch', fetch);
-    expect(await getProfileFeed({ fid: 3, tab: 'media', limit: 20 })).toEqual({ casts: [], next: { cursor: '5' } });
-    expect(fetch).toHaveBeenCalledTimes(5);
+    expect(await getProfileFeed({ fid: 3, tab, limit: 1 })).toEqual({ casts: [], next: { cursor: 'aa' } });
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(await getProfileFeed({ fid: 3, tab, cursor: 'aa', limit: 1 })).toEqual({ casts: [match], next: { cursor: null } });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1][0]).toBe('/api/v2/farcaster/feed/user/casts?limit=1&cursor=aa&fid=3');
+  });
+
+  it('rejects malformed profile pages and oversized matches without returning a truncated success', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(response({ casts: {}, next: {} }))
+      .mockResolvedValueOnce(response({ casts: [cast('a')], next: { cursor: '?' } }))
+      .mockResolvedValueOnce(response({ casts: [cast('a'), cast('b')], next: { cursor: 'aa' } }));
+    vi.stubGlobal('fetch', fetch);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await expect(getProfileFeed({ fid: 3, tab: 'casts', limit: 1 })).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    }
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('propagates a failed profile read without converting it to a successful empty page or scanning onward', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: 'upstream_unavailable', message: 'Try again.' }), { status: 502 }));
+    vi.stubGlobal('fetch', fetch);
+    await expect(getProfileFeed({ fid: 3, tab: 'media' })).rejects.toMatchObject({ status: 502, code: 'upstream_unavailable' });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('preserves cancellation of a profile page and cleans its request deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const controller = new AbortController();
+      const fetch = vi.fn().mockImplementation((_url, options) => new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+      }));
+      vi.stubGlobal('fetch', fetch);
+      const pending = expect(getProfileFeed({ fid: 3, tab: 'replies', signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
+      controller.abort();
+      await pending;
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(fetch.mock.calls[0][1].signal.aborted).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
   });
 
   it('recognizes our uploaded images and supported image delivery paths without accepting spoofed hostnames', () => {

@@ -15,6 +15,8 @@ import { renderMentionSegments } from './lib/content';
 import { SearchView, NotificationsView, ChannelsView, ChannelHeader, ProfileTabs } from './components/FeaturePanels';
 import DeleteCastDialog from './components/DeleteCastDialog';
 import Composer from './components/Composer';
+import PendingCastCard from './components/PendingCastCard';
+import { reconcilePublications, updatePublications, type CastPublication, type CastPublicationEvent } from './lib/pendingCasts';
 import FeedPagination from './components/FeedPagination';
 import CastReactions from './components/CastReactions';
 import MediaViewer, { type CastImage } from './components/MediaViewer';
@@ -68,6 +70,16 @@ const message = (error: unknown) => error instanceof Error ? error.message : 'So
 const short = (value: number = 0) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
 function safeUrl(value?: string): string | undefined {
   try { const url = new URL(value ?? ''); return url.protocol === 'https:' && !url.username && !url.password ? url.href : undefined; } catch { return undefined; }
+}
+function conversationCasts(conversation: ConversationNode | null): Cast[] {
+  const casts: Cast[] = [];
+  const remaining = conversation ? [conversation] : [];
+  while (remaining.length && casts.length < 150) {
+    const node = remaining.shift()!;
+    casts.push(node.cast);
+    remaining.push(...(node.replies ?? []).slice(0, 150 - casts.length));
+  }
+  return casts;
 }
 function relativeTime(timestamp: string) {
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(timestamp).getTime()) / 60000));
@@ -293,6 +305,16 @@ export default function App() {
   const [profileError, setProfileError] = useState('');
   const profileRead = useRef<AbortController | null>(null);
   const [casts, setCasts] = useState<Cast[]>([]);
+  const [castsIdentity, setCastsIdentity] = useState('');
+  const lastFeedIdentity = useRef('');
+  const [publicationState, setPublicationState] = useState({ items: [] as CastPublication[], revision: 0 });
+  const { items: publications, revision: postRefresh } = publicationState;
+  const setPublications = useCallback((update: (current: CastPublication[]) => CastPublication[]) => {
+    setPublicationState(current => {
+      const items = update(current.items);
+      return items === current.items ? current : { ...current, items };
+    });
+  }, []);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -465,6 +487,25 @@ export default function App() {
   const profileFid = profile?.fid;
   const sessionFid = session?.fid;
   const sessionPublicKey = session?.publicKey;
+  // A refresh retains the same feed. A different destination or account must
+  // never paint its predecessor's casts while its own request is in flight.
+  const feedIdentity = JSON.stringify([view, channel, profileIdentifier, profileFid, profileTab, sessionFid, sessionPublicKey, trendingWindow]);
+  const activeCasts = castsIdentity === feedIdentity ? casts : [];
+  const observedCasts = useMemo(() => [...casts, ...conversationCasts(conversation)], [casts, conversation]);
+  useEffect(() => { setPublications(current => reconcilePublications(current, observedCasts)); }, [observedCasts, publications, setPublications]);
+  useEffect(() => { setPublications(current => current.filter(item => item.sessionKey === sessionPublicKey && item.author.fid === sessionFid)); }, [sessionPublicKey, sessionFid]);
+  const onPublication = useCallback((event: CastPublicationEvent) => {
+    const account = currentSession.current;
+    if (!account || (event.type === 'started' && (event.publication.sessionKey !== account.publicKey || event.publication.author.fid !== account.fid))) return;
+    setPublicationState(current => {
+      const scoped = current.items.filter(item => item.sessionKey === account.publicKey && item.author.fid === account.fid);
+      const items = updatePublications(scoped, event);
+      const submitted = event.type === 'submitted' && scoped.some(item => item.id === event.id && item.status === 'publishing');
+      // Refresh reads once for an acknowledged attempt, including one whose
+      // composer was closed. Never retry the write or refresh for a stale ID.
+      return { items, revision: current.revision + Number(submitted) };
+    });
+  }, []);
   const isConversation = isConversationRoute(route);
   const conversationHash = route.kind === 'cast' ? route.hash : route.kind === 'cast-alias' ? bookmarkHash(threadCache.current.get(routePath(route))?.hash ?? '') ?? undefined : undefined;
   const searchQuery = base.kind === 'search' ? base.query : undefined;
@@ -555,7 +596,10 @@ export default function App() {
   useEffect(() => {
     const controller = new AbortController();
     feedGeneration.current += 1; feedMoreRead.current?.abort(); feedMoreRead.current = null; feedCursors.current = new Set();
-    setError(''); setMoreError(''); setPaginationNotice(''); setCasts([]); setCursor(null); setLoadingMore(false);
+    const sameFeed = lastFeedIdentity.current === feedIdentity;
+    lastFeedIdentity.current = feedIdentity; setCastsIdentity(feedIdentity);
+    setError(''); setMoreError(''); setPaginationNotice(''); setLoadingMore(false);
+    if (!sameFeed) { setCasts([]); setCursor(null); }
     if (featureView || view === 'bookmarks' || view === 'not-found' || (view === 'profile' && profileFid === undefined) || (view === 'following' && sessionFid === undefined)) { setLoading(false); return; }
     setLoading(true);
     const request = view === 'profile' && profileFid !== undefined ? getProfileFeed({ fid: profileFid, tab: profileTab, limit: 25, signal: controller.signal }) : getFeed({ kind: view === 'channel' ? 'channel' : view === 'following' ? 'following' : 'trending', fid: sessionFid, channel, ...(view === 'discover' ? { timeWindow: trendingWindow } : {}), limit: 25, signal: controller.signal });
@@ -564,7 +608,7 @@ export default function App() {
       .catch(error => { if (!controller.signal.aborted) setError(message(error)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { controller.abort(); feedMoreRead.current?.abort(); };
-  }, [view, channel, sessionFid, sessionPublicKey, profileFid, profileTab, trendingWindow, refresh, featureView]);
+  }, [view, channel, sessionFid, sessionPublicKey, profileFid, profileTab, trendingWindow, refresh, postRefresh, featureView, feedIdentity]);
   useEffect(() => {
     if (conversationHash === undefined) { setThread(null); setConversation(null); setThreadError(''); setThreadErrorKey(''); return; }
     const key = castPath(conversationHash);
@@ -572,7 +616,9 @@ export default function App() {
       const current = currentRoute.current;
       return current.kind === 'cast' ? current.hash === conversationHash : current.kind === 'cast-alias' && bookmarkHash(threadCache.current.get(routePath(current))?.hash ?? '') === conversationHash;
     };
-    const controller = new AbortController(); setConversation(null); setThreadError(''); setThreadErrorKey(key);
+    const controller = new AbortController();
+    setConversation(current => current && bookmarkHash(current.cast.hash) === conversationHash ? current : null);
+    setThreadError(''); setThreadErrorKey(key);
     const cached = threadCache.current.get(key); setThread(cached ?? null);
     getConversation(conversationHash, controller.signal).then(data => {
       if (controller.signal.aborted || !stillCurrent()) return;
@@ -586,11 +632,11 @@ export default function App() {
       }
     }).catch(error => { if (!controller.signal.aborted && stillCurrent()) { setThreadErrorKey(key); setThreadError(message(error)); } });
     return () => controller.abort();
-  }, [conversationHash, refresh, castLink]);
+  }, [conversationHash, refresh, postRefresh, castLink]);
 
   function lockSession(expectedSession = session, revoked = false) {
     if (!expectedSession || currentSession.current?.publicKey !== expectedSession.publicKey) return;
-    expectedSession.dispose(); setSession(null); setDeviceSettings(false);
+    expectedSession.dispose(); currentSession.current = null; setSession(null); setPublications(() => []); setDeviceSettings(false);
     if (!revoked) notify('This tab is locked. Network authorization remains active; unlock a saved vault or approve a new device key to reconnect.');
   }
   function save(cast: Cast) {
@@ -665,7 +711,15 @@ export default function App() {
     return <CastCard key={`${session?.publicKey ?? 'guest'}:${cast.hash}`} cast={cast} featured={featured} fullHashLinks={fullHashLinks} replyPreview={!threadOpen} {...context} getCastPath={castLink} reactionActor={view === 'profile' && profile && profile.fid === cast.reaction_context?.fid ? profile : undefined} session={session} onSignIn={() => requestSignIn()} onProfile={openProfile} onNavigate={navigateSocialLink} onThread={openThread} onShare={setSharedCast} onCastHash={hash => navigate(castPath(hash))} onImages={(images, initialIndex) => setImageViewer({ images, initialIndex })} onOptions={setCastOptions} onQuote={cast => { quoteGeneration.current += 1; setQuotedCast(cast); }} onDelete={setDeletedCast} saved={bookmarks.some(item => bookmarkHash(item.hash) === bookmarkHash(cast.hash))} onSave={save} notify={notify} />;
   };
   const composeParentUrl = view === 'channel' && channelInfo && safeUrl(channelInfo.parent_url || channelInfo.url) ? channelInfo.parent_url || channelInfo.url : undefined;
-  const feedCandidates = view === 'bookmarks' ? filterBookmarks(bookmarks, bookmarkQuery, bookmarkSort) : casts;
+  const pending = reconcilePublications(publications, observedCasts).filter(item => item.sessionKey === sessionPublicKey && item.author.fid === sessionFid);
+  const pendingFeed = pending.filter(item => {
+    if (view === 'profile') return item.author.fid === profileFid && (profileTab === 'casts' ? !item.parent : profileTab === 'replies' ? Boolean(item.parent) : profileTab === 'media' ? item.images.length > 0 : false);
+    if (view === 'channel') return !item.parent && Boolean(composeParentUrl && item.parentUrl === composeParentUrl);
+    return (view === 'discover' || view === 'following') && !item.parent;
+  });
+  const pendingReplies = pending.filter(item => activeThread && item.parent?.fid === activeThread.author.fid && bookmarkHash(item.parent.hash) === bookmarkHash(activeThread.hash));
+  const pendingCard = (publication: CastPublication) => <PendingCastCard key={publication.id} publication={publication} onDismiss={() => setPublications(current => current.filter(item => item.id !== publication.id))} />;
+  const feedCandidates = view === 'bookmarks' ? filterBookmarks(bookmarks, bookmarkQuery, bookmarkSort) : activeCasts;
   const visibleCasts = feedCandidates.filter(cast => revealed.has(bookmarkHash(cast.hash)!) || !getContentFilterReason(cast, preferences));
   const filteredCount = feedCandidates.length - visibleCasts.length;
   if (!session && !exploring && route.kind === 'discover') return <Landing onSignIn={() => requestSignIn()} onExplore={() => { try { localStorage.setItem(exploreKey, '1'); } catch { /* Exploring still works for this tab. */ } setExploring(true); }} onNavigate={path => navigate(path)} />;
@@ -713,24 +767,27 @@ export default function App() {
       {view === 'profile' && profile && <ProfileTabs fid={profile.fid} tab={profileTab} onChange={tab => navigate(profilePath(profile.fid, tab))} />}
       {view === 'channel' && (channelInfo ? <ChannelHeader channel={channelInfo} saved={savedChannels.some(item => item.id === channelInfo.id)} onToggleSave={toggleSavedChannel} onPeople={() => setChannelPeople(channelInfo)} /> : <p className="channel-status" role={channelError ? 'alert' : 'status'}>{channelError || 'Loading channel…'}</p>)}
       {view === 'channel' && channelInfo && !session && <GuestPrompt onConnect={() => requestSignIn()}>Sign in to cast in /{channelInfo.id}.</GuestPrompt>}
-      {view === 'channel' && channelInfo && session && composeParentUrl && <Composer key={`${session?.publicKey ?? 'guest'}:${channel}`} session={session} onSignIn={() => requestSignIn()} parentUrl={composeParentUrl} onPosted={() => setRefresh(n => n + 1)} notify={notify} />}
+      {view === 'channel' && channelInfo && session && composeParentUrl && <Composer key={`${session?.publicKey ?? 'guest'}:${channel}`} session={session} onPublication={onPublication} onSignIn={() => requestSignIn()} parentUrl={composeParentUrl} notify={notify} />}
       {view === 'search' && base.kind === 'search' && <SearchView key={refresh} query={base.query} kind={base.searchKind} focusRequest={searchFocus} onSearch={(query, kind) => navigate(searchPath(query, kind))} onProfile={openProfile} renderCast={card} />}
       {view === 'notifications' && <NotificationsView key={refresh} isActivityFiltered={item => item.actors.some(actor => preferences.mutedAccounts.some(person => person.fid === actor.fid)) || Boolean(item.cast && getContentFilterReason(item.cast, preferences)) || Boolean(item.targetHash && preferences.hiddenCasts.includes(item.targetHash.replace(/^0x/, '').toLowerCase()))} fid={session?.fid} onConnect={() => requestSignIn()} onProfile={openProfile} onCast={hash => navigate(castPath(hash))} />}
       {view === 'settings' && <><Suspense fallback={<p className="devlog-loading" role="status">Loading content controls…</p>}><ContentSettings key={preferenceScope} fid={session?.fid} preferences={preferences} onChange={updatePreferences} /></Suspense><Suspense fallback={null}><AnalyticsSettings /></Suspense><section className="settings-shortcuts"><h2>Quick navigation</h2><p><kbd>⌘ / Ctrl</kbd> + <kbd>K</kbd> or <kbd>/</kbd> opens search. Press <kbd>?</kbd> for shortcuts.</p><Button data-analytics="shortcuts-open" variant="secondary" onClick={() => setShortcutHelp(true)}><IconKeyboard size={17} />Keyboard shortcuts</Button></section><section className="settings-shortcuts"><h2>Appearance</h2><p>Theme is saved on this browser.</p><Button data-analytics="theme-toggle" variant="secondary" onClick={() => setDark(!dark)}>{dark ? <IconSun size={17} /> : <IconMoon size={17} />}{dark ? 'Use light theme' : 'Use dark theme'}</Button></section></>}
       {view === 'devlog' && <Suspense fallback={<p className="devlog-loading" role="status">Loading the project story…</p>}><DevLog /></Suspense>}
       {view === 'channels' && <ChannelsView key={refresh} onChannel={openChannel} savedChannels={savedChannels} onToggleSave={toggleSavedChannel} />}
       {!featureView && <>
-      {(view === 'discover' || view === 'following') && session && <div className="home-composer"><Composer key={session.publicKey} session={session} onSignIn={() => requestSignIn()} onPosted={() => setRefresh(n => n + 1)} notify={notify} /></div>}
+      {(view === 'discover' || view === 'following') && session && <div className="home-composer"><Composer key={session.publicKey} session={session} onPublication={onPublication} onSignIn={() => requestSignIn()} notify={notify} /></div>}
       {view === 'bookmarks' && <BookmarkTools query={bookmarkQuery} onQueryChange={setBookmarkQuery} sort={bookmarkSort} onSortChange={setBookmarkSort} count={visibleCasts.length} total={bookmarks.length} onClear={() => { setBookmarks([]); setBookmarkQuery(''); if (!saveBookmarks([])) notify('Bookmarks cleared for this tab. Browser storage is unavailable.'); }} />}
       {filteredCount > 0 && <div className="content-filter-summary" role="status"><span>{filteredCount} loaded {filteredCount === 1 ? 'cast is' : 'casts are'} filtered on this browser.</span><Button data-analytics="nav-settings" variant="ghost" onClick={() => navigate('/settings')}>Manage controls</Button><Button variant="ghost" onClick={() => setRevealState(current => ({ scope: preferenceScope, hashes: new Set([...(current.scope === preferenceScope ? current.hashes : []), ...feedCandidates.map(cast => bookmarkHash(cast.hash)!)]) }))}>Show for this view</Button></div>}
       {(view === 'discover' || view === 'bookmarks') && <div className="feed-heading"><div>{view === 'discover' ? <IconSparkles size={17} /> : <IconHome size={17} />}<span>{view === 'discover' ? 'Trending on Hypersnap' : 'Saved for later'}</span></div><span>{view === 'discover' ? <span className="feed-window"><label htmlFor="trending-window">Trending over</label><select data-analytics="feed-window" id="trending-window" aria-label="Trending time window" value={trendingWindow} onChange={event => setTrendingWindow(event.target.value as typeof trendingWindow)}>{([['1h', '1 hour'], ['6h', '6 hours'], ['12h', '12 hours'], ['24h', '24 hours'], ['7d', '7 days']] as const).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></span> : 'Stored on this device'}</span></div>}
-      {view === 'not-found' ? <div className="empty"><IconCompass size={35} /><h3>That page does not exist.</h3><p>Check the profile or cast link, or return to Discover.</p><Button data-analytics="nav-discover" onClick={() => navigate('/')}>Open Discover</Button></div> : view === 'profile' && !profile ? <div className="empty" role={profileLoading ? 'status' : undefined}><IconUsers size={35} /><h3>{profileLoading ? 'Loading profile…' : profileError ? 'Profile unavailable' : 'Your profile on Hypersnap'}</h3><p>{profileError || (profileLoading ? 'Finding this public identity on Hypersnap.' : 'Sign in to open your profile, or search for a username or FID.')}</p>{profileError ? <Button variant="secondary" onClick={() => setRefresh(n => n + 1)}>Try again</Button> : !profileLoading && <Button data-analytics="connect-open" onClick={() => requestSignIn()}>Sign in</Button>}</div> : loading ? <div aria-label="Loading casts" role="status" className="skeleton-list">{[0, 1, 2].map(n => <div className="skeleton-cast" key={n}><span className="skeleton-avatar" /><div><span /><span /><span /></div></div>)}<p className="muted">Finding conversations on Hypersnap…</p></div> : error ? <div className="empty"><IconWorld size={35} /><h3>The network is taking a moment.</h3><p>{error}</p><Button variant="secondary" onClick={() => setRefresh(n => n + 1)}><IconRefresh size={16} />Try again</Button></div> : view === 'following' && !session ? <div className="empty"><IconUsers size={35} /><h3>Your people are here.</h3><p>Sign in with your Farcaster account to see casts from the people you follow.</p><Button data-analytics="connect-open" onClick={() => requestSignIn()}>Sign in</Button></div> : visibleCasts.length ? <div className="feed">{visibleCasts.map(cast => card(cast))}</div> : <div className="empty"><IconBookmark size={35} /><h3>{filteredCount ? 'Your content controls are active.' : view === 'bookmarks' && bookmarkQuery.trim() ? 'No saved casts match.' : view === 'bookmarks' ? 'A place for the good stuff.' : cursor ? 'Looking for more conversations…' : 'The conversation is open.'}</h3><p>{filteredCount ? 'Manage your filters or reveal the loaded casts for this view.' : view === 'bookmarks' && bookmarkQuery.trim() ? 'Try another word, person or channel.' : view === 'bookmarks' ? 'Tap the bookmark on any cast to save it here.' : cursor ? 'Keep scrolling to browse the next available casts.' : 'No casts returned for this feed yet. Try another channel or start a conversation.'}</p></div>}
+      {pendingFeed.length > 0 && <div className="pending-casts" aria-label="Your pending casts">{pendingFeed.map(pendingCard)}</div>}
+      {loading && activeCasts.length > 0 && <p className="feed-refresh-status" role="status">Refreshing casts…</p>}
+      {error && activeCasts.length > 0 && <div className="feed-refresh-status"><p className="error" role="alert">{error}</p><Button variant="secondary" onClick={() => setRefresh(n => n + 1)}>Try again</Button></div>}
+      {view === 'not-found' ? <div className="empty"><IconCompass size={35} /><h3>That page does not exist.</h3><p>Check the profile or cast link, or return to Discover.</p><Button data-analytics="nav-discover" onClick={() => navigate('/')}>Open Discover</Button></div> : view === 'profile' && !profile ? <div className="empty" role={profileLoading ? 'status' : undefined}><IconUsers size={35} /><h3>{profileLoading ? 'Loading profile…' : profileError ? 'Profile unavailable' : 'Your profile on Hypersnap'}</h3><p>{profileError || (profileLoading ? 'Finding this public identity on Hypersnap.' : 'Sign in to open your profile, or search for a username or FID.')}</p>{profileError ? <Button variant="secondary" onClick={() => setRefresh(n => n + 1)}>Try again</Button> : !profileLoading && <Button data-analytics="connect-open" onClick={() => requestSignIn()}>Sign in</Button>}</div> : (loading || castsIdentity !== feedIdentity) && !activeCasts.length ? <div aria-label="Loading casts" role="status" className="skeleton-list">{[0, 1, 2].map(n => <div className="skeleton-cast" key={n}><span className="skeleton-avatar" /><div><span /><span /><span /></div></div>)}<p className="muted">Finding conversations on Hypersnap…</p></div> : error && !activeCasts.length ? <div className="empty"><IconWorld size={35} /><h3>The network is taking a moment.</h3><p>{error}</p><Button variant="secondary" onClick={() => setRefresh(n => n + 1)}><IconRefresh size={16} />Try again</Button></div> : view === 'following' && !session ? <div className="empty"><IconUsers size={35} /><h3>Your people are here.</h3><p>Sign in with your Farcaster account to see casts from the people you follow.</p><Button data-analytics="connect-open" onClick={() => requestSignIn()}>Sign in</Button></div> : visibleCasts.length ? <div className="feed">{visibleCasts.map(cast => card(cast))}</div> : pendingFeed.length ? null : <div className="empty"><IconBookmark size={35} /><h3>{filteredCount ? 'Your content controls are active.' : view === 'bookmarks' && bookmarkQuery.trim() ? 'No saved casts match.' : view === 'bookmarks' ? 'A place for the good stuff.' : cursor ? 'Looking for more conversations…' : 'The conversation is open.'}</h3><p>{filteredCount ? 'Manage your filters or reveal the loaded casts for this view.' : view === 'bookmarks' && bookmarkQuery.trim() ? 'Try another word, person or channel.' : view === 'bookmarks' ? 'Tap the bookmark on any cast to save it here.' : cursor ? 'Keep scrolling to browse the next available casts.' : 'No casts returned for this feed yet. Try another channel or start a conversation.'}</p></div>}
       {!loading && !error && view !== 'bookmarks' && cursor && <FeedPagination cursor={cursor} busy={loadingMore} error={moreError} paused={threadOpen} onLoad={() => void loadMore()} />}
       {!loading && !error && (visibleCasts.length > 0 || paginationNotice) && !cursor && <p className="feed-end" role="status">{paginationNotice || (view === 'bookmarks' ? 'You’re connected to the open social web.' : 'You’ve reached the end of the casts available in this feed.')} <IconWorld size={13} /></p>}
       {view === 'following' && session && <SuggestedPeople fid={session.fid} onProfile={openProfile} />}
       </>}
       </div>
-      {threadOpen && <section className="conversation-page" aria-labelledby="conversation-title"><header className="conversation-page__head"><Button variant="ghost" aria-label="Back" onClick={closeThread}><IconArrowLeft size={20} /></Button><h1 id="conversation-title" ref={threadHeading} tabIndex={-1}>Conversation</h1><Button data-analytics="composer-open" className="conversation-page__cast" onClick={() => session ? setComposeOpen(true) : requestSignIn()}>Cast</Button></header>{route.kind === 'cast-alias' && !conversationHash ? <CastLinkLookup key={`${routePath(route)}:${refresh}`} authorIdentifier={route.authorIdentifier} hashPrefix={route.hashPrefix} renderCast={cast => card(cast, false, true)} onOpen={cast => openResolvedAlias(cast, routePath(route), true)} onResolved={cast => openResolvedAlias(cast, routePath(route))} /> : <>{activeThread && <ConversationContext key={`${activeThread.hash}:${refresh}`} cast={activeThread} renderCard={(cast, featured, context) => card(cast, featured, false, context)} onNavigate={navigateSocialLink} onRetry={parentReader.dispose} />}{activeThreadError ? <div className="empty"><p className="error" role="alert">{activeThreadError}</p><Button variant="secondary" onClick={() => setRefresh(n => n + 1)}>Try again</Button></div> : activeConversation && activeThread ? <>{session ? <Composer key={`${session.publicKey}:${activeThread.hash}`} session={session} onSignIn={() => requestSignIn()} onPosted={() => setRefresh(n => n + 1)} parent={activeThread} notify={notify} /> : <GuestPrompt onConnect={() => requestSignIn()}>Sign in to reply.</GuestPrompt>}{activeConversation.replies.length ? <ConversationReplies nodes={activeConversation.replies} parent={activeThread} renderCard={(reply, parent) => card(reply, false, false, { parent, replyPreview: false })} /> : <p className="thread-empty">The first reply could be yours.</p>}</> : <p className="thread-empty" role="status">Loading conversation…</p>}</>}</section>}
+      {threadOpen && <section className="conversation-page" aria-labelledby="conversation-title"><header className="conversation-page__head"><Button variant="ghost" aria-label="Back" onClick={closeThread}><IconArrowLeft size={20} /></Button><h1 id="conversation-title" ref={threadHeading} tabIndex={-1}>Conversation</h1><Button data-analytics="composer-open" className="conversation-page__cast" onClick={() => session ? setComposeOpen(true) : requestSignIn()}>Cast</Button></header>{route.kind === 'cast-alias' && !conversationHash ? <CastLinkLookup key={`${routePath(route)}:${refresh}`} authorIdentifier={route.authorIdentifier} hashPrefix={route.hashPrefix} renderCast={cast => card(cast, false, true)} onOpen={cast => openResolvedAlias(cast, routePath(route), true)} onResolved={cast => openResolvedAlias(cast, routePath(route))} /> : <>{activeThread && <ConversationContext key={`${activeThread.hash}:${refresh}`} cast={activeThread} renderCard={(cast, featured, context) => card(cast, featured, false, context)} onNavigate={navigateSocialLink} onRetry={parentReader.dispose} />}{pendingReplies.length > 0 && <div className="pending-casts" aria-label="Your pending replies">{pendingReplies.map(pendingCard)}</div>}{activeThreadError && activeConversation && <p className="error feed-refresh-status" role="alert">{activeThreadError}</p>}{activeThreadError && !activeConversation ? <div className="empty"><p className="error" role="alert">{activeThreadError}</p><Button variant="secondary" onClick={() => setRefresh(n => n + 1)}>Try again</Button></div> : activeConversation && activeThread ? <>{session ? <Composer key={`${session.publicKey}:${activeThread.hash}`} session={session} onPublication={onPublication} onSignIn={() => requestSignIn()} parent={activeThread} notify={notify} /> : <GuestPrompt onConnect={() => requestSignIn()}>Sign in to reply.</GuestPrompt>}{activeConversation.replies.length ? <ConversationReplies nodes={activeConversation.replies} parent={activeThread} renderCard={(reply, parent) => card(reply, false, false, { parent, replyPreview: false })} /> : !pendingReplies.length && <p className="thread-empty">The first reply could be yours.</p>}</> : <p className="thread-empty" role="status">Loading conversation…</p>}</>}</section>}
     </main>
     <aside className="rightbar">
       <form className="search" onSubmit={search}><IconSearch size={18} /><Input aria-label="Search casts or people" placeholder="Search casts or @people" value={query} onChange={event => setQuery(event.target.value)} /><Button data-analytics="search-submit" variant="ghost" type="submit" aria-label="Search"><IconChevronRight size={18} /></Button></form>
@@ -758,7 +815,7 @@ export default function App() {
       profileCache.current.set(String(updated.fid), updated); if (updated.username) profileCache.current.set(updated.username, updated);
       setProfile(updated); setSession(current => current?.publicKey === session.publicKey ? { ...current, user: updated } : current);
     }} onClose={() => setEditProfile(false)} />}
-    {quotedCast && !signIn && <Modal title="Quote cast" onClose={() => { quoteGeneration.current += 1; setQuotedCast(null); }} wide><Composer key={`${session?.publicKey ?? 'guest'}:${quotedCast.hash}`} session={session} quote={quotedCast} onSignIn={() => requestSignIn()} onPosted={() => { if (quoteVersion === quoteGeneration.current && currentSession.current?.publicKey === session?.publicKey) setQuotedCast(null); setRefresh(n => n + 1); }} notify={notify} /></Modal>}
+    {quotedCast && !signIn && <Modal title="Quote cast" onClose={() => { quoteGeneration.current += 1; setQuotedCast(null); }} wide><Composer key={`${session?.publicKey ?? 'guest'}:${quotedCast.hash}`} session={session} onPublication={onPublication} quote={quotedCast} onSignIn={() => requestSignIn()} onPosted={() => { if (quoteVersion === quoteGeneration.current && currentSession.current?.publicKey === session?.publicKey) setQuotedCast(null); }} notify={notify} /></Modal>}
     {deletedCast && !signIn && <DeleteCastDialog cast={deletedCast} session={session} onEnable={() => requestSignIn(FULL_CLIENT_SCOPES)} onClose={() => setDeletedCast(null)} onDeleted={cast => {
       setDeletedCast(null); setCasts(current => current.filter(item => item.hash !== cast.hash));
       const saved = bookmarks.filter(item => bookmarkHash(item.hash) !== bookmarkHash(cast.hash)); setBookmarks(saved); if (!saveBookmarks(saved)) notify('The bookmark was removed for this tab. Browser storage is unavailable.');
@@ -773,7 +830,7 @@ export default function App() {
     {shortcutHelp && <Modal title="Keyboard shortcuts" onClose={() => setShortcutHelp(false)}><dl className="shortcut-list"><div><dt>Search</dt><dd><kbd>⌘ / Ctrl</kbd> + <kbd>K</kbd> or <kbd>/</kbd></dd></div><div><dt>This help</dt><dd><kbd>?</kbd></dd></div><div><dt>Publish from the composer</dt><dd><kbd>⌘ / Ctrl</kbd> + <kbd>Enter</kbd></dd></div><div><dt>Close a dialog</dt><dd><kbd>Esc</kbd></dd></div></dl><p className="muted">Navigation shortcuts pause while you type or a dialog is open.</p></Modal>}
     {reactionPeople && <Suspense fallback={<Modal title="Cast reactions" onClose={() => setReactionPeople(null)}><p role="status">Loading reactions…</p></Modal>}><CastReactionPeople cast={reactionPeople} onClose={() => setReactionPeople(null)} onProfile={openProfile} /></Suspense>}
     {castOptions && <CastOptions cast={castOptions} onReactionPeople={() => { setReactionPeople(castOptions); setCastOptions(null); }} onHide={() => { try { const saved = updatePreferences(hideCast(preferences, castOptions.hash)); setCastOptions(null); notify(saved ? 'Cast hidden on this browser. Restore it in Settings.' : 'Cast hidden for this tab. Browser storage is unavailable.'); } catch (cause) { notify(message(cause)); } }} onMute={() => { try { const saved = updatePreferences(muteAccount(preferences, castOptions.author)); setCastOptions(null); notify(saved ? 'Account muted on this browser. Manage it in Settings.' : 'Account muted for this tab. Browser storage is unavailable.'); } catch (cause) { notify(message(cause)); } }} onClose={() => setCastOptions(null)} onQuotes={() => { setCastQuotes(castOptions); setCastOptions(null); }} onShare={() => { setSharedCast(castOptions); setCastOptions(null); }} onQuote={() => { quoteGeneration.current += 1; setQuotedCast(castOptions); setCastOptions(null); }} />}
-    {composeOpen && session && !signIn && <Modal title="New cast" onClose={() => setComposeOpen(false)} wide><Composer key={`${session.publicKey}:compose:${composeParentUrl ?? ''}`} session={session} onSignIn={() => requestSignIn()} parentUrl={composeParentUrl} onPosted={() => { setComposeOpen(false); setRefresh(n => n + 1); }} notify={notify} /></Modal>}
+    {composeOpen && session && !signIn && <Modal title="New cast" onClose={() => setComposeOpen(false)} wide><Composer key={`${session.publicKey}:compose:${composeParentUrl ?? ''}`} session={session} onPublication={onPublication} onSignIn={() => requestSignIn()} parentUrl={composeParentUrl} onPosted={() => setComposeOpen(false)} notify={notify} /></Modal>}
     {sharedCast && <ShareCastDialog cast={sharedCast} path={castLink(sharedCast)} onClose={() => setSharedCast(null)} notify={notify} />}
   </div></ContentControls.Provider></ParentCastRead.Provider>;
 }

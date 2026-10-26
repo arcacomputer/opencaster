@@ -7,12 +7,13 @@ import { ApiError, getUser, searchUsers, type User } from '../lib/api';
 import type { WalletSession } from '../lib/auth';
 import { uploadMedia } from '../lib/media';
 import { composerDraftScope, readComposerDraft, saveComposerDraft } from '../lib/composerDraft';
+import type { CastPublicationEvent } from '../lib/pendingCasts';
 
 vi.mock('../lib/api', async original => ({ ...await original<typeof import('../lib/api')>(), getUser: vi.fn(), searchUsers: vi.fn() }));
 vi.mock('../lib/media', () => ({ uploadMedia: vi.fn() }));
 const user = (fid: number, username: string): User => ({ fid, username, custody_address: '', profile: { bio: { text: '' } }, follower_count: 0, following_count: 0 });
 const imageUrl = `https://opencaster.org/media/${'c'.repeat(64)}`;
-const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(value => { resolve = value; }); return { promise, resolve }; };
+const deferred = <T,>() => { let resolve!: (value: T) => void; let reject!: (reason: unknown) => void; const promise = new Promise<T>((value, fail) => { resolve = value; reject = fail; }); return { promise, resolve, reject }; };
 let container: HTMLDivElement; let root: Root; let session: WalletSession; let props: ComposerProps;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.resetAllMocks(); sessionStorage.clear();
@@ -129,6 +130,71 @@ describe('isolated familiar composer behavior', () => {
     await type('An isolated keyboard cast'); await key('Enter', { metaKey: true, isComposing: true }); await key('Enter', { ctrlKey: true, repeat: true }); expect(session.cast).not.toHaveBeenCalled();
     expect(await key('Enter')).toBe(true); await key('Enter', { metaKey: true }); await key('Enter', { ctrlKey: true }); expect(session.cast).toHaveBeenCalledOnce();
     await act(async () => posting.resolve({ hash: 'd'.repeat(40) })); expect(props.onPosted).toHaveBeenCalledOnce();
+  });
+  it('reports a local publication before awaiting the cast and replaces its pending status with the canonical receipt', async () => {
+    const posting = deferred<{ hash: string }>(); const onPublication = vi.fn();
+    const quote = { hash: 'e'.repeat(40), author: user(20, 'alice'), text: 'Quoted text' } as ComposerProps['quote'];
+    vi.mocked(session.cast).mockImplementation(() => { expect(onPublication).toHaveBeenCalledOnce(); return posting.promise; });
+    await render({ onPublication, quote, parentUrl: 'https://example.com/channel/one' });
+    await paste([new File(['synthetic'], 'image.png', { type: 'image/png' })]);
+    await type('An immediate local cast'); const before = Date.now(); await click(button('Quote'));
+    const event = onPublication.mock.calls[0][0] as CastPublicationEvent;
+    expect(event.type).toBe('started'); if (event.type !== 'started') throw new Error('Expected a started event.');
+    expect(event.publication).toEqual({ id: expect.any(String), sessionKey: session.publicKey, author: session.user, text: 'An immediate local cast', images: [imageUrl], parentUrl: 'https://example.com/channel/one', quote, timestamp: expect.any(String), status: 'publishing' });
+    expect(event.publication.id).not.toBe(''); expect(Date.parse(event.publication.timestamp)).toBeGreaterThanOrEqual(before); expect(Date.parse(event.publication.timestamp)).toBeLessThanOrEqual(Date.now());
+    expect(props.onPosted).not.toHaveBeenCalled(); expect(field().value).toBe('An immediate local cast');
+    await act(async () => posting.resolve({ hash: '0x' + 'f'.repeat(40) }));
+    expect(onPublication.mock.calls[1][0]).toEqual({ type: 'submitted', id: event.publication.id, hash: '0x' + 'f'.repeat(40) });
+    expect(onPublication).toHaveBeenCalledTimes(2); expect(field().value).toBe(''); expect(props.onPosted).toHaveBeenCalledOnce();
+  });
+  it('keeps human mention text and the reply destination in its local publication snapshot', async () => {
+    const onPublication = vi.fn(); const parent = { hash: 'e'.repeat(40), author: user(20, 'alice') } as ComposerProps['parent'];
+    vi.mocked(searchUsers).mockResolvedValue({ users: [user(21, 'bob')] });
+    await render({ onPublication, parent }); await type('Hello @bo'); await waitSuggestions(); await key('Enter'); await click(button('Reply'));
+    expect(session.cast).toHaveBeenCalledWith('Hello  ', { fid: 20, hash: 'e'.repeat(40) }, expect.objectContaining({ mentions: [21], mentionsPositions: [6] }));
+    expect(onPublication.mock.calls[0][0]).toMatchObject({ type: 'started', publication: { text: 'Hello @bob ', parent: { fid: 20, hash: 'e'.repeat(40) } } });
+  });
+  it.each([
+    ['failed', new ApiError('This cast was rejected.', 400, 'invalid_cast')],
+    ['unknown', new ApiError('Unknown receipt.', 504, 'submission_unknown')],
+  ] as const)('reports %s without clearing the draft or automatically submitting again', async (typeOfEvent, error) => {
+    const onPublication = vi.fn(); vi.mocked(session.cast).mockRejectedValue(error);
+    await render({ onPublication }); await type('Retain this draft'); await drafts(); await click(button('Save draft')); await click(button('Cast'));
+    const started = onPublication.mock.calls[0][0] as Extract<CastPublicationEvent, { type: 'started' }>;
+    expect(onPublication.mock.calls[1][0]).toEqual({ type: typeOfEvent, id: started.publication.id });
+    expect(onPublication).toHaveBeenCalledTimes(2); expect(field().value).toBe('Retain this draft'); expect(readComposerDraft(composerDraftScope(session))?.text).toBe('Retain this draft');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(typeOfEvent === 'unknown' ? 'Check your profile' : 'This cast was rejected.');
+    expect(session.cast).toHaveBeenCalledOnce(); expect(props.onPosted).not.toHaveBeenCalled();
+  });
+  it('reports the existing publication after its composer unmounts without invoking stale draft callbacks', async () => {
+    const posting = deferred<{ hash: string }>(); const onPublication = vi.fn(); vi.mocked(session.cast).mockReturnValue(posting.promise);
+    await render({ onPublication }); await type('Finish after closing'); await click(button('Cast'));
+    const started = onPublication.mock.calls[0][0] as Extract<CastPublicationEvent, { type: 'started' }>;
+    await act(async () => root.render(null)); await act(async () => posting.resolve({ hash: 'd'.repeat(40) }));
+    expect(onPublication.mock.calls[1][0]).toEqual({ type: 'submitted', id: started.publication.id, hash: 'd'.repeat(40) });
+    expect(onPublication).toHaveBeenCalledTimes(2); expect(props.notify).not.toHaveBeenCalled(); expect(props.onPosted).not.toHaveBeenCalled();
+  });
+  it.each(['submitted', 'unknown', 'failed'] as const)('reports %s to the original publication callback after an account and destination change', async outcome => {
+    const posting = deferred<{ hash: string }>(); const onPublication = vi.fn(); const newerPublication = vi.fn(); vi.mocked(session.cast).mockReturnValue(posting.promise);
+    await render({ onPublication, parentUrl: 'https://example.com/channel/one' }); await type('Original account and channel'); await click(button('Cast'));
+    const started = onPublication.mock.calls[0][0] as Extract<CastPublicationEvent, { type: 'started' }>;
+    await render({ onPublication: newerPublication, session: { ...session, fid: 1235, publicKey: 'b'.repeat(64), user: user(1235, 'another') }, parentUrl: 'https://example.com/channel/two' }); await type('New account draft');
+    await act(async () => { if (outcome === 'submitted') posting.resolve({ hash: 'd'.repeat(40) }); else posting.reject(new ApiError('Submission ended.', outcome === 'unknown' ? 504 : 400, outcome === 'unknown' ? 'submission_unknown' : 'invalid_cast')); });
+    expect(onPublication.mock.calls[1][0]).toEqual({ type: outcome, id: started.publication.id, ...(outcome === 'submitted' ? { hash: 'd'.repeat(40) } : {}) });
+    expect(onPublication).toHaveBeenCalledTimes(2); expect(newerPublication).not.toHaveBeenCalled(); expect(field().value).toBe('New account draft'); expect(props.notify).not.toHaveBeenCalled(); expect(props.onPosted).not.toHaveBeenCalled();
+  });
+  it('emits a single publication for repeated clicks and keyboard shortcuts while a cast is pending', async () => {
+    const posting = deferred<{ hash: string }>(); const onPublication = vi.fn(); vi.mocked(session.cast).mockReturnValue(posting.promise);
+    await render({ onPublication }); await type('Only one explicit attempt');
+    await act(async () => { button('Cast').click(); button('Cast').click(); field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })); });
+    expect(session.cast).toHaveBeenCalledOnce(); expect(onPublication).toHaveBeenCalledOnce();
+    await act(async () => posting.resolve({ hash: 'd'.repeat(40) })); expect(onPublication).toHaveBeenCalledTimes(2); expect(props.onPosted).toHaveBeenCalledOnce();
+  });
+  it('keeps publication callback errors from preventing a cast or turning its acknowledgement into an error', async () => {
+    const onPublication = vi.fn<(event: CastPublicationEvent) => void>(() => { throw new Error('Local publication display failed.'); });
+    await render({ onPublication }); await type('Network result remains authoritative'); await click(button('Cast'));
+    expect(session.cast).toHaveBeenCalledOnce(); expect(onPublication).toHaveBeenCalledTimes(2); expect(onPublication.mock.calls.map(([event]) => event.type)).toEqual(['started', 'submitted']);
+    expect(field().value).toBe(''); expect(container.querySelector('[role="alert"]')).toBeNull(); expect(props.onPosted).toHaveBeenCalledOnce();
   });
   it('uploads one pasted image through the existing signed upload helper and respects quote attachment slots', async () => {
     const file = new File([new Uint8Array([1, 2, 3])], 'clipboard.png', { type: 'image/png' });

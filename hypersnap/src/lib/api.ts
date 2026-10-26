@@ -493,9 +493,9 @@ export function hasImageEmbed(cast: Cast): boolean {
   }) ?? false;
 }
 
-/** Scan real user-feed pages without dropping unmatched or overflowing entries.
+/** Filter one real user-feed page without waiting for additional history reads.
  * A sparse tab can return an empty page with a cursor: callers must keep More
- * available. Each call scans at most five pages rather than an entire account.
+ * available so the next request continues after this complete underlying page.
  * The node's replies_and_recasts adapter is unsuitable: it includes channel
  * roots as replies and can skip results while truncating its fetched batch.
  */
@@ -505,24 +505,13 @@ export async function getProfileFeed(options: { fid: number; tab: ProfileTab; cu
   fidValue(options.fid);
   if (options.tab === 'likes' || options.tab === 'recasts') return getProfileReactions({ ...options, tab: options.tab });
   const limit = options.limit ?? 20;
-  const casts: Cast[] = [];
-  let cursor = options.cursor;
-  const seen = new Set<string>();
-  for (let page = 0; page < 5; page++) {
-    if (cursor) {
-      if (seen.has(cursor)) throw new ApiError('The node returned invalid pagination.', 502, 'invalid_response');
-      seen.add(cursor);
-    }
-    const response = await getFeed({ kind: 'user', fid: options.fid, cursor, limit: limit - casts.length, signal: options.signal });
-    for (const cast of response.casts) {
-      const isReply = !!cast.parent_hash;
-      if (options.tab === 'media' ? hasImageEmbed(cast) : options.tab === 'replies' ? isReply : !isReply) casts.push(cast);
-    }
-    if (casts.length > limit) throw new ApiError('The node exceeded the requested profile page size.', 502, 'invalid_response');
-    cursor = response.next.cursor;
-    if (!cursor || casts.length >= limit) break;
-  }
-  return { casts, next: { cursor: cursor ?? null } };
+  const response = await getFeed({ kind: 'user', fid: options.fid, cursor: options.cursor, limit, signal: options.signal });
+  const casts = response.casts.filter(cast => {
+    const isReply = !!cast.parent_hash;
+    return options.tab === 'media' ? hasImageEmbed(cast) : options.tab === 'replies' ? isReply : !isReply;
+  });
+  if (casts.length > limit) throw new ApiError('The node exceeded the requested profile page size.', 502, 'invalid_response');
+  return { casts, next: response.next };
 }
 
 /** Prefix search is bounded to the node's ranked top results; it has no cursor. */
