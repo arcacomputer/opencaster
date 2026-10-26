@@ -19,6 +19,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'opencaster-social-sharing-cards',
+    date: '2026-10-26',
+    title: 'A proper introduction when you share a link',
+    summary: 'Opencaster links include a branded image and a clear platform description for social and messaging previews.',
+    changes: [
+      'Add a 1200×630 preview image with Opencaster’s identity, an introduction to its public conversations, Hypersnap attribution and Arca Computer credit.',
+      'Include Open Graph metadata and an X large-image card in the initial page HTML, so preview crawlers can read the title, description and image without running the app or contacting the Hypersnap node.',
+      'Keep recognized profile, cast, channel and other shared page addresses distinct, use the canonical Opencaster domain, and discard unsupported query fields.',
+      'Use the platform introduction for these previews rather than individual cast excerpts or author portraits. Each sharing app controls preview display, cropping and cache refresh timing.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/9deba1aa389e450a1558d5e47e8d1ee51f24dcf4',
+    tag: 'Social',
+  },
+  {
     id: 'cloudflare-verified-private-dashboard-sessions',
     date: '2026-10-24',
     title: 'Private dashboard sign-in follows Cloudflare',

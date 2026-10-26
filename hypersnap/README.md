@@ -80,6 +80,9 @@ they do not generate individual author portraits or cast excerpts. Preview
 appearance and refresh timing depend on each sharing app's cache and settings.
 The versioned image lives beside its editable SVG in `public/`; use a new image
 filename and update both metadata sets when replacing published artwork.
+Re-render the PNG from `hypersnap/` with
+`rsvg-convert -o public/opencaster-social-v1.png public/opencaster-social-v1.svg`.
+The SVG outlines its text and needs no installed fonts.
 
 ## Supported behavior
 
