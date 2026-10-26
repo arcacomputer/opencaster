@@ -83,7 +83,7 @@ export async function handleShareImage(request: Request, env: ShareImageEnv, ctx
 
   let cache: ImageCache | undefined;
   try { cache = typeof caches === 'undefined' ? undefined : (caches as CacheStorage & { default?: ImageCache }).default; } catch { /* Optional edge cache. */ }
-  const key = new Request(`${APP_ORIGIN}${url.pathname}`);
+  const key = new Request(`${APP_ORIGIN}${url.pathname}?brand=open-door-v2`);
   if (cache) {
     const cached = await boundedCacheRead(cache, key);
     if (cached?.status === 200 && cached.headers.get('Content-Type') === 'image/png') return cached;
@@ -114,7 +114,7 @@ export async function handleShareImage(request: Request, env: ShareImageEnv, ctx
     } catch { /* Unavailable imagery must not break sharing. */ }
     finally { clearTimeout(timer); }
   }
-  const fallback = await env.ASSETS.fetch(new Request(`${APP_ORIGIN}/opencaster-social-v1.png`));
+  const fallback = await env.ASSETS.fetch(new Request(`${APP_ORIGIN}/opencaster-social-v2.png`));
   const headers = new Headers(fallback.headers);
   headers.set('Cache-Control', 'no-store');
   headers.set('Cross-Origin-Resource-Policy', 'cross-origin');

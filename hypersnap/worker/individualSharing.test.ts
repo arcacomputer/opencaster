@@ -60,7 +60,7 @@ describe('individual public metadata', () => {
     vi.stubGlobal('fetch', fetch);
     for (const path of [`/cast/0x${hash}`, '/alice', '/profile']) {
       const text = await (await handleRequest(new Request(`https://opencaster.org${path}`), shell)).text();
-      expect(meta(text, 'og:image')).toBe('https://opencaster.org/opencaster-social-v1.png');
+      expect(meta(text, 'og:image')).toBe('https://opencaster.org/opencaster-social-v2.png');
       expect(meta(text, 'og:title')).toBe('Opencaster · An open source social client');
     }
     expect(fetch).toHaveBeenCalledTimes(2);

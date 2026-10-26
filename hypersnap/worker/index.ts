@@ -19,6 +19,7 @@ const STATIC_ASSET_PATHS = new Set([
   '/index.html', '/favicon.ico', '/robots.txt', '/sitemap.xml',
   '/manifest.json', '/manifest.webmanifest', '/opencaster-symbol.svg',
   '/opencaster-social-v1.png', '/opencaster-social-v1.svg',
+  '/opencaster-social-v2.png', '/opencaster-social-v2.svg',
   '/quorum-symbol.svg', '/unknown-dark.png', '/unknown-light.png',
   '/InterVariable.ttf', '/Sen-VariableFont_wght.ttf', '/THIRD_PARTY_DEPENDENCY_LICENSES.txt',
 ]);
@@ -485,7 +486,7 @@ async function routeRequest(request: Request, env: Env, ctx?: WorkerExecutionCon
   if (request.method !== 'GET' && request.method !== 'HEAD') return failure(405, 'method_not_allowed', 'This method is unavailable.');
   const response = secure(await withShareUrl(await env.ASSETS.fetch(request), url, request.method, env, request.signal));
   // The public card can also be embedded directly by link-preview services.
-  if (url.pathname === '/opencaster-social-v1.png' || url.pathname === '/opencaster-social-v1.svg') {
+  if (['/opencaster-social-v1.png', '/opencaster-social-v1.svg', '/opencaster-social-v2.png', '/opencaster-social-v2.svg'].includes(url.pathname)) {
     response.headers.set('Cross-Origin-Resource-Policy', 'cross-origin');
   }
   return response;

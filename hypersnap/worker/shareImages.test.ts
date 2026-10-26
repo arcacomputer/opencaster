@@ -15,8 +15,8 @@ const HASH = 'ab'.repeat(20);
 const PROFILE_PATH = '/_share/v1/profile/42.png';
 const CAST_PATH = `/_share/v1/cast/42/${HASH}.png`;
 const FONT_URL = `${ORIGIN}/InterVariable.ttf`;
-const FALLBACK_URL = `${ORIGIN}/opencaster-social-v1.png`;
-const png = new Uint8Array(readFileSync(new URL('../public/opencaster-social-v1.png', import.meta.url)));
+const FALLBACK_URL = `${ORIGIN}/opencaster-social-v2.png`;
+const png = new Uint8Array(readFileSync(new URL('../public/opencaster-social-v2.png', import.meta.url)));
 const font = new Uint8Array([0, 1, 2, 3]);
 const raster = `data:image/png;base64,${Buffer.from(png).toString('base64')}`;
 const profile: ShareProfile = {
@@ -197,7 +197,7 @@ describe('optional public image cache', () => {
     expect(ctx.waitUntil).toHaveBeenCalledOnce(); await Promise.all(pending);
     expect(cache.match).toHaveBeenCalledOnce(); expect(cache.put).toHaveBeenCalledOnce();
     for (const key of [cache.match.mock.calls[0][0], cache.put.mock.calls[0][0]] as Request[]) {
-      expect(key.url).toBe(`${ORIGIN}${PROFILE_PATH}`); expect(key.method).toBe('GET'); expect([...key.headers]).toEqual([]);
+      expect(key.url).toBe(`${ORIGIN}${PROFILE_PATH}?brand=open-door-v2`); expect(key.method).toBe('GET'); expect([...key.headers]).toEqual([]);
     }
     const stored = cache.put.mock.calls[0][1] as Response;
     expect(stored).not.toBe(response); expect(stored.headers.get('Cache-Control')).toBe('public, max-age=300');

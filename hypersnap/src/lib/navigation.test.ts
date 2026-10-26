@@ -189,7 +189,7 @@ describe('adaptive author-scoped routes', () => {
 
   it('preserves all reserved route namespaces and static names rather than treating them as authors', () => {
     const appNames = ['following', 'feeds', 'feed', 'bookmarks', 'notifications', 'channels', 'devlog', 'settings', 'connect', 'search', 'profile', 'channel', 'cast'];
-    const staticNames = ['api', 'assets', 'media', 'licenses', '.well-known', 'index.html', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'manifest.json', 'manifest.webmanifest', 'sw.js', 'service-worker.js', 'unknown-dark.png', 'unknown-light.png', 'InterVariable.ttf', 'Sen-VariableFont_wght.ttf', 'quorum-symbol.svg', 'opencaster-symbol.svg', 'THIRD_PARTY_DEPENDENCY_LICENSES.txt'];
+    const staticNames = ['api', 'assets', 'media', 'licenses', '.well-known', 'index.html', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'manifest.json', 'manifest.webmanifest', 'sw.js', 'service-worker.js', 'unknown-dark.png', 'unknown-light.png', 'InterVariable.ttf', 'Sen-VariableFont_wght.ttf', 'quorum-symbol.svg', 'opencaster-symbol.svg', 'opencaster-social-v1.png', 'opencaster-social-v1.svg', 'opencaster-social-v2.png', 'opencaster-social-v2.svg', 'THIRD_PARTY_DEPENDENCY_LICENSES.txt'];
     for (const name of [...appNames, ...staticNames]) {
       expect(route(`/${name.toUpperCase()}`)).toEqual({ kind: 'not-found' });
       expect(route(`/${name.toUpperCase()}/0xcfd6d3c3`)).toEqual({ kind: 'not-found' });
