@@ -1,3 +1,57 @@
+# Channel and custom-feed previews deployed · 2026-10-26
+
+Implementation `0c749778f220643a0e2dd3186baee6fd87b895c6`, authored
+`2026-10-26T18:57:38-03:00`, and its new milestone are deployed in the combined
+release `92c05e4f8c55f255886ddd0867c6d1038bd1d346`. Worker
+**`a7167a33-6098-4e8b-bc8d-167a9a4a30aa`**, deployment
+`46437390-2fd8-41d1-bf79-82ef2d581141`, serves 100% of traffic. That release
+preserves the concurrently completed branding and casting improvements. The
+preview implementation files match the separately verified source byte for byte.
+
+The actual preceding production source was
+`3f154f01ca809b0513a0cfd1377019016fcd8959`, Worker
+`39a9160c-e691-431f-a380-944845bb096b`. The dev-log guard passed against that
+source. From the clean external preview checkout, complete `yarn verify` passed
+**1,772 tests across 69 files**, browser/Worker/dashboard typechecks, production
+build and offline signer typecheck/build. The combined release subsequently
+passed **1,810 tests across 72 files** and both builds. Existing WalletConnect
+annotation and bundle-size advisories remain.
+
+Inspected all 33 files in the combined release's fresh external asset directory,
+`/tmp/opencaster-casting-production-20261026-0ZdNmZ`. All 32 non-HTML live hashes
+match its manifest. The existing public WalletConnect configuration, gateway
+settings, server-only secret binding, media storage/quota and analytics bindings
+are preserved. No preview wrapper, test fixture, source map, symlink or browser
+image-renderer bundle was deployed.
+
+Real local Worker and production public reads verified `/channel/art` and two
+distinct shared custom-feed recipes, plus existing profile and full-hash cast
+links. Initial HTML for Telegram and X user agents contains the channel or feed
+identity, description and individual image URL. Generated PNGs are 1200×630;
+the live channel and feed samples measured 158,292 and 141,697 bytes. Distinct
+recipes produce distinct images. HEAD, invalid image queries, malformed feed
+fallback, the homepage and API info read passed. The browser live dev log shows
+the channel/feed milestone second among 47 updates, with its implementation link.
+Synthetic render inspection covers channel descriptions/images and long feed
+rules; a real local 5,612-character recipe with 20 phrases also renders safely.
+
+The live art channel currently supplies a name and participant count but no
+description or image, so its card uses the documented fallback. Feed cards
+describe the shared public recipe, without reading saved browser state or
+claiming current results. Images shorten long lists and phrases; metadata and
+the link preserve the validated recipe. Generated cards expire at our edge after
+five minutes. Third-party app display/caches were not tested by posting links;
+font and remote-image limits remain as documented below. All production actions
+were public reads and navigation, with no account mutation or upload. Retained
+Quorum was neither changed nor verified; unrelated root guidance was preserved.
+
+Receipts: `/tmp/opencaster-channel-feed-release-receipt.json`,
+`/tmp/opencaster-channel-feed-live-verification.json`,
+`/tmp/opencaster-channel-feed-local-verification.json`,
+`/tmp/opencaster-channel-feed-max-token-verification.json`,
+`/tmp/opencaster-channel-feed-verify.log` and the combined asset manifest
+`/tmp/opencaster-casting-release-assets-manifest.json`.
+
 # Open Door identity deployed · 2026-10-26
 
 Release `3f154f01ca809b0513a0cfd1377019016fcd8959` is live at 100% traffic as
