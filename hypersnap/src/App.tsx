@@ -1,5 +1,5 @@
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
-import { IconSettings, IconKeyboard, IconBell, IconDots, IconTrash, IconArrowDown, IconArrowLeft, IconArrowUpRight, IconBookmark, IconChevronRight, IconCompass, IconHash, IconHeart, IconHome, IconLock, IconPencil, IconMessageCircle, IconMoon, IconRefresh, IconRepeat, IconSearch, IconShare, IconShieldLock, IconSparkles, IconSun, IconUser, IconUsers, IconWorld, IconX } from '@tabler/icons-react';
+import { IconSettings, IconKeyboard, IconBell, IconDots, IconTrash, IconArrowLeft, IconArrowUpRight, IconBookmark, IconChevronRight, IconCompass, IconHash, IconHeart, IconHome, IconLock, IconPencil, IconMessageCircle, IconMoon, IconRefresh, IconRepeat, IconSearch, IconShare, IconShieldLock, IconSparkles, IconSun, IconUser, IconUsers, IconWorld, IconX } from '@tabler/icons-react';
 import { Button, Input, Modal } from './components/ui';
 import { getFeed, getProfileFeed, hasImageEmbed, getCast, getChannels, getChannel, getUser, getInfo, getConversation, type Channel, type Cast, type User, type ConversationNode } from './lib/api';
 import type { WalletSession } from './lib/auth';
@@ -15,6 +15,7 @@ import { renderMentionSegments } from './lib/content';
 import { SearchView, NotificationsView, ChannelsView, ChannelHeader, ProfileTabs } from './components/FeaturePanels';
 import DeleteCastDialog from './components/DeleteCastDialog';
 import Composer from './components/Composer';
+import FeedPagination from './components/FeedPagination';
 import CastReactions from './components/CastReactions';
 import MediaViewer, { type CastImage } from './components/MediaViewer';
 import CastOptions from './components/CastOptions';
@@ -295,6 +296,8 @@ export default function App() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState('');
+  const [paginationNotice, setPaginationNotice] = useState('');
   const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const parentReader = useMemo(() => createParentCastReader(), [refresh]);
@@ -340,6 +343,7 @@ export default function App() {
   const [dark, setDark] = useState(() => { try { return localStorage.getItem('quorum.theme') !== 'light'; } catch { return true; } });
   const feedGeneration = useRef(0);
   const feedMoreRead = useRef<AbortController | null>(null);
+  const feedCursors = useRef(new Set<string>());
   const currentSession = useRef(session);
   const currentProfile = useRef(profile);
   const currentRoute = useRef(route);
@@ -550,8 +554,8 @@ export default function App() {
   }, [refresh, signIn]);
   useEffect(() => {
     const controller = new AbortController();
-    feedGeneration.current += 1; feedMoreRead.current?.abort();
-    setError(''); setCasts([]); setCursor(null); setLoadingMore(false);
+    feedGeneration.current += 1; feedMoreRead.current?.abort(); feedMoreRead.current = null; feedCursors.current = new Set();
+    setError(''); setMoreError(''); setPaginationNotice(''); setCasts([]); setCursor(null); setLoadingMore(false);
     if (featureView || view === 'bookmarks' || view === 'not-found' || (view === 'profile' && profileFid === undefined) || (view === 'following' && sessionFid === undefined)) { setLoading(false); return; }
     setLoading(true);
     const request = view === 'profile' && profileFid !== undefined ? getProfileFeed({ fid: profileFid, tab: profileTab, limit: 25, signal: controller.signal }) : getFeed({ kind: view === 'channel' ? 'channel' : view === 'following' ? 'following' : 'trending', fid: sessionFid, channel, ...(view === 'discover' ? { timeWindow: trendingWindow } : {}), limit: 25, signal: controller.signal });
@@ -609,20 +613,26 @@ export default function App() {
   }
   function openChannel(item: Channel) { channelCache.current.set(item.id, item); navigate(`/channel/${item.id}`); }
   async function loadMore() {
-    if (!cursor || loadingMore) return; setLoadingMore(true);
+    // Observer callbacks can arrive together before React commits busy state.
+    if (!cursor || loading || loadingMore || feedMoreRead.current || threadOpen) return;
+    setLoadingMore(true); setMoreError('');
     const generation = feedGeneration.current;
-    const controller = new AbortController(); feedMoreRead.current?.abort(); feedMoreRead.current = controller;
+    const controller = new AbortController(); feedMoreRead.current = controller;
     try {
       const data = await (view === 'profile' && profile ? getProfileFeed({ fid: profile.fid, tab: profileTab, cursor, limit: 25, signal: controller.signal }) : getFeed({ kind: view === 'channel' ? 'channel' : view === 'following' ? 'following' : 'trending', fid: session?.fid, channel, ...(view === 'discover' ? { timeWindow: trendingWindow } : {}), cursor, limit: 25, signal: controller.signal }));
       if (generation !== feedGeneration.current || controller.signal.aborted) return;
+      feedCursors.current.add(cursor);
+      const next = data.next?.cursor || null;
+      const repeated = next !== null && feedCursors.current.has(next);
       setCasts(previous => {
         const merged = new Map(previous.map(cast => [cast.hash.replace(/^0x/i, '').toLowerCase(), cast]));
         for (const cast of data.casts) merged.set(cast.hash.replace(/^0x/i, '').toLowerCase(), cast);
         const values = [...merged.values()];
         return view === 'channel' ? values.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp) || a.hash.localeCompare(b.hash)) : values;
-      }); setCursor(data.next?.cursor || null);
-    } catch (error) { if (generation === feedGeneration.current && !controller.signal.aborted) notify(message(error)); }
-    finally { if (generation === feedGeneration.current) setLoadingMore(false); }
+      }); setCursor(repeated ? null : next);
+      if (repeated) setPaginationNotice('The node repeated a feed page. Refresh the feed to check for more conversations.');
+    } catch (error) { if (generation === feedGeneration.current && !controller.signal.aborted) setMoreError(message(error)); }
+    finally { if (feedMoreRead.current === controller) { feedMoreRead.current = null; if (generation === feedGeneration.current) setLoadingMore(false); } }
   }
   function updatePreferences(next: ContentPreferences) {
     setPreferenceCache(current => new Map([...current, [preferenceScope, next]])); setRevealState(current => ({ ...current, hashes: new Set() }));
@@ -714,7 +724,9 @@ export default function App() {
       {view === 'bookmarks' && <BookmarkTools query={bookmarkQuery} onQueryChange={setBookmarkQuery} sort={bookmarkSort} onSortChange={setBookmarkSort} count={visibleCasts.length} total={bookmarks.length} onClear={() => { setBookmarks([]); setBookmarkQuery(''); if (!saveBookmarks([])) notify('Bookmarks cleared for this tab. Browser storage is unavailable.'); }} />}
       {filteredCount > 0 && <div className="content-filter-summary" role="status"><span>{filteredCount} loaded {filteredCount === 1 ? 'cast is' : 'casts are'} filtered on this browser.</span><Button data-analytics="nav-settings" variant="ghost" onClick={() => navigate('/settings')}>Manage controls</Button><Button variant="ghost" onClick={() => setRevealState(current => ({ scope: preferenceScope, hashes: new Set([...(current.scope === preferenceScope ? current.hashes : []), ...feedCandidates.map(cast => bookmarkHash(cast.hash)!)]) }))}>Show for this view</Button></div>}
       {(view === 'discover' || view === 'bookmarks') && <div className="feed-heading"><div>{view === 'discover' ? <IconSparkles size={17} /> : <IconHome size={17} />}<span>{view === 'discover' ? 'Trending on Hypersnap' : 'Saved for later'}</span></div><span>{view === 'discover' ? <span className="feed-window"><label htmlFor="trending-window">Trending over</label><select data-analytics="feed-window" id="trending-window" aria-label="Trending time window" value={trendingWindow} onChange={event => setTrendingWindow(event.target.value as typeof trendingWindow)}>{([['1h', '1 hour'], ['6h', '6 hours'], ['12h', '12 hours'], ['24h', '24 hours'], ['7d', '7 days']] as const).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></span> : 'Stored on this device'}</span></div>}
-      {view === 'not-found' ? <div className="empty"><IconCompass size={35} /><h3>That page does not exist.</h3><p>Check the profile or cast link, or return to Discover.</p><Button data-analytics="nav-discover" onClick={() => navigate('/')}>Open Discover</Button></div> : view === 'profile' && !profile ? <div className="empty" role={profileLoading ? 'status' : undefined}><IconUsers size={35} /><h3>{profileLoading ? 'Loading profile…' : profileError ? 'Profile unavailable' : 'Your profile on Hypersnap'}</h3><p>{profileError || (profileLoading ? 'Finding this public identity on Hypersnap.' : 'Sign in to open your profile, or search for a username or FID.')}</p>{profileError ? <Button variant="secondary" onClick={() => setRefresh(n => n + 1)}>Try again</Button> : !profileLoading && <Button data-analytics="connect-open" onClick={() => requestSignIn()}>Sign in</Button>}</div> : loading ? <div aria-label="Loading casts" role="status" className="skeleton-list">{[0, 1, 2].map(n => <div className="skeleton-cast" key={n}><span className="skeleton-avatar" /><div><span /><span /><span /></div></div>)}<p className="muted">Finding conversations on Hypersnap…</p></div> : error ? <div className="empty"><IconWorld size={35} /><h3>The network is taking a moment.</h3><p>{error}</p><Button variant="secondary" onClick={() => setRefresh(n => n + 1)}><IconRefresh size={16} />Try again</Button></div> : view === 'following' && !session ? <div className="empty"><IconUsers size={35} /><h3>Your people are here.</h3><p>Sign in with your Farcaster account to see casts from the people you follow.</p><Button data-analytics="connect-open" onClick={() => requestSignIn()}>Sign in</Button></div> : visibleCasts.length ? <div className="feed">{visibleCasts.map(cast => card(cast))}{cursor && view !== 'bookmarks' && <Button data-analytics="feed-more" variant="secondary" className="load-more" onClick={() => void loadMore()} disabled={loadingMore}>{loadingMore ? 'Loading…' : 'More conversations'}<IconArrowDown size={16} /></Button>}<p className="feed-end">You’re connected to the open social web. <IconWorld size={13} /></p></div> : <div className="empty"><IconBookmark size={35} /><h3>{filteredCount ? 'Your content controls are active.' : view === 'bookmarks' && bookmarkQuery.trim() ? 'No saved casts match.' : view === 'bookmarks' ? 'A place for the good stuff.' : 'The conversation is open.'}</h3><p>{filteredCount ? 'Manage your filters or reveal the loaded casts for this view.' : view === 'bookmarks' && bookmarkQuery.trim() ? 'Try another word, person or channel.' : view === 'bookmarks' ? 'Tap the bookmark on any cast to save it here.' : 'No casts returned for this feed yet. Try another channel or start a conversation.'}</p>{cursor && <Button data-analytics="feed-more" variant="secondary" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? 'Loading…' : 'Check next page'}<IconArrowDown size={16} /></Button>}</div>}
+      {view === 'not-found' ? <div className="empty"><IconCompass size={35} /><h3>That page does not exist.</h3><p>Check the profile or cast link, or return to Discover.</p><Button data-analytics="nav-discover" onClick={() => navigate('/')}>Open Discover</Button></div> : view === 'profile' && !profile ? <div className="empty" role={profileLoading ? 'status' : undefined}><IconUsers size={35} /><h3>{profileLoading ? 'Loading profile…' : profileError ? 'Profile unavailable' : 'Your profile on Hypersnap'}</h3><p>{profileError || (profileLoading ? 'Finding this public identity on Hypersnap.' : 'Sign in to open your profile, or search for a username or FID.')}</p>{profileError ? <Button variant="secondary" onClick={() => setRefresh(n => n + 1)}>Try again</Button> : !profileLoading && <Button data-analytics="connect-open" onClick={() => requestSignIn()}>Sign in</Button>}</div> : loading ? <div aria-label="Loading casts" role="status" className="skeleton-list">{[0, 1, 2].map(n => <div className="skeleton-cast" key={n}><span className="skeleton-avatar" /><div><span /><span /><span /></div></div>)}<p className="muted">Finding conversations on Hypersnap…</p></div> : error ? <div className="empty"><IconWorld size={35} /><h3>The network is taking a moment.</h3><p>{error}</p><Button variant="secondary" onClick={() => setRefresh(n => n + 1)}><IconRefresh size={16} />Try again</Button></div> : view === 'following' && !session ? <div className="empty"><IconUsers size={35} /><h3>Your people are here.</h3><p>Sign in with your Farcaster account to see casts from the people you follow.</p><Button data-analytics="connect-open" onClick={() => requestSignIn()}>Sign in</Button></div> : visibleCasts.length ? <div className="feed">{visibleCasts.map(cast => card(cast))}</div> : <div className="empty"><IconBookmark size={35} /><h3>{filteredCount ? 'Your content controls are active.' : view === 'bookmarks' && bookmarkQuery.trim() ? 'No saved casts match.' : view === 'bookmarks' ? 'A place for the good stuff.' : cursor ? 'Looking for more conversations…' : 'The conversation is open.'}</h3><p>{filteredCount ? 'Manage your filters or reveal the loaded casts for this view.' : view === 'bookmarks' && bookmarkQuery.trim() ? 'Try another word, person or channel.' : view === 'bookmarks' ? 'Tap the bookmark on any cast to save it here.' : cursor ? 'Keep scrolling to browse the next available casts.' : 'No casts returned for this feed yet. Try another channel or start a conversation.'}</p></div>}
+      {!loading && !error && view !== 'bookmarks' && cursor && <FeedPagination cursor={cursor} busy={loadingMore} error={moreError} paused={threadOpen} onLoad={() => void loadMore()} />}
+      {!loading && !error && (visibleCasts.length > 0 || paginationNotice) && !cursor && <p className="feed-end" role="status">{paginationNotice || (view === 'bookmarks' ? 'You’re connected to the open social web.' : 'You’ve reached the end of the casts available in this feed.')} <IconWorld size={13} /></p>}
       {view === 'following' && session && <SuggestedPeople fid={session.fid} onProfile={openProfile} />}
       </>}
       </div>

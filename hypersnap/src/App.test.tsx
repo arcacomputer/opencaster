@@ -8,6 +8,7 @@ import type { WalletSession } from './lib/auth';
 import { uploadMedia } from './lib/media';
 import { FULL_CLIENT_SCOPES, FULL_SOCIAL_SCOPES } from './lib/pairing';
 import { castPermalink } from './lib/navigation';
+import { contentPreferencesKey, emptyContentPreferences } from './lib/contentPreferences';
 
 const wallet = vi.hoisted(() => ({ next: null as WalletSession | null, signal: null as AbortSignal | null, initialFid: undefined as number | undefined, onConnect: null as ((value: WalletSession) => void) | null }));
 vi.mock('./components/ConnectAccount', () => ({
@@ -31,9 +32,17 @@ function session(scopes: readonly number[], key = '1'): WalletSession {
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (reason: unknown) => void; const promise = new Promise<T>((value, error) => { resolve = value; reject = error; }); return { promise, resolve, reject }; }
 let container: HTMLDivElement;
 let root: Root;
+let feedObservers: { callback: IntersectionObserverCallback; observer: IntersectionObserver; target?: Element; disconnected: boolean }[];
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.clearAllMocks(); localStorage.clear(); localStorage.setItem('opencaster.explore', '1'); sessionStorage.clear(); wallet.next = null; wallet.signal = null; wallet.initialFid = undefined; wallet.onConnect = null;
   history.replaceState(null, '', '/');
+  feedObservers = [];
+  vi.stubGlobal('IntersectionObserver', class {
+    entry: typeof feedObservers[number];
+    constructor(callback: IntersectionObserverCallback) { this.entry = { callback, observer: this as unknown as IntersectionObserver, disconnected: false }; feedObservers.push(this.entry); }
+    observe(target: Element) { this.entry.target = target; }
+    disconnect() { this.entry.disconnected = true; }
+  });
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function (this: HTMLDialogElement) { this.open = true; });
   vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function (this: HTMLDialogElement) { this.open = false; });
@@ -57,6 +66,11 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); localStorage.clear(); sessionStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 async function start(path = '/') { history.replaceState(null, '', path); await act(async () => root.render(<App />)); }
 async function click(element: Element) { await act(async () => { element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); }); }
+async function reachFeedEnd(times = 1) {
+  const entry = feedObservers.filter(value => !value.disconnected && value.target).at(-1);
+  expect(entry).toBeDefined();
+  await act(async () => { for (let i = 0; i < times; i++) entry!.callback([{ target: entry!.target!, isIntersecting: true } as IntersectionObserverEntry], entry!.observer); });
+}
 function button(label: string, scope: ParentNode = container) { return [...scope.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent?.trim() === label)!; }
 // Quote lives in each cast's Recast menu, as on X and Farcaster.
 async function openQuote(scope: ParentNode = container, index = 0) {
@@ -70,6 +84,77 @@ async function connect(value: WalletSession) { wallet.next = value; await click(
 async function traverse(direction: 'back' | 'forward') {
   await act(async () => { history[direction](); await new Promise(resolve => setTimeout(resolve, 10)); });
 }
+
+describe('automatic timeline pagination', () => {
+  it('loads near the end once per request, keeps existing casts visible, and stops at exhaustion', async () => {
+    const page = deferred<{ casts: Cast[]; next: {} }>();
+    vi.mocked(getFeed).mockImplementation(options => options.cursor ? page.promise : Promise.resolve({ casts: [ownCast], next: { cursor: 'next-page' } }));
+    await start();
+    expect(getFeed).toHaveBeenCalledOnce(); expect(button('More conversations')).toBeUndefined();
+    await reachFeedEnd(2);
+    expect(getFeed).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('.feed-pagination')?.textContent).toContain('Loading');
+    expect(container.querySelector('main .feed')?.textContent).toContain(ownCast.text);
+    await act(async () => page.resolve({ casts: [otherCast, { ...ownCast, hash: 'A'.repeat(40) }], next: {} }));
+    expect(container.querySelectorAll('main .feed .cast')).toHaveLength(2);
+    expect(container.querySelector('.feed-pagination')).toBeNull();
+    expect(container.querySelector('.feed-end')?.textContent).toContain('end of the casts available');
+  });
+
+  it('continues a sparse profile tab while it still has a cursor', async () => {
+    vi.mocked(getProfileFeed).mockImplementation(async options => !options.cursor
+      ? { casts: [], next: { cursor: 'sparse-page' } }
+      : options.cursor === 'sparse-page' ? { casts: [], next: { cursor: 'older-page' } } : { casts: [otherCast], next: {} });
+    await start('/profile/20?tab=media');
+    await reachFeedEnd(); await reachFeedEnd();
+    expect(getProfileFeed).toHaveBeenCalledTimes(3);
+    expect(container.querySelector('main .feed')?.textContent).toContain(otherCast.text);
+  });
+
+  it('continues when all loaded casts are filtered without revealing them', async () => {
+    localStorage.setItem(contentPreferencesKey(), JSON.stringify({ ...emptyContentPreferences(), mutedAccounts: [{ fid: ownCast.author.fid, username: ownCast.author.username }] }));
+    vi.mocked(getFeed).mockImplementation(async options => options.cursor ? { casts: [otherCast], next: {} } : { casts: [ownCast], next: { cursor: 'unfiltered-page' } });
+    await start();
+    expect(container.querySelector('main')?.textContent).toContain('Your content controls are active');
+    await reachFeedEnd();
+    expect(container.querySelector('main .feed')?.textContent).toContain(otherCast.text);
+    expect(container.querySelector('main .feed')?.textContent).not.toContain(ownCast.text);
+  });
+
+  it('keeps a failed page inline until an explicit retry succeeds', async () => {
+    vi.mocked(getFeed).mockResolvedValueOnce({ casts: [ownCast], next: { cursor: 'retry-page' } }).mockRejectedValueOnce(new Error('Temporary page outage')).mockResolvedValueOnce({ casts: [otherCast], next: {} });
+    await start(); await reachFeedEnd();
+    expect(container.querySelector('.feed-pagination [role="alert"]')?.textContent).toContain('Temporary page outage');
+    expect(container.querySelector('main .feed')?.textContent).toContain(ownCast.text);
+    expect(getFeed).toHaveBeenCalledTimes(2);
+    expect(feedObservers.every(entry => entry.disconnected)).toBe(true);
+    await click(container.querySelector('.feed-pagination button')!);
+    expect(getFeed).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(getFeed).mock.calls[2][0].cursor).toBe('retry-page');
+    expect(container.querySelector('main .feed')?.textContent).toContain(otherCast.text);
+  });
+
+  it('stops cyclic cursors and resets pagination history on refresh', async () => {
+    vi.mocked(getFeed).mockImplementation(async options => !options.cursor ? { casts: [ownCast], next: { cursor: 'page-a' } } : { casts: [otherCast], next: { cursor: options.cursor === 'page-a' ? 'page-b' : 'page-a' } });
+    await start(); await reachFeedEnd(); await reachFeedEnd();
+    expect(getFeed).toHaveBeenCalledTimes(3); expect(container.querySelector('.feed-pagination')).toBeNull();
+    expect(container.querySelector('.feed-end')?.textContent).toContain('node repeated a feed page');
+    await click(container.querySelector('button[aria-label="Refresh feed"]')!); await reachFeedEnd();
+    expect(getFeed).toHaveBeenCalledTimes(5); expect(container.querySelector('.feed-pagination')).not.toBeNull();
+  });
+
+  it('pauses the background sentinel while a conversation is open and resumes on Back', async () => {
+    vi.mocked(getFeed).mockImplementation(async options => ({ casts: [otherCast], next: options.cursor ? {} : { cursor: 'background-page' } }));
+    await start();
+    const observer = feedObservers.at(-1)!;
+    await click(container.querySelector('main a[aria-label="Open cast"]')!);
+    expect(observer.disconnected).toBe(true);
+    await act(async () => observer.callback([{ isIntersecting: true } as IntersectionObserverEntry], observer.observer));
+    expect(getFeed).toHaveBeenCalledOnce();
+    await click(thread().querySelector('button[aria-label="Back"]')!); await settleNavigation();
+    await reachFeedEnd(); expect(getFeed).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe('homepage node support placement', () => {
   it('appears under the home tabs and before the composer and feed, without blocking browsing', async () => {
@@ -615,7 +700,7 @@ describe('isolated App feature integration', () => {
       ? Promise.resolve({ casts: [cast('e', 10, 'New photo tab')], next: {} })
       : options.cursor ? next.promise : Promise.resolve({ casts: [cast('d', 10, 'Existing reply')], next: { cursor: 'next-replies' } }));
     await start('/profile/10?tab=replies');
-    await click(button('More conversations'));
+    await reachFeedEnd();
     const oldPage = vi.mocked(getProfileFeed).mock.calls.find(([options]) => options.cursor === 'next-replies')![0];
     await click(container.querySelector('nav[aria-label="Profile content"] a[href="/profile/10?tab=media"]')!);
     expect(oldPage.signal?.aborted).toBe(true);
@@ -721,7 +806,7 @@ describe('isolated App feature integration', () => {
       ? options.cursor ? { casts: [{ ...hundred, hash: 'A'.repeat(40) }, eighty, seventy], next: {} } : { casts: [hundred, ninety, forty, thirty], next: { cursor: 'channel-next' } }
       : { casts: [thirty, hundred], next: {} });
     await start('/channel/isolated');
-    await click(button('More conversations'));
+    await reachFeedEnd();
     const texts = () => [...container.querySelectorAll('main .feed .cast__text')].map(element => element.textContent);
     expect(texts()).toEqual([100, 90, 80, 70, 40, 30].map(time => `Channel time ${time}`));
     await click(button('Discover'));
