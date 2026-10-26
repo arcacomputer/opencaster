@@ -1,3 +1,52 @@
+# Open Door identity deployed · 2026-10-26
+
+Release `3f154f01ca809b0513a0cfd1377019016fcd8959` is live at 100% traffic as
+Worker **`39a9160c-e691-431f-a380-944845bb096b`**, deployment
+`4493d665-7f91-4056-b5fb-c44db413bafe`. The new milestone links implementation
+`970900707d709cffe6885af4c079b7a21690b587`, authored
+`2026-10-26T18:54:53-03:00`.
+
+Authenticated Cloudflare metadata established the actual release base as
+`9807b4c7252366d9036ba572aa6a8c3afac90ade`, Worker
+`5cc44b68-f7e5-4315-a7bc-2ae11b92497c`, and confirmed that production still used
+that base immediately before deployment. The dev-log guard passed against that
+exact source. In a clean, pinned external checkout, full `yarn verify` passed
+**1,711 tests across 68 files**, browser/Worker/dashboard typechecks, production
+build and offline signer typecheck/build. A separate focused branding run passed
+137 tests. Existing WalletConnect annotation and bundle-size advisories remain.
+The reused dependency installation matches the committed package manifest and
+frozen Yarn lockfile. All 223 tracked release inputs match their committed blobs,
+and the offline signer build records a clean source tree. Concurrent channel/feed
+work, root guidance edits and exploratory image-generation output were excluded
+from the release.
+
+The final production build used the fresh external directory
+`/tmp/arca-release-opencaster-logo-20261026-3k7adm6l`. Its 33 files include the
+new editable social SVG and 1200×630 PNG, retain older published card addresses,
+and contain no fixture wrappers, source maps, symlinks or browser-bundled image
+renderer. The existing public WalletConnect project identifier was preserved.
+Wrangler's dry run passed, the inspected Worker bundle contains the new symbol
+and internal preview-cache version, and that exact asset directory was deployed.
+All 32 non-HTML live asset hashes match the inspected build. Existing gateway
+settings, server-only secret binding, media storage/quota and analytics bindings
+match the previous Worker version.
+
+Visual checks covered the flat SVG, a 32px rendering, site introduction artwork,
+and live profile/cast PNGs. Public Telegram/X user-agent reads receive individual
+profile/cast metadata; both generated PNGs are 1200×630 and show the new mark.
+The live favicon URL and generic Open Graph/X image metadata point to the refreshed
+artwork. A browser visit to `/devlog` shows the Open Door milestone first among
+45 updates, with its exact implementation link and the new sidebar logo. The
+existing API info read also passed. Third-party sharing apps retain control over
+their own preview caches; no link was posted to those apps. All production checks
+were public reads and navigation, with no wallet approval, account mutation,
+upload or social post. Retained Quorum was neither changed nor verified.
+
+Receipts: `/tmp/opencaster-logo-release-receipt.json`,
+`/tmp/opencaster-logo-assets-manifest.json`,
+`/tmp/opencaster-logo-live-verification.json`,
+`/tmp/opencaster-logo-verify.log` and `/tmp/opencaster-logo-devlog-check.log`.
+
 # Individual cast and profile previews deployed · 2026-10-26
 
 Release `9807b4c7252366d9036ba572aa6a8c3afac90ade` is live at 100% traffic as
