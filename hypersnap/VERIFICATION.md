@@ -1,3 +1,60 @@
+# Infinite timeline browsing deployed · 2026-10-26
+
+Release `11f8ad59a477bb112f05adb6fabf07b6fbff2c4c` is live on
+**https://opencaster.org** at 100% traffic as Worker version
+`234ac97d-665b-4d00-8669-70614a872788`, deployment
+`b3e13d69-ed2c-4746-a27a-d43954f38ea7`. The release includes implementation
+`cb71fddd38ba4e4930cd100d5bef362320a5e2bb` and its separate milestone. Both
+commits were pushed to the existing `codex/farcaster-conversation-links` branch
+before deployment. In-progress workspace changes were excluded from this
+pinned release.
+
+Authenticated Cloudflare deployment metadata established the actual pre-release
+source as `d231a512076c3c15f3771616a5bdfc0506a92350`, Worker version
+`182a2e1e-3e26-4421-94b9-a9623502695e`, deployment
+`b9b5d3f1-2f46-4988-9002-16020d981f8d`. It was confirmed unchanged immediately
+before upload. The dev-log guard passed against that exact deployed source.
+The complete standalone `yarn verify` passed **1,422 tests across 59 files**,
+browser/Worker typechecks and production build, and offline signer
+typecheck/build. Existing Rollup annotation and large-chunk advisories remain.
+Retained Quorum was neither changed nor verified.
+
+Committed sources were archived at
+`/tmp/opencaster-infinite-release-20261026-jlnytoib`; all 201 release inputs
+matched their recorded hashes. The frozen external dependency installation’s
+package manifest and lockfile match this release. The prior public WalletConnect
+identifier was preserved and its deployed bundle was verified before rebuilding.
+Fresh production assets were built into
+`/tmp/opencaster-infinite-production-20261026-6mz5zi41`. Inspection covered all
+28 files, resolved local references, all 42 milestones, the implementation link,
+and absence of fixture wrappers, source maps and symlinks. Wrangler’s dry run
+passed and that exact inspected directory was deployed; its hashes stayed
+unchanged after upload.
+
+Post-deployment metadata confirms 100% traffic on the new Worker, unchanged
+runtime settings and identical bindings, including the private-primary/read-
+backup settings, secret binding, media bucket/quota namespace and analytics
+bindings. Gateway code and configuration were unchanged in this release.
+Public reads verified all 27 non-HTML asset hashes, sharing metadata and headers,
+the social image and robots file. `/api/v1/info` returned 200 and the legacy
+`/devlog` address retained its canonical 308 redirect.
+
+Live desktop browsing started with 25 casts and automatically loaded 50 near
+the bottom, without a More conversations button. At 390×844, scrolling loaded
+75 casts with no alerts or horizontal overflow. The viewport override was
+reset. The live dev log displayed the new Keep scrolling through conversations
+milestone, its exact implementation link and all 42 source links. These checks
+used public reads/navigation only; no production wallet, signing, upload or
+social account action was performed. Available history still depends on
+Hypersnap.
+
+Receipts: `/tmp/opencaster-infinite-release-receipt.json`,
+`/tmp/opencaster-infinite-assets-manifest.json`,
+`/tmp/opencaster-infinite-live-verification.json` and
+`/tmp/opencaster-infinite-release-verify.log`. Screenshots:
+`/tmp/opencaster-infinite-live-desktop.jpg` and
+`/tmp/opencaster-infinite-live-mobile.jpg`.
+
 # Infinite timeline browsing prepared · 2026-10-26
 
 Implementation `cb71fddd38ba4e4930cd100d5bef362320a5e2bb`, authored
