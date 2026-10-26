@@ -49,6 +49,15 @@ afterEach(async () => {
   localStorage.clear(); sessionStorage.clear(); vi.unstubAllGlobals();
 });
 async function settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); }); }
+async function elementWhenReady(selector: string): Promise<Element> {
+  const deadline = Date.now() + 2500;
+  while (Date.now() < deadline) {
+    const element = container.querySelector(selector);
+    if (element) return element;
+    await settle();
+  }
+  throw new Error(`Expected rendered element: ${selector}`);
+}
 async function start(path: string) { history.replaceState(null, '', path); await act(async () => root.render(<App />)); await settle(); }
 async function click(element: Element | undefined | null) { expect(element).toBeDefined(); expect(element).not.toBeNull(); await act(async () => { element!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); }); await settle(); }
 function button(text: string, scope: ParentNode = container) { return [...scope.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent?.trim() === text); }
@@ -78,7 +87,8 @@ describe('guest public following timelines', () => {
     const first = cast('a', 20, 'Public first page'); const second = cast('b', 30, 'Public second page');
     vi.mocked(getFeed).mockImplementation(async options => ({ casts: [options.cursor ? second : first], next: options.cursor ? {} : { cursor: 'public-next' } }));
     await start('/following?fid=42');
-    expect(texts()).toEqual([first.text]); expect(container.querySelector('.public-following-picker')?.textContent).toContain('FID 42');
+    const picker = await elementWhenReady('.public-following-picker');
+    expect(texts()).toEqual([first.text]); expect(picker.textContent).toContain('FID 42');
     expect(getFeed).toHaveBeenCalledWith(expect.objectContaining({ kind: 'following', fid: 42, limit: 25, signal: expect.any(AbortSignal) }));
     await reachEnd(); expect(texts()).toEqual([first.text, second.text]);
     expect(vi.mocked(getFeed).mock.calls.map(([options]) => [options.kind, options.fid, options.cursor])).toEqual([['following', 42, undefined], ['following', 42, 'public-next']]);
