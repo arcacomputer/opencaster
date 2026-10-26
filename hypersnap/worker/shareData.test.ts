@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadShareData } from './shareData';
 import type { AppRoute } from '../src/lib/navigation';
+import { encodeFeed, type FeedDefinition } from '../src/lib/customFeeds';
 import { ORIGIN_TOKEN_HEADER } from './upstream';
 
 const PREFIX = '0xcfd6d3c3';
@@ -13,6 +14,8 @@ const profileRoute: AppRoute = { kind: 'profile', identifier: '10' };
 const castRoute: AppRoute = { kind: 'cast', hash: HASH };
 const aliasRoute: AppRoute = { kind: 'cast-alias', authorIdentifier: 'alice', hashPrefix: PREFIX };
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
+const feedDefinition = (extra: Partial<FeedDefinition> = {}): FeedDefinition => ({ version: 1, name: 'Builders', sources: [{ kind: 'trending', timeWindow: '24h' }], order: 'source', filters: { includeWords: [], excludeWords: [], hideReplies: false, imagesOnly: false }, ...extra });
+const rawFeedToken = (value: unknown) => btoa(Array.from(new TextEncoder().encode(JSON.stringify(value)), byte => String.fromCharCode(byte)).join('')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const receipt = (n: number, hash = HASH, fid = 10) => ({ hash, data: { fid, timestamp: 180000000 - n, network: 'FARCASTER_NETWORK_MAINNET', type: 'MESSAGE_TYPE_CAST_ADD', castAddBody: { text: 'Historical text must not become card text.' } } });
 function tokenFor(message: ReturnType<typeof receipt>, overrides: { root?: number; fid?: number; postfix?: number } = {}) {
   const bytes = new Uint8Array(30); const view = new DataView(bytes.buffer);
@@ -85,13 +88,15 @@ describe('public sharing profile data', () => {
     expect(await loadShareData(profileRoute, {})).toEqual({ kind: 'profile', profile: { fid: 10, username: '', displayName: 'FID 10', bio: '' } });
     for (const pfp_url of ['javascript:alert(1)', 'http://images.example/p.png', 'https://images.example/a\\b', 'https://images.example/a b']) {
       install([], cast, { ...user, pfp_url });
-      expect((await loadShareData(profileRoute, {}))?.profile.avatarUrl).toBeUndefined();
+      const result = await loadShareData(profileRoute, {});
+      expect(result?.kind === 'profile' ? result.profile.avatarUrl : undefined).toBeUndefined();
     }
   });
   it('bounds text by Unicode characters without splitting a surrogate pair', async () => {
     install([], cast, { ...user, display_name: '🙂'.repeat(100), profile: { bio: { text: '🙂'.repeat(600) } } });
     const result = await loadShareData(profileRoute, {});
-    expect(result?.profile.displayName).toBe('🙂'.repeat(80)); expect(result?.profile.bio).toBe('🙂'.repeat(500));
+    if (result?.kind !== 'profile') throw new Error('Expected public profile data');
+    expect(result.profile.displayName).toBe('🙂'.repeat(80)); expect(result.profile.bio).toBe('🙂'.repeat(500));
   });
   it('normalizes only an exact FID-bound native username sentinel', async () => {
     install([], cast, { ...user, username: 'fid:10', display_name: undefined });
@@ -99,6 +104,120 @@ describe('public sharing profile data', () => {
     for (const username of ['fid:11', 'fid:010', 'FID:10']) {
       install([], cast, { ...user, username }); expect(await loadShareData(profileRoute, {})).toBeUndefined();
     }
+  });
+});
+
+describe('public sharing channel data', () => {
+  const channel = { id: 'builders', name: 'Builders', description: 'A channel for public projects.', image_url: 'https://images.example/builders.png', member_count: 17, follower_count: 999,
+    url: 'https://untrusted.example/channel/builders', viewer_context: { following: true }, privateKey: 'must-never-return' };
+  const route: AppRoute = { kind: 'channel', channel: 'builders' };
+  function installChannel(value: unknown = channel, status = 200) {
+    const fetch = vi.fn().mockResolvedValue(json({ channel: value }, status));
+    vi.stubGlobal('fetch', fetch); return fetch;
+  }
+  it('reads the fixed public channel endpoint and returns only exact-bound sanitized display fields', async () => {
+    const fetch = installChannel({ ...channel, name: ' Builders\u202e\u0000 Club ', description: ' Public\nprojects\tand\r\npeople. ' });
+    expect(await loadShareData(route, {})).toEqual({ kind: 'channel', channel: { id: 'builders', name: 'Builders Club', description: 'Public projects and people.', imageUrl: channel.image_url, members: 17 } });
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0][0]).toBe('https://haatz.quilibrium.com/v2/farcaster/channel?id=builders&type=id');
+    const init = fetch.mock.calls[0][1];
+    expect(init).toMatchObject({ method: 'GET', credentials: 'omit', redirect: 'manual', cache: 'no-store' });
+    expect(init.headers.get('Cookie')).toBeNull(); expect(init.headers.get('Authorization')).toBeNull();
+  });
+  it.each([null, {}, { ...channel, id: 'other' }, { ...channel, id: 'BUILDERS' }, { ...channel, name: null }, { ...channel, name: { value: 'Builders' } }])('rejects unrelated or malformed channel identity %j without a backup read', async value => {
+    const fetch = installChannel(value);
+    expect(await loadShareData(route, { HYPERSNAP_READ_FALLBACK: 'haatz-v1' })).toBeUndefined(); expect(fetch).toHaveBeenCalledOnce();
+  });
+  it('does not normalize channel case into a different identity', async () => {
+    const fetch = installChannel({ ...channel, id: 'BuIlDeRs' });
+    expect(await loadShareData({ kind: 'channel', channel: 'BuIlDeRs' }, {})).toMatchObject({ kind: 'channel', channel: { id: 'BuIlDeRs' } });
+    expect(fetch.mock.calls[0][0]).toContain('id=BuIlDeRs&type=id');
+  });
+  it('drops malformed optional text, counters and unsafe images without promoting follower counts to participants', async () => {
+    for (const member_count of [undefined, null, -1, '17', 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      installChannel({ ...channel, name: '', description: { text: 'Unvalidated text' }, image_url: 'https://user:pass@images.example/builders.png', member_count });
+      expect(await loadShareData(route, {})).toEqual({ kind: 'channel', channel: { id: 'builders', name: 'builders', description: '' } });
+    }
+    installChannel({ ...channel, member_count: 0 });
+    expect(await loadShareData(route, {})).toMatchObject({ kind: 'channel', channel: { members: 0 } });
+    for (const image_url of ['javascript:alert(1)', 'http://images.example/builders.png', 'https://images.example/a\\b', 'https://images.example/a b']) {
+      installChannel({ ...channel, image_url });
+      const result = await loadShareData(route, {});
+      expect(result?.kind === 'channel' ? result.channel.imageUrl : undefined).toBeUndefined();
+    }
+  });
+  it('bounds Unicode text and falls back when the channel is unavailable', async () => {
+    installChannel({ ...channel, name: '🙂'.repeat(100), description: '🙂'.repeat(600) });
+    const result = await loadShareData(route, {});
+    if (result?.kind !== 'channel') throw new Error('Expected public channel data');
+    expect(result.channel.name).toBe('🙂'.repeat(80)); expect(result.channel.description).toBe('🙂'.repeat(500));
+    const fetch = installChannel(channel, 404);
+    expect(await loadShareData(route, {})).toBeUndefined(); expect(fetch).toHaveBeenCalledOnce();
+  });
+  it('rejects malformed channel identifiers before a public read', async () => {
+    const fetch = installChannel();
+    for (const channel of ['', '../builders', 'builders%2fother', 'a.b', 'https://evil.example', 'a'.repeat(65)]) {
+      expect(await loadShareData({ kind: 'channel', channel }, {})).toBeUndefined();
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('public sharing custom feed data', () => {
+  it('describes all public source kinds and rules without network calls or browser storage', async () => {
+    const fetch = vi.fn(() => { throw new Error('Feed descriptions must not contact upstream'); }); vi.stubGlobal('fetch', fetch);
+    const getItem = vi.fn(() => { throw new Error('Feed descriptions must not read saved browser data'); }); vi.stubGlobal('localStorage', { getItem });
+    const definition = feedDefinition({ sources: [{ kind: 'user', fid: 10 }, { kind: 'following', fid: 20 }, { kind: 'channel', channel: 'build' }, { kind: 'trending', timeWindow: '7d' }], order: 'newest', filters: { includeWords: ['open source', 'art'], excludeWords: ['spoilers', 'giveaways'], imagesOnly: true, hideReplies: true } });
+    expect(await loadShareData({ kind: 'feed', token: encodeFeed(definition) }, { HYPERSNAP_ORIGIN: 'invalid-private-configuration' })).toEqual({ kind: 'feed', feed: {
+      name: 'Builders', sources: ['Account FID 10', 'Public following of FID 20', 'Channel /build', 'Trending · 7d'],
+      rules: ['Newest loaded first', 'Includes any phrase: “open source”, “art”', 'Excludes any phrase: “spoilers”, “giveaways”', 'Images only', 'Replies hidden'], sourceCount: 4, definition,
+    } });
+    expect(fetch).not.toHaveBeenCalled(); expect(getItem).not.toHaveBeenCalled();
+  });
+  it('rebuilds a canonical public definition, deduplicating sources and phrases without retaining local state', async () => {
+    const input = { ...feedDefinition({ name: '  Café 東京  ', sources: [{ kind: 'channel', channel: 'art' }, { kind: 'user', fid: 10 }, { kind: 'channel', channel: 'art' }] }),
+      filters: { includeWords: [' Café ', 'CAFE\u0301'], excludeWords: [], imagesOnly: false, hideReplies: false, privateFilter: 'must-never-return' },
+      id: 'local-feed-id', pinned: true, privateKey: 'must-never-return', session: { fid: 999 } };
+    const token = rawFeedToken(input);
+    const result = await loadShareData({ kind: 'feed', token }, {});
+    if (result?.kind !== 'feed') throw new Error('Expected public feed data');
+    const definition = feedDefinition({ name: 'Café 東京', sources: [{ kind: 'channel', channel: 'art' }, { kind: 'user', fid: 10 }], filters: { includeWords: ['Café'], excludeWords: [], imagesOnly: false, hideReplies: false } });
+    expect(result.feed).toEqual({ name: 'Café 東京', sources: ['Channel /art', 'Account FID 10'], rules: ['Source order (as loaded)', 'Includes any phrase: “Café”'], sourceCount: 2, definition });
+    expect(encodeFeed(result.feed.definition)).toBe(encodeFeed(definition)); expect(encodeFeed(result.feed.definition)).not.toBe(token);
+    expect(JSON.stringify(result)).not.toMatch(/must-never-return|local-feed-id|pinned|session/);
+  });
+  it('keeps every phrase rule while sanitizing hostile public display text', async () => {
+    const includeWords = Array.from({ length: 10 }, (_, n) => `<include${n}>&`);
+    const excludeWords = Array.from({ length: 10 }, (_, n) => `<exclude${n}>&`);
+    includeWords[0] = '<script>\u202ealert(1)</script>';
+    const definition = feedDefinition({ name: '  <Feed> & \u202e art  ', filters: { includeWords, excludeWords, imagesOnly: false, hideReplies: false } });
+    const result = await loadShareData({ kind: 'feed', token: encodeFeed(definition) }, {});
+    if (result?.kind !== 'feed') throw new Error('Expected public feed data');
+    expect(result.feed.name).toBe('<Feed> & art');
+    expect(result.feed.rules).toHaveLength(3); expect(result.feed.rules.join(' ')).not.toContain('\u202e');
+    expect(result.feed.rules[1]).toBe(`Includes any phrase: ${includeWords.map(phrase => `“${phrase.replace('\u202e', ' ')}”`).join(', ')}`);
+    for (const phrase of excludeWords) expect(result.feed.rules[2]).toContain(phrase);
+    expect(result.feed.definition.filters.includeWords).toEqual(includeWords);
+  });
+  it('preserves ordinary internal spaces in literal phrase rules', async () => {
+    const definition = feedDefinition({ filters: { includeWords: ['hello  world'], excludeWords: ['three   spaces'], imagesOnly: false, hideReplies: false } });
+    const result = await loadShareData({ kind: 'feed', token: encodeFeed(definition) }, {});
+    expect(result).toMatchObject({ kind: 'feed', feed: { rules: ['Source order (as loaded)', 'Includes any phrase: “hello  world”', 'Excludes any phrase: “three   spaces”'] } });
+  });
+  it('rejects malformed, noncanonical and invalid feed tokens before any upstream read', async () => {
+    const fetch = install();
+    const token = encodeFeed(feedDefinition());
+    for (const value of ['', 'A', '!!!!', `${token}=`, `${token}\n`, 'x'.repeat(6001), rawFeedToken({ ...feedDefinition(), version: 2 }), rawFeedToken({ ...feedDefinition(), sources: [] }), rawFeedToken({ ...feedDefinition(), name: '\u0000bad' })]) {
+      expect(await loadShareData({ kind: 'feed', token: value }, {})).toBeUndefined();
+    }
+    const padded = token.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - token.length % 4) % 4);
+    const withWhitespace = btoa(` ${atob(padded)}`).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    expect(await loadShareData({ kind: 'feed', token: withWhitespace }, {})).toBeUndefined();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('honors caller cancellation for a local public feed definition', async () => {
+    const fetch = install(); const controller = new AbortController(); controller.abort();
+    expect(await loadShareData({ kind: 'feed', token: encodeFeed(feedDefinition()) }, {}, controller.signal)).toBeUndefined(); expect(fetch).not.toHaveBeenCalled();
   });
 });
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { FeedDefinition } from '../src/lib/customFeeds';
 import type { ShareData, ShareProfile } from './shareData';
 import { buildShareSvg } from './shareLayout';
 
@@ -13,6 +14,19 @@ const cast: ShareData = {
   timestamp: '2026-10-26T23:30:00-03:00',
 };
 const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB';
+const channel: Extract<ShareData, { kind: 'channel' }> = {
+  kind: 'channel', channel: { id: 'art', name: 'Art & imagination', description: 'A space for artists, collectors, and the things that inspire us.', imageUrl: 'https://untrusted.example/art.png', members: 4210 },
+};
+const definition: FeedDefinition = {
+  version: 1, name: 'Art, code & ideas', sources: [{ kind: 'channel', channel: 'art' }, { kind: 'user', fid: 42 }], order: 'newest',
+  filters: { includeWords: ['building'], excludeWords: [], imagesOnly: true, hideReplies: true },
+};
+const feed: Extract<ShareData, { kind: 'feed' }> = {
+  kind: 'feed', feed: {
+    name: definition.name, sources: ['Channel /art', 'Account FID 42'], sourceCount: 2,
+    rules: ['Newest loaded first', 'Includes any phrase: “building”', 'Images only', 'Replies hidden'], definition,
+  },
+};
 
 function role(svg: string, name: string): string {
   return new RegExp(`<text data-role="${name}"[^>]*>([\\s\\S]*?)</text>`).exec(svg)?.[1] ?? '';
@@ -130,5 +144,115 @@ describe('public sharing card SVG layout', () => {
     const emptyCast = buildShareSvg({ ...cast, text: '', timestamp: '<script>bad date</script>' });
     expect(lines(emptyCast, 'cast-text')).toEqual(['Shared a cast.']);
     expect(role(emptyCast, 'cast-date')).toBe('');
+  });
+
+  it('renders a channel identity, description, participants and a distinct channel icon', () => {
+    const svg = buildShareSvg(channel);
+    expect(role(svg, 'card-kind')).toBe('CHANNEL');
+    expect(lines(svg, 'channel-name')).toEqual(['Art &amp; imagination']);
+    expect(lines(svg, 'channel-id')).toEqual(['/art']);
+    expect(lines(svg, 'channel-description').join(' ')).toBe(channel.channel.description);
+    expect(role(svg, 'channel-counts')).toBe('4.2K participants');
+    expect(role(svg, 'channel-symbol')).toBe('#');
+    expect(role(svg, 'footer')).toBe('Public channel on Hypersnap');
+    expect(svg).toContain('d="M17 78V49a33 33 0 0 1 66 0v29H69V49a19 19 0 0 0-38 0v29Z"');
+    expect(svg).not.toContain(channel.channel.imageUrl);
+    expect(svg).not.toMatch(/followers|following/);
+  });
+
+  it('clips a supplied channel raster and rejects unsafe image references', () => {
+    const svg = buildShareSvg(channel, { avatarDataUrl: png });
+    expect(svg.match(/<image /g)).toHaveLength(1);
+    expect(svg).toContain(`data-role="channel-image" href="${png}"`);
+    expect(svg).toContain('clip-path="url(#channel-clip)"');
+    expect(svg).toContain('width="208" height="208"');
+    expect(role(svg, 'channel-symbol')).toBe('');
+    const unsafe = buildShareSvg(channel, { avatarDataUrl: 'data:image/svg+xml;base64,PHN2Zz4=' });
+    expect(unsafe).not.toContain('<image');
+    expect(role(unsafe, 'channel-symbol')).toBe('#');
+  });
+
+  it('shows honest channel fallbacks and never invents a participant count', () => {
+    const minimal = buildShareSvg({ kind: 'channel', channel: { id: 'art', name: '', description: '', members: NaN } });
+    expect(lines(minimal, 'channel-name')).toEqual(['/art']);
+    expect(lines(minimal, 'channel-description').join(' ')).toContain('casts and conversations on Hypersnap');
+    expect(role(minimal, 'channel-counts')).toBe('A public Hypersnap channel');
+    expect(minimal).not.toContain('NaN');
+    const singular = buildShareSvg({ ...channel, channel: { ...channel.channel, members: 1 } });
+    expect(role(singular, 'channel-counts')).toBe('1 participant');
+    const empty = buildShareSvg({ ...channel, channel: { ...channel.channel, members: 0 } });
+    expect(role(empty, 'channel-counts')).toBe('0 participants');
+  });
+
+  it('shows custom feed sources, actual filters, and bounded ordering language', () => {
+    const svg = buildShareSvg(feed, { avatarDataUrl: png, imageDataUrl: png });
+    expect(role(svg, 'card-kind')).toBe('CUSTOM FEED');
+    expect(lines(svg, 'feed-name')).toEqual(['Art, code &amp; ideas']);
+    expect(role(svg, 'feed-source-label')).toBe('2 SOURCES');
+    expect(lines(svg, 'feed-sources')).toEqual(feed.feed.sources);
+    expect(lines(svg, 'feed-rules')[0]).toBe('Newest loaded first');
+    expect(lines(svg, 'feed-rules')).toContain('Match any: “building”');
+    expect(lines(svg, 'feed-rules')).toContain('Images only');
+    expect(lines(svg, 'feed-rules')).toContain('Replies hidden');
+    expect(role(svg, 'footer')).toBe('Custom feed on Hypersnap');
+    expect(svg).not.toContain('<image');
+    expect(svg).not.toMatch(/global|complete archive|live feed|latest posts/i);
+  });
+
+  it('summarizes extra sources while retaining all five types of feed rule', () => {
+    const sources = Array.from({ length: 8 }, (_, index) => `Account FID ${index + 1}`);
+    const rules = ['Source order (as loaded)', 'Includes any phrase: “art”', 'Excludes any phrase: “sale”', 'Images only', 'Replies hidden'];
+    const svg = buildShareSvg({ ...feed, feed: { ...feed.feed, sources, sourceCount: 8, rules } });
+    expect(lines(svg, 'feed-sources')).toEqual(sources.slice(0, 4));
+    expect(role(svg, 'feed-more-sources')).toBe('+ 4 more sources');
+    expect(lines(svg, 'feed-rules')).toHaveLength(5);
+    expect(lines(svg, 'feed-rules').slice(-2)).toEqual(['Images only', 'Replies hidden']);
+    expect(role(svg, 'feed-source-label')).toBe('8 SOURCES');
+  });
+
+  it('bounds long channel and feed text without breaking emoji graphemes or panel geometry', () => {
+    const emoji = '👩🏽‍💻';
+    const longChannel = buildShareSvg({ kind: 'channel', channel: { id: 'W'.repeat(20000), name: emoji.repeat(2000), description: 'Word '.repeat(10000) } });
+    expect(lines(longChannel, 'channel-name')).toHaveLength(2);
+    expect(lines(longChannel, 'channel-name')[0]).toMatch(new RegExp(`^(?:${emoji})+$`, 'u'));
+    expect(lines(longChannel, 'channel-name')[1]).toMatch(/…$/);
+    expect(lines(longChannel, 'channel-id')).toHaveLength(1);
+    expect(lines(longChannel, 'channel-description')).toHaveLength(3);
+    expect(lines(longChannel, 'channel-description')[2]).toMatch(/…$/);
+    expect(longChannel.length).toBeLessThan(10000);
+    const longFeed = buildShareSvg({ ...feed, feed: { ...feed.feed, name: 'W'.repeat(20000), sources: Array.from({ length: 8 }, () => emoji.repeat(2000)), sourceCount: 8, rules: Array.from({ length: 5 }, () => 'W'.repeat(10000)) } });
+    expect(lines(longFeed, 'feed-name')).toHaveLength(2);
+    expect(lines(longFeed, 'feed-name')[1]).toMatch(/…$/);
+    expect(lines(longFeed, 'feed-sources')).toHaveLength(4);
+    expect(lines(longFeed, 'feed-sources').every(line => line.endsWith('…'))).toBe(true);
+    expect(lines(longFeed, 'feed-rules')).toHaveLength(5);
+    expect(lines(longFeed, 'feed-rules').every(line => line.endsWith('…'))).toBe(true);
+    expect(longFeed.length).toBeLessThan(10000);
+    expect(longFeed).not.toContain('�');
+    for (const svg of [longChannel, longFeed]) {
+      const positions = [...svg.matchAll(/<tspan x="(\d+)" y="(\d+)"/g)].map(match => ({ x: Number(match[1]), y: Number(match[2]) }));
+      expect(positions.every(position => position.x >= 40 && position.x <= 1160 && position.y >= 40 && position.y <= 530)).toBe(true);
+    }
+  });
+
+  it('escapes every channel and feed display field and strips invalid XML text', () => {
+    const hostile = '\"><script>alert(1)</script>&\u0000\u0001\ufffe\ud800';
+    const channelSvg = buildShareSvg({ kind: 'channel', channel: { id: hostile, name: hostile, description: hostile } });
+    const feedSvg = buildShareSvg({ ...feed, feed: { ...feed.feed, name: hostile, sources: [hostile], rules: [hostile] } });
+    for (const svg of [channelSvg, feedSvg]) {
+      expect(svg).not.toContain('<script>');
+      expect(svg).toContain('&lt;script&gt;');
+      expect(svg).toContain('&amp;');
+      expect(svg).not.toMatch(/[\u0000\u0001\ufffe\ud800]/);
+      expect(svg).not.toMatch(/<foreignObject|<filter|<image|onload=/);
+    }
+  });
+
+  it('falls back safely when optional feed descriptions and counts are absent', () => {
+    const svg = buildShareSvg({ ...feed, feed: { ...feed.feed, name: '', sources: [], sourceCount: NaN, rules: [] } });
+    expect(lines(svg, 'feed-name')).toEqual(['Custom feed']);
+    expect(lines(svg, 'feed-sources')).toEqual(['Public Hypersnap sources']);
+    expect(lines(svg, 'feed-rules')).toEqual(['Source order (as loaded)']);
+    expect(svg).not.toMatch(/NaN|undefined|Infinity/);
   });
 });

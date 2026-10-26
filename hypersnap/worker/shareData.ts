@@ -2,6 +2,7 @@ import { normalizeHypersnapEnsName } from '../src/lib/ensName';
 import type { AppRoute } from '../src/lib/navigation';
 import type { Cast } from '../src/lib/api';
 import { renderMentionSegments } from '../src/lib/content';
+import { decodeFeed, type FeedDefinition } from '../src/lib/customFeeds';
 import { fetchUpstream, parseUpstreamObject, resolveReadFallback, resolveUpstream, type UpstreamConfig, type UpstreamEnv } from './upstream';
 
 /** Only public display fields may cross the sharing boundary. */
@@ -14,9 +15,25 @@ export interface ShareProfile {
   followers?: number;
   following?: number;
 }
+export interface ShareChannel {
+  id: string;
+  name: string;
+  description: string;
+  imageUrl?: string;
+  members?: number;
+}
+export interface ShareFeed {
+  name: string;
+  sources: readonly string[];
+  rules: readonly string[];
+  sourceCount: number;
+  definition: FeedDefinition;
+}
 export type ShareData =
   | { kind: 'profile'; profile: ShareProfile }
-  | { kind: 'cast'; profile: ShareProfile; hash: string; text: string; timestamp: string; imageUrls?: readonly string[] };
+  | { kind: 'cast'; profile: ShareProfile; hash: string; text: string; timestamp: string; imageUrls?: readonly string[] }
+  | { kind: 'channel'; channel: ShareChannel }
+  | { kind: 'feed'; feed: ShareFeed };
 
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const LOOKUP_TIMEOUT_MS = 4000;
@@ -25,18 +42,19 @@ const HISTORY_PAGE_SIZE = 250;
 const HISTORY_PAGES = 2;
 const FULL_HASH = /^(?:0x)?([a-f0-9]{40})$/i;
 const IDENTIFIER = /^[a-z0-9_.-]{1,128}$/i;
+const CHANNEL = /^[a-z0-9_-]{1,64}$/i;
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const fidValue = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) > 0 && Number(value) <= 0xffffffff;
 const hashValue = (value: unknown): string | undefined => typeof value === 'string' ? FULL_HASH.exec(value)?.[1].toLowerCase() : undefined;
 
-function text(value: unknown, limit: number, preserveNewlines = false): string {
+function text(value: unknown, limit: number, { preserveNewlines = false, preserveSpaces = false }: { preserveNewlines?: boolean; preserveSpaces?: boolean } = {}): string {
   if (typeof value !== 'string') return '';
   // Strip invisible direction controls before shaping text in an HTML/image card.
   // eslint-disable-next-line no-control-regex -- Public display text must not carry control characters.
   const cleaned = value.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u200b\u200e\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, ' ');
   const formatted = preserveNewlines
     ? cleaned.replace(/[^\S\n]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim()
-    : cleaned.replace(/\s+/g, ' ').trim();
+    : preserveSpaces ? cleaned.replace(/[^\S ]+/g, ' ').trim() : cleaned.replace(/\s+/g, ' ').trim();
   return Array.from(formatted).slice(0, limit).join('');
 }
 
@@ -157,6 +175,39 @@ async function loadProfile(identifier: string, read: PublicRead): Promise<ShareP
   return profile;
 }
 
+async function loadChannel(id: string, read: PublicRead): Promise<ShareChannel | undefined> {
+  if (!CHANNEL.test(id)) return;
+  const response = await read('/v2/farcaster/channel', new URLSearchParams({ id, type: 'id' }));
+  const channel = response?.channel;
+  if (!object(channel) || channel.id !== id || typeof channel.name !== 'string') return;
+  const image = avatarUrl(channel.image_url);
+  return {
+    id, name: text(channel.name, 80) || id, description: text(channel.description, 500),
+    ...(image ? { imageUrl: image } : {}),
+    ...(Number.isSafeInteger(channel.member_count) && Number(channel.member_count) >= 0 ? { members: channel.member_count as number } : {}),
+  };
+}
+
+/** Shared recipes describe public inputs and rules, never a viewer's saved
+ * state or a claim about the node's current results. No hydration is needed. */
+function loadFeed(token: string): ShareFeed | undefined {
+  const definition = decodeFeed(token);
+  if (!definition) return;
+  const sources = definition.sources.map(source => {
+    if (source.kind === 'trending') return `Trending · ${source.timeWindow}`;
+    if (source.kind === 'channel') return `Channel /${source.channel}`;
+    return source.kind === 'user' ? `Account FID ${source.fid}` : `Public following of FID ${source.fid}`;
+  });
+  // Ordinary spaces are literal matching input, so retain their multiplicity.
+  const phraseList = (phrases: readonly string[]) => phrases.map(phrase => `“${text(phrase, 64, { preserveSpaces: true })}”`).join(', ');
+  const rules = [definition.order === 'newest' ? 'Newest loaded first' : 'Source order (as loaded)'];
+  if (definition.filters.includeWords.length) rules.push(`Includes any phrase: ${phraseList(definition.filters.includeWords)}`);
+  if (definition.filters.excludeWords.length) rules.push(`Excludes any phrase: ${phraseList(definition.filters.excludeWords)}`);
+  if (definition.filters.imagesOnly) rules.push('Images only');
+  if (definition.filters.hideReplies) rules.push('Replies hidden');
+  return { name: text(definition.name, 64) || 'Custom feed', sources, rules, sourceCount: sources.length, definition };
+}
+
 async function loadCast(hash: string, read: PublicRead, expectedAuthor?: ShareProfile | number): Promise<ShareData | undefined> {
   const exactHash = hashValue(hash);
   if (!exactHash) return;
@@ -177,7 +228,7 @@ async function loadCast(hash: string, read: PublicRead, expectedAuthor?: SharePr
   // all-or-nothing UTF-8 range validation before sanitation changes offsets.
   const displayedText = renderMentionSegments(cast as unknown as Pick<Cast, 'text' | 'mentioned_profiles' | 'mentioned_profiles_ranges'>)
     .map(segment => segment.kind === 'text' ? segment.text : `@${segment.user.username || segment.user.fid}`).join('');
-  return { kind: 'cast', profile: typeof expectedAuthor === 'object' ? expectedAuthor : author, hash: `0x${exactHash}`, text: text(displayedText, 1200, true), timestamp: new Date(cast.timestamp).toISOString(),
+  return { kind: 'cast', profile: typeof expectedAuthor === 'object' ? expectedAuthor : author, hash: `0x${exactHash}`, text: text(displayedText, 1200, { preserveNewlines: true }), timestamp: new Date(cast.timestamp).toISOString(),
     ...(imageUrls.length ? { imageUrls } : {}) };
 }
 
@@ -245,8 +296,14 @@ async function loadAlias(authorIdentifier: string, prefix: string, read: PublicR
 /** Fail open to the generic site card on unavailable/ambiguous public data.
  * Every read shares this deadline and an optional caller's shorter deadline. */
 export async function loadShareData(route: AppRoute, env: UpstreamEnv, signal?: AbortSignal): Promise<ShareData | undefined> {
-  if (route.kind !== 'profile' && route.kind !== 'cast' && route.kind !== 'cast-alias') return;
+  if (route.kind !== 'profile' && route.kind !== 'cast' && route.kind !== 'cast-alias' && route.kind !== 'channel' && route.kind !== 'feed') return;
   if (signal?.aborted) return;
+  // Feed URLs contain their complete validated public definition; they work
+  // even when the origin is unavailable or its private configuration is absent.
+  if (route.kind === 'feed') {
+    const feed = loadFeed(route.token);
+    return feed ? { kind: 'feed', feed } : undefined;
+  }
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   signal?.addEventListener('abort', abort, { once: true });
@@ -260,6 +317,10 @@ export async function loadShareData(route: AppRoute, env: UpstreamEnv, signal?: 
       if (profile) result = { kind: 'profile', profile };
     } else if (route.kind === 'cast') result = await loadCast(route.hash, read);
     else if (route.kind === 'cast-alias') result = await loadAlias(route.authorIdentifier, route.hashPrefix, read);
+    else if (route.kind === 'channel') {
+      const channel = await loadChannel(route.channel, read);
+      if (channel) result = { kind: 'channel', channel };
+    }
     controller.signal.throwIfAborted();
     return result;
   } catch { return; }

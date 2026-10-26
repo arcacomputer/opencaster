@@ -79,6 +79,11 @@ supported query fields. Public profiles show the person’s name, bio and an
 individual profile card. Public casts show the author, text (including protocol
 mentions) and an individual cast card. Cards include supported avatars and the
 first supported image attachment; other imagery uses initials or a text card.
+Channels show their name, topic, supported image and available participant count.
+Shared custom feeds show the recipe’s name, public sources, ordering and filters;
+long source lists and phrases are shortened in the image. Their previews describe
+the shared recipe, without reading anyone’s browser-local saves or pins or
+claiming to show the feed’s current results.
 Only our content-addressed media and the fixed imagedelivery.net image CDN are
 read, with raster type, byte, dimension and time limits. No arbitrary image
 host or external rendering service is contacted.
@@ -88,7 +93,7 @@ against the requested author where supplied; existing short links scan at most
 500 recent native history receipts and fall back when unavailable or ambiguous.
 Newly copied/shared cast links carry the full hash so older casts do not depend
 on that scan. Missing or deleted data retains the site introduction. Generated
-PNGs expire after five minutes at our edge; a deleted cast or changed profile
+PNGs expire after five minutes at our edge; a deleted cast or changed profile/channel
 can remain in a preview during that interval. Some writing systems and emoji
 may lack glyphs in the bundled font; metadata preserves the Unicode text.
 Preview appearance, cropping and refresh timing also depend on each sharing

@@ -1,4 +1,5 @@
 import { APP_ORIGIN } from '../src/lib/appOrigins';
+import { CUSTOM_FEED_TOKEN_LIMIT, decodeFeed, encodeFeed } from '../src/lib/customFeeds';
 import type { AppRoute } from '../src/lib/navigation';
 import { loadShareData, type ShareData } from './shareData';
 import { buildShareSvg } from './shareLayout';
@@ -15,11 +16,21 @@ const IMAGE_HEADERS = {
 
 export function shareImagePath(data: ShareData): string {
   return data.kind === 'profile' ? `/_share/v1/profile/${data.profile.fid}.png`
-    : `/_share/v1/cast/${data.profile.fid}/${data.hash.replace(/^0x/, '')}.png`;
+    : data.kind === 'channel' ? `/_share/v1/channel/${data.channel.id}.png`
+      : data.kind === 'feed' ? `/_share/v1/feed.png?feed=${encodeFeed(data.feed.definition)}`
+        : `/_share/v1/cast/${data.profile.fid}/${data.hash.replace(/^0x/, '')}.png`;
 }
 
 export function shareImageRoute(url: URL): AppRoute | undefined {
-  if (url.search || url.pathname.length > 128) return;
+  if (url.pathname.length > 128) return;
+  if (url.pathname === '/_share/v1/feed.png') {
+    if (url.search.length > CUSTOM_FEED_TOKEN_LIMIT + 6 || url.searchParams.size !== 1 || url.searchParams.getAll('feed').length !== 1) return;
+    const definition = decodeFeed(url.searchParams.get('feed') ?? '');
+    return definition ? { kind: 'feed', token: encodeFeed(definition) } : undefined;
+  }
+  if (url.search) return;
+  const channel = /^\/_share\/v1\/channel\/([a-zA-Z0-9_-]{1,64})\.png$/.exec(url.pathname);
+  if (channel) return { kind: 'channel', channel: channel[1] };
   const profile = /^\/_share\/v1\/profile\/([1-9]\d{0,9})\.png$/.exec(url.pathname);
   const cast = /^\/_share\/v1\/cast\/([1-9]\d{0,9})\/([a-f0-9]{40})\.png$/.exec(url.pathname);
   const fid = Number(profile?.[1] ?? cast?.[1]);
@@ -71,7 +82,8 @@ async function boundedCacheRead(cache: ImageCache, key: Request): Promise<Respon
   } finally { clearTimeout(timer); }
 }
 
-/** Identity-only routes: text and images never come from request parameters.
+/** Entity routes and validated public feed recipes only. Arbitrary text,
+ * images and browser-local settings never become preview inputs.
  * Public PNGs expire after five minutes, including casts that may be deleted.
  */
 export async function handleShareImage(request: Request, env: ShareImageEnv, ctx?: Context): Promise<Response> {
@@ -83,7 +95,10 @@ export async function handleShareImage(request: Request, env: ShareImageEnv, ctx
 
   let cache: ImageCache | undefined;
   try { cache = typeof caches === 'undefined' ? undefined : (caches as CacheStorage & { default?: ImageCache }).default; } catch { /* Optional edge cache. */ }
-  const key = new Request(`${APP_ORIGIN}${url.pathname}?brand=open-door-v2`);
+  const keyUrl = new URL(url.pathname, APP_ORIGIN);
+  if (route.kind === 'feed') keyUrl.searchParams.set('feed', route.token);
+  keyUrl.searchParams.set('brand', 'open-door-v2');
+  const key = new Request(keyUrl);
   if (cache) {
     const cached = await boundedCacheRead(cache, key);
     if (cached?.status === 200 && cached.headers.get('Content-Type') === 'image/png') return cached;
@@ -95,7 +110,7 @@ export async function handleShareImage(request: Request, env: ShareImageEnv, ctx
     let timer: ReturnType<typeof setTimeout> | undefined;
     const render = (async () => {
       const [avatarDataUrl, imageDataUrl, font, renderer] = await Promise.all([
-        previewImageData(data.profile.avatarUrl, env),
+        previewImageData(data.kind === 'channel' ? data.channel.imageUrl : data.kind === 'feed' ? undefined : data.profile.avatarUrl, env),
         data.kind === 'cast' ? previewImageData(data.imageUrls?.find(value => previewImageUrl(value)), env) : undefined,
         fontFor(env), import('./sharePng'),
       ]);

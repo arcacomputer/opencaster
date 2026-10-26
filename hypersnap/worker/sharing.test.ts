@@ -136,7 +136,7 @@ describe('canonical public sharing URLs', () => {
     expect(meta(html, 'og:description')).toBe(meta(HTML, 'og:description'));
   });
 
-  it('keeps feed definitions and public follow graphs in canonical links with generic metadata', async () => {
+  it('describes feed recipes while keeping feed lists and public follow graphs generic', async () => {
     const { fetch, env } = fixture();
     for (const path of ['/feeds', FEED_PATH, '/following?fid=42']) {
       const response = await handleRequest(new Request(`${ORIGIN}${path}`), env);
@@ -144,9 +144,14 @@ describe('canonical public sharing URLs', () => {
       expect(canonical(html)).toBe(`${ORIGIN}${path}`);
       expect(meta(html, 'og:url')).toBe(`${ORIGIN}${path}`);
       expect(response.headers.get('Link')).toBe(`<${ORIGIN}${path}>; rel="canonical"`);
-      expect(meta(html, 'og:title')).toBe(meta(HTML, 'og:title'));
-      expect(meta(html, 'og:description')).toBe(meta(HTML, 'og:description'));
-      expect(meta(html, 'og:description')).not.toContain(FEED.name);
+      if (path === FEED_PATH) {
+        expect(meta(html, 'og:title')).toContain(FEED.name);
+        expect(meta(html, 'og:description')).toContain('Account FID 42');
+        expect(meta(html, 'og:image')).toContain('/_share/v1/feed.png?feed=');
+      } else {
+        expect(meta(html, 'og:title')).toBe(meta(HTML, 'og:title'));
+        expect(meta(html, 'og:description')).toBe(meta(HTML, 'og:description'));
+      }
       const headResponse = await handleRequest(new Request(`${ORIGIN}${path}`, { method: 'HEAD' }), env);
       expect(headResponse.body).toBeNull();
       expect(headResponse.headers.get('Link')).toBe(response.headers.get('Link'));
