@@ -19,6 +19,21 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'individual-cast-and-profile-share-previews',
+    date: '2026-10-26',
+    title: 'The person or post behind a shared link',
+    summary: 'Shared profiles and casts now have individual previews with public account details or the actual post.',
+    changes: [
+      'Show a profile’s display name, username, bio and available follower counts in its preview card, with its supported avatar or initials.',
+      'Show the cast’s author and text, including protocol mentions, with a supported image attachment when available. Generate public PNG cards and page metadata without requiring JavaScript or a wallet connection.',
+      'Copy and share exact author/full-hash cast links so older posts do not depend on a short-hash history search. Existing profile, full-hash and short cast links remain supported.',
+      'Bound public lookups and image reads. Short links inspect at most 500 recent history receipts; unavailable, deleted or ambiguous content keeps the Opencaster introduction instead of showing an unverified post.',
+      'Cache generated cards for up to five minutes at our edge. Sharing apps control their own display and refresh timing; unsupported remote imagery uses initials or a text card, and some writing systems or emoji may lack image-font glyphs.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/91b374d7edd3b8263226590970ff664edd5242eb',
+    tag: 'Social',
+  },
+  {
     id: 'choose-your-public-timelines',
     date: '2026-10-26',
     title: 'Your feeds, your view of the conversation',
