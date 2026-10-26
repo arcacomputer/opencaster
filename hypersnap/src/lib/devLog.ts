@@ -29,8 +29,9 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'Keep pending cards only in this tab’s memory, clear them when the signing session changes or locks, and preserve failed drafts. Closing a composer does not lose its submission outcome or the next feed refresh. Never automatically replay a write or present a submission acknowledgement as finalization.',
       'Display the first available Casts, Replies or Photos page after one profile-feed request. Continue through sparse or filtered pages as you scroll, preserving the node’s continuation and existing ordering.',
       'Refresh feed and conversation reads after an acknowledged cast without refetching unrelated sidebar data. Authorization checks, signing permissions, public media behavior and Hypersnap availability and propagation limits remain unchanged.',
+      'Keep the public Following picker and custom feed rules intact. Changing the selected account or feed clears the previous destination; a custom timeline shows local attempts in a separately labelled pending tray rather than claiming they already match its rules.',
     ],
-    commit: 'https://github.com/arcacomputer/opencaster/commit/ef9ac9334e2c511c7d8b2de03719dab83728b044',
+    commit: 'https://github.com/arcacomputer/opencaster/commit/a8bde42399774899be4758f1ec99fbb084e333b4',
     tag: 'Reliability',
   },
   {
