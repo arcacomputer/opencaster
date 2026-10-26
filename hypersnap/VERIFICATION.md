@@ -1,3 +1,59 @@
+# Custom public timelines prepared · 2026-10-26
+
+Implementation `693433f9c354551cac05dc1917108554f94fa137`, authored
+`2026-10-26T17:36:26-03:00`, adds a wallet-free Feeds area, browser-local
+creation/customization/pins, shareable public feed rules and public Following
+browsing by username/FID. It is prepared locally and **has not been deployed**.
+The new dev-log milestone points to that implementation and preserves history.
+
+The final standalone `yarn verify` passed **1,487 tests across 63 files**, browser
+and Worker typechecks, the production browser build, and offline signer
+typecheck/build. The clean verification snapshot is
+`/tmp/opencaster-feeds-isolated-20261026-izacf0u6`, based on `be812e55` plus the
+Feeds implementation and its new milestone. Its frozen dependency manifest and
+Yarn lockfile match the pre-existing external installation. This feature changes
+no dependencies. Existing Rollup annotation and large-chunk advisories remain.
+The snapshot has local Git metadata for the signer build manifest; its
+`source-manifest.json` records the actual checked source hashes.
+
+The shared checkout also contains unrelated work in progress. An initial mixed
+snapshot failed eight tests while that work was incomplete; it is not reported
+as a pass. The successful gate excludes those unrelated source/test/dependency
+changes and verifies this feature against its committed base. No combined
+verification verdict is claimed for the other changes, and retained Quorum was
+not changed or verified.
+
+The 65 added tests cover recipe validation and size limits, Unicode share links,
+literal phrase filters, local-storage failure, mixed-source pagination and
+concurrency, atomic failure/retry, cancellation, browsing limits and cursor
+cycles. Component/App checks cover guest public Following lookup and direct
+links, shared feed loading, content controls, creation/editing/pinning/deletion,
+reload persistence and Back/Forward. Editing a shared or saved literal phrase
+containing a comma preserves its exact meaning.
+
+Chrome exercised the built browser UI through a localhost-only server with
+synthetic identities and API responses. It created a feed, combined trending and
+an account source, changed filters/order, saved and pinned it, and opened it
+without a wallet. Reload restored the saved definition and pin. The manager,
+pinned timeline, editor and direct public Following route were checked at
+390×844 with the mobile navigation visible; no horizontal overflow was visible.
+The viewport override was reset afterward. Screenshots:
+`/tmp/opencaster-feeds-desktop.png` and `/tmp/opencaster-feeds-mobile.png`.
+The fixture has no upstream proxy and rejects write requests; no real account
+action, signature, upload, push or deployment was performed.
+
+Feeds and pins stay in this browser and are shared by accounts using it. Shared
+URLs include the public feed name, sources and filters. Newest loaded first
+sorts returned casts only; no complete global feed or personalized ranking is
+claimed. Reads remain bounded to eight sources, four concurrent requests and
+64 pages per source. Hypersnap availability and indexed-history limits remain.
+
+Full final gate output: `/tmp/opencaster-feeds-final-verify-20261026.log`.
+The committed-range `yarn check:devlog --base be812e55 --head HEAD` passed for
+seven shipped files and the new `choose-your-public-timelines` milestone. That
+is a local feature comparison; deployment still requires checking the actual
+pre-release deployed commit and following the fresh-asset release procedure.
+
 # Infinite timeline browsing deployed · 2026-10-26
 
 Release `11f8ad59a477bb112f05adb6fabf07b6fbff2c4c` is live on

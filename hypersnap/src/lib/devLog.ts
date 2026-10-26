@@ -19,6 +19,22 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'choose-your-public-timelines',
+    date: '2026-10-26',
+    title: 'Your feeds, your view of the conversation',
+    summary: 'Create, customize and pin public timelines, and explore someone’s public Following feed without connecting a wallet.',
+    changes: [
+      'Add a Feeds area for up to 30 saved timelines, combining up to eight sources from public account casts, public Following feeds, channels and Hypersnap’s native trending windows.',
+      'Choose source order or newest loaded first, include or exclude literal phrases, hide replies, and show only images. Existing content controls still apply. Ordering and filtering work on returned casts, rather than promising a complete chronological archive.',
+      'Edit a saved feed, reorder its sources, confirm its deletion, and pin it in desktop navigation and the home feed tabs on mobile. Saves and pins stay in this browser, are shared by accounts using it, and do not sync across devices.',
+      'Copy a feed link that includes its public name, sources and filters. Anyone can open it without a wallet and explicitly save their own browser-local copy.',
+      'Browse an account’s public Following feed by username or FID, through a direct FID link or from its profile. Public follows do not reveal another account’s private preferences or personalized recommendations.',
+      'Continue through sparse filtered pages with bounded reads and explicit retry after a source failure. Keep loaded casts readable after a pagination failure, and show a refresh error for a repeated source page or the 64-page-per-source browsing limit. Hypersnap’s available indexes still determine which casts can appear.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/693433f9c354551cac05dc1917108554f94fa137',
+    tag: 'Social',
+  },
+  {
     id: 'automatic-timeline-browsing',
     date: '2026-10-26',
     title: 'Keep scrolling through conversations',
