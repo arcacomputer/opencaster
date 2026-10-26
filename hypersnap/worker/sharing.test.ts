@@ -1,11 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseRoute } from '../src/lib/navigation';
+import { encodeFeed, type FeedDefinition } from '../src/lib/customFeeds';
 import { handleRequest, type Env } from './index';
 import { canonicalShareUrl, withShareUrl } from './sharing';
 
 const ORIGIN = 'https://opencaster.org';
 const HASH = `0x${'ab'.repeat(20)}`;
+const FEED: FeedDefinition = { version: 1, name: 'Builders', sources: [{ kind: 'user', fid: 42 }], order: 'newest', filters: { includeWords: [], excludeWords: [], hideReplies: false, imagesOnly: false } };
+const FEED_PATH = `/feeds/view?feed=${encodeFeed(FEED)}`;
 const HTML = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const head = (html: string) => /<head>([\s\S]*?)<\/head>/.exec(html)?.[1] ?? '';
 const decode = (value: string) => value.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
@@ -97,6 +100,13 @@ describe('canonical public sharing URLs', () => {
     [`https://preview.example/?cast=${HASH}&utm_source=old`, `/cast/${HASH}`],
     ['https://preview.example/channel/art?cursor=private', '/channel/art'],
     ['https://preview.example/devlog?topic=private', '/devlog'],
+    ['https://preview.example/feeds?account=private', '/feeds'],
+    [`https://preview.example${FEED_PATH}`, FEED_PATH],
+    ['https://preview.example/following?fid=0042&scopes=11&private=discard', '/following?fid=42'],
+    ['https://preview.example/following?fid=42&fid=99', '/'],
+    ['https://preview.example/feeds/view?feed=invalid', '/'],
+    [`https://preview.example${FEED_PATH}&feed=invalid`, '/'],
+    [`https://preview.example${FEED_PATH}&account=private`, '/'],
     ['https://preview.example/connect?return=https://evil.example&scopes=11', '/connect'],
     ['https://preview.example/search?q=hello+world&type=users&extra=private', '/search?q=hello+world&type=users'],
     ['https://preview.example/search?type=casts&q=hello', '/search?q=hello'],
@@ -126,6 +136,24 @@ describe('canonical public sharing URLs', () => {
     expect(meta(html, 'og:description')).toBe(meta(HTML, 'og:description'));
   });
 
+  it('keeps feed definitions and public follow graphs in canonical links with generic metadata', async () => {
+    const { fetch, env } = fixture();
+    for (const path of ['/feeds', FEED_PATH, '/following?fid=42']) {
+      const response = await handleRequest(new Request(`${ORIGIN}${path}`), env);
+      const html = await response.text();
+      expect(canonical(html)).toBe(`${ORIGIN}${path}`);
+      expect(meta(html, 'og:url')).toBe(`${ORIGIN}${path}`);
+      expect(response.headers.get('Link')).toBe(`<${ORIGIN}${path}>; rel="canonical"`);
+      expect(meta(html, 'og:title')).toBe(meta(HTML, 'og:title'));
+      expect(meta(html, 'og:description')).toBe(meta(HTML, 'og:description'));
+      expect(meta(html, 'og:description')).not.toContain(FEED.name);
+      const headResponse = await handleRequest(new Request(`${ORIGIN}${path}`, { method: 'HEAD' }), env);
+      expect(headResponse.body).toBeNull();
+      expect(headResponse.headers.get('Link')).toBe(response.headers.get('Link'));
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('does not rewrite binary assets or HTML error responses', async () => {
     for (const response of [new Response(new Uint8Array([137, 80, 78, 71]), { headers: { 'Content-Type': 'image/png' } }), new Response('<h1>Missing</h1>', { status: 404, headers: { 'Content-Type': 'text/html' } })]) {
       const original = response.clone();
@@ -151,7 +179,7 @@ describe('canonical public sharing URLs', () => {
 });
 
 describe('sharing metadata at the Worker boundary', () => {
-  it('returns deep-link identity with the generic platform card, independent of JavaScript, user agent, and the node', async () => {
+  it('keeps the generic card when a public profile or cast cannot be loaded, for every user agent', async () => {
     const { fetch, assets, env } = fixture();
     for (const [path, target] of [['/', '/'], ['/alice', '/profile/alice'], ['/42/0xabcdef12?utm_source=telegram', '/42/0xabcdef12'], ['/unknown/extra/path', '/']]) {
       for (const userAgent of ['TelegramBot (like TwitterBot)', 'Twitterbot/1.0', 'Mozilla/5.0']) {
@@ -170,7 +198,7 @@ describe('sharing metadata at the Worker boundary', () => {
       }
     }
     expect(assets).toHaveBeenCalledTimes(12);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalled();
   });
 
   it('serves HEAD canonical headers with no HTML body or upstream lookup', async () => {

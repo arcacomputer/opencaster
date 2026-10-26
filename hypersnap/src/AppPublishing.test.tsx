@@ -6,6 +6,8 @@ import App from './App';
 import { ApiError, getCast, getChannel, getChannels, getConversation, getFeed, getFollowStatus, getInfo, getProfileFeed, getReactionStatus, getSuggestedUsers, getChannelMembers, getCastQuotes, getUser, resolveCastAlias, searchCasts, searchUsers, type Cast, type FeedResponse, type User } from './lib/api';
 import type { WalletSession } from './lib/auth';
 import { FULL_CLIENT_SCOPES } from './lib/pairing';
+import { encodeFeed, type FeedDefinition } from './lib/customFeeds';
+import { readCustomFeed } from './lib/customFeedReader';
 
 const wallet = vi.hoisted(() => ({ next: null as WalletSession | null }));
 vi.mock('./components/ConnectAccount', () => ({
@@ -13,6 +15,7 @@ vi.mock('./components/ConnectAccount', () => ({
   DeviceSettings: () => <div>Synthetic device settings</div>,
 }));
 vi.mock('./lib/media', () => ({ uploadMedia: vi.fn() }));
+vi.mock('./lib/customFeedReader', () => ({ readCustomFeed: vi.fn() }));
 vi.mock('./lib/api', async original => ({ ...await original<typeof import('./lib/api')>(), getCast: vi.fn(), getChannel: vi.fn(), getChannels: vi.fn(), getConversation: vi.fn(), getFeed: vi.fn(), getFollowStatus: vi.fn(), getInfo: vi.fn(), getProfileFeed: vi.fn(), getReactionStatus: vi.fn(), getSuggestedUsers: vi.fn(), getChannelMembers: vi.fn(), getCastQuotes: vi.fn(), getUser: vi.fn(), resolveCastAlias: vi.fn(), searchCasts: vi.fn(), searchUsers: vi.fn() }));
 
 const person = (fid: number): User => ({ fid, username: `person${fid}`, display_name: `Person ${fid}`, custody_address: '0x1111111111111111111111111111111111111111', profile: { bio: { text: '' } }, follower_count: 0, following_count: 0 });
@@ -20,6 +23,8 @@ const cast = (letter: string, fid: number, text: string): Cast => ({ hash: `0x${
 const existing = cast('a', 20, 'Existing public conversation');
 const published = cast('c', 10, 'My pending root cast');
 const page = (casts: Cast[] = []): FeedResponse => ({ casts, next: {} });
+const recipe = (name: string, fid: number): FeedDefinition => ({ version: 1, name, sources: [{ kind: 'user', fid }], order: 'newest', filters: { includeWords: [], excludeWords: [], hideReplies: false, imagesOnly: false } });
+const customPath = (definition: FeedDefinition) => `/feeds/view?feed=${encodeFeed(definition)}`;
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (reason: unknown) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 function session(fid = 10, key = '1'): WalletSession {
   return { fid, user: person(fid), custodyAddress: person(fid).custody_address, publicKey: key.repeat(64), scopes: FULL_CLIENT_SCOPES, cast: vi.fn().mockResolvedValue({ hash: published.hash }), dispose: vi.fn(), deleteCast: vi.fn(), react: vi.fn(), follow: vi.fn(), updateProfile: vi.fn(), refreshProfile: vi.fn(), authorizeMediaUpload: vi.fn() } as unknown as WalletSession;
@@ -28,11 +33,12 @@ let container: HTMLDivElement; let root: Root;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.resetAllMocks(); localStorage.clear(); sessionStorage.clear(); localStorage.setItem('opencaster.explore', '1'); wallet.next = null;
   history.replaceState(null, '', '/');
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Publishing integration tests must not contact the network.')));
   vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} });
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function (this: HTMLDialogElement) { this.open = true; });
   vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function (this: HTMLDialogElement) { this.open = false; });
-  vi.mocked(getFeed).mockResolvedValue(page([existing])); vi.mocked(getProfileFeed).mockResolvedValue(page());
+  vi.mocked(getFeed).mockResolvedValue(page([existing])); vi.mocked(getProfileFeed).mockResolvedValue(page()); vi.mocked(readCustomFeed).mockResolvedValue(page([existing]));
   vi.mocked(getChannels).mockResolvedValue({ channels: [], next: {} }); vi.mocked(getInfo).mockResolvedValue({ version: 'isolated-test' });
   vi.mocked(getReactionStatus).mockResolvedValue(false); vi.mocked(getFollowStatus).mockResolvedValue(false);
   vi.mocked(getSuggestedUsers).mockResolvedValue({ users: [] }); vi.mocked(getChannelMembers).mockResolvedValue({ users: [], next: {} }); vi.mocked(getCastQuotes).mockResolvedValue(page());
@@ -58,6 +64,7 @@ const base = () => container.querySelector<HTMLElement>('.main-base')!;
 const thread = () => container.querySelector<HTMLElement>('section.conversation-page')!;
 const dialog = () => container.querySelector<HTMLDialogElement>('dialog')!;
 async function refresh() { await click(container.querySelector('button[aria-label="Refresh feed"]')!); }
+async function go(path: string) { await act(async () => { history.pushState(null, '', path); window.dispatchEvent(new PopStateEvent('popstate')); }); await settle(); }
 async function tab(name: string) { await click(container.querySelector(`nav[aria-label="Profile content"] a[href$="tab=${name}"]`)!); }
 
 describe('publishing feedback in the application', () => {
@@ -76,6 +83,71 @@ describe('publishing feedback in the application', () => {
     expect(base().querySelector('.feed')?.textContent).not.toContain(existing.text);
     await click(container.querySelector('nav[aria-label="Home feeds"] a[href="/following"]')!);
     expect(base().querySelector('.feed')?.textContent ?? '').not.toContain(recovered.text);
+  });
+
+  it('retains a public Following refresh but clears the previous FID when a different public feed is loading or fails', async () => {
+    await start('/following?fid=42'); await settle();
+    expect(base().querySelector('.feed')?.textContent).toContain(existing.text);
+    expect(base().querySelector('.public-following-picker')?.textContent).toContain('FID 42');
+    const refreshRead = deferred<FeedResponse>(); vi.mocked(getFeed).mockReturnValueOnce(refreshRead.promise);
+    await refresh(); expect(base().querySelector('.feed')?.textContent).toContain(existing.text);
+    await act(async () => refreshRead.reject(new Error('Public refresh unavailable')));
+    expect(base().querySelector('.feed')?.textContent).toContain(existing.text);
+    const nextRead = deferred<FeedResponse>(); vi.mocked(getFeed).mockReturnValueOnce(nextRead.promise);
+    await go('/following?fid=43');
+    expect(getFeed).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'following', fid: 43 }));
+    expect(base().querySelector('[aria-label="Loading casts"]')).not.toBeNull();
+    expect(base().querySelector('.feed')?.textContent ?? '').not.toContain(existing.text);
+    await act(async () => nextRead.reject(new Error('Next public feed unavailable')));
+    expect(base().querySelector('.feed')?.textContent ?? '').not.toContain(existing.text);
+    expect(base().textContent).toContain('Next public feed unavailable');
+    expect(base().querySelector('.public-following-picker')?.textContent).toContain('FID 43');
+    expect(button('Browse following', base())).toBeTruthy(); expect(location.pathname).toBe('/following');
+  });
+
+  it('retains a custom recipe refresh but clears old cards when another token is loading or fails', async () => {
+    const first = recipe('First recipe', 20); const next = recipe('Second recipe', 30);
+    await start(customPath(first)); await settle();
+    expect(base().querySelector('.feed')?.textContent).toContain(existing.text);
+    const refreshRead = deferred<FeedResponse>(); vi.mocked(readCustomFeed).mockReturnValueOnce(refreshRead.promise);
+    await refresh(); expect(base().querySelector('.feed')?.textContent).toContain(existing.text);
+    await act(async () => refreshRead.reject(new Error('Custom refresh unavailable')));
+    expect(base().querySelector('.feed')?.textContent).toContain(existing.text);
+    const nextRead = deferred<FeedResponse>(); vi.mocked(readCustomFeed).mockReturnValueOnce(nextRead.promise);
+    await go(customPath(next));
+    expect(readCustomFeed).toHaveBeenLastCalledWith(next, null, expect.any(AbortSignal));
+    expect(base().querySelector('[aria-label="Loading casts"]')).not.toBeNull();
+    expect(base().querySelector('.feed')?.textContent ?? '').not.toContain(existing.text);
+    await act(async () => nextRead.reject(new Error('Next custom feed unavailable')));
+    expect(base().querySelector('.feed')?.textContent ?? '').not.toContain(existing.text);
+    expect(base().textContent).toContain('Next custom feed unavailable');
+    expect(getFeed).not.toHaveBeenCalled();
+  });
+
+  it('keeps own pending casts out of another account public Following feed', async () => {
+    const account = session(); const receipt = deferred<{ hash: string }>(); vi.mocked(account.cast).mockReturnValue(receipt.promise);
+    await start(); await connect(account); await type(published.text); await click(button('Cast', container.querySelector('.home-composer')!));
+    await go('/following?fid=42');
+    expect(pending(base())).toBeNull(); expect(base().querySelector('.public-following-picker')?.textContent).toContain('FID 42');
+    await go('/following?fid=10');
+    expect(pending(base())?.textContent).toContain(published.text); expect(status(base())).toContain('Publishing');
+    expect(account.cast).toHaveBeenCalledOnce();
+  });
+
+  it('shows a cast started on a custom recipe in a labelled pending tray separate from recipe results', async () => {
+    const account = session(); const receipt = deferred<{ hash: string }>(); vi.mocked(account.cast).mockReturnValue(receipt.promise);
+    const definition = { ...recipe('Filtered conversation', 20), filters: { includeWords: ['Existing'], excludeWords: [], hideReplies: true, imagesOnly: false } };
+    await start(); await connect(account); await go(customPath(definition));
+    await click(container.querySelector('button.sidebar-cast')!);
+    await type(published.text, dialog()); await click(button('Cast', dialog()));
+    await click(dialog().querySelector('button[aria-label="Close dialog"]')!);
+    const tray = base().querySelector<HTMLElement>('.pending-casts[aria-label="Your pending casts"]')!;
+    expect(tray).not.toBeNull(); expect(tray.querySelector('p')?.textContent).toBe('Your pending casts');
+    expect(pending(tray)?.textContent).toContain(published.text);
+    expect(base().querySelector('.feed')?.textContent).toContain(existing.text);
+    expect(base().querySelector('.feed')?.textContent).not.toContain(published.text);
+    expect(base().querySelector('.feed [aria-label="Pending cast"]')).toBeNull();
+    expect(account.cast).toHaveBeenCalledOnce();
   });
 
   it('renders a pending cast immediately, retains it after acceptance, and replaces it only with the matching author and canonical hash', async () => {

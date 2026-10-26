@@ -45,6 +45,171 @@ That is not a newly established production release base. Deployment still
 requires the actual deployed base and the repository’s fresh-asset release
 procedure.
 
+# Individual cast and profile previews deployed · 2026-10-26
+
+Release `9807b4c7252366d9036ba572aa6a8c3afac90ade` is live at 100% traffic as
+Worker **`5cc44b68-f7e5-4315-a7bc-2ae11b92497c`**, deployment
+`6ace4260-5436-4067-93df-c5f23e59e507`. The individual-preview milestone links
+implementation `91b374d7edd3b8263226590970ff664edd5242eb`, authored
+`2026-10-26T17:40:41-03:00`. This release also includes the previously prepared
+custom public timelines implementation and its milestone described below.
+
+The actual release base was `11f8ad59a477bb112f05adb6fabf07b6fbff2c4c`, Worker
+`234ac97d-665b-4d00-8669-70614a872788`. The dev-log guard passed against that
+base for both milestones. From the clean external release checkout, complete
+`yarn verify` passed **1,711 tests across 68 files**, browser/Worker/dashboard
+typechecks, production build and offline signer typecheck/build. The dependency
+installation matches the committed manifest and frozen Yarn lockfile; all 221
+tracked inputs matched committed blobs, and the signer manifest records a clean
+source tree. Existing WalletConnect annotation and bundle-size advisories remain.
+
+The fresh external production directory contains 31 files, with no fixture
+wrappers, source maps, symlinks or browser-bundled renderer. The public
+WalletConnect project ID was preserved in compiled assets and removed from the
+deployment environment. That exact directory was deployed; all 30 non-HTML
+live asset hashes match. Existing gateway settings, server-only secret binding,
+media bucket/quota namespace and analytics bindings match the previous version.
+
+Real local Worker and production public reads verified `/pichi`, the numeric
+profile, `/cast/0xbd787413995e9136d8cc636c6f1ee5331b94ec6d` and the existing
+`/pichi/0xbd787413` short link. Telegram and X user-agent requests receive public
+profile/cast metadata. Generated 1200×630 PNGs show the actual avatar, profile
+bio or cast text; supported image-attachment layout also passed synthetic
+raster rendering checks. The live profile and cast PNGs measured 228,866 and
+164,131 bytes in this run. HEAD, invalid content-bearing image queries, the
+existing API info read and image response protections passed. The browser live
+dev log shows the individual-preview milestone first among 44 updates.
+
+Lookups have a four-second shared deadline; short aliases inspect at most 500
+recent native receipts, check observed collisions and hydrate the exact
+FID/hash. Newly copied cast links use the full hash. Public PNGs expire after
+five minutes at our edge; third-party display/caches were not tested by posting
+links. Only bounded PNG/JPEG images from our content-addressed storage or the
+fixed image CDN are embedded; other imagery uses initials/text. Some Unicode
+glyphs are unavailable in the bundled image font; metadata retains the text.
+All production checks were public reads and navigation. No wallet approval,
+account mutation, upload or social post occurred. Retained Quorum was neither
+changed nor verified; unrelated root guidance edits were preserved.
+
+Receipts: `/tmp/opencaster-entity-preview-release-receipt.json`,
+`/tmp/opencaster-entity-preview-assets-manifest.json`,
+`/tmp/opencaster-entity-preview-live-verification.json`,
+`/tmp/opencaster-entity-preview-local-verification.json` and
+`/tmp/opencaster-entity-preview-verify.log`.
+
+# Custom public timelines prepared · 2026-10-26
+
+Implementation `693433f9c354551cac05dc1917108554f94fa137`, authored
+`2026-10-26T17:36:26-03:00`, adds a wallet-free Feeds area, browser-local
+creation/customization/pins, shareable public feed rules and public Following
+browsing by username/FID. It is prepared locally and **has not been deployed**.
+The new dev-log milestone points to that implementation and preserves history.
+
+The final standalone `yarn verify` passed **1,487 tests across 63 files**, browser
+and Worker typechecks, the production browser build, and offline signer
+typecheck/build. The clean verification snapshot is
+`/tmp/opencaster-feeds-isolated-20261026-izacf0u6`, based on `be812e55` plus the
+Feeds implementation and its new milestone. Its frozen dependency manifest and
+Yarn lockfile match the pre-existing external installation. This feature changes
+no dependencies. Existing Rollup annotation and large-chunk advisories remain.
+The snapshot has local Git metadata for the signer build manifest; its
+`source-manifest.json` records the actual checked source hashes.
+
+The shared checkout also contains unrelated work in progress. An initial mixed
+snapshot failed eight tests while that work was incomplete; it is not reported
+as a pass. The successful gate excludes those unrelated source/test/dependency
+changes and verifies this feature against its committed base. No combined
+verification verdict is claimed for the other changes, and retained Quorum was
+not changed or verified.
+
+The 65 added tests cover recipe validation and size limits, Unicode share links,
+literal phrase filters, local-storage failure, mixed-source pagination and
+concurrency, atomic failure/retry, cancellation, browsing limits and cursor
+cycles. Component/App checks cover guest public Following lookup and direct
+links, shared feed loading, content controls, creation/editing/pinning/deletion,
+reload persistence and Back/Forward. Editing a shared or saved literal phrase
+containing a comma preserves its exact meaning.
+
+Chrome exercised the built browser UI through a localhost-only server with
+synthetic identities and API responses. It created a feed, combined trending and
+an account source, changed filters/order, saved and pinned it, and opened it
+without a wallet. Reload restored the saved definition and pin. The manager,
+pinned timeline, editor and direct public Following route were checked at
+390×844 with the mobile navigation visible; no horizontal overflow was visible.
+The viewport override was reset afterward. Screenshots:
+`/tmp/opencaster-feeds-desktop.png` and `/tmp/opencaster-feeds-mobile.png`.
+The fixture has no upstream proxy and rejects write requests; no real account
+action, signature, upload, push or deployment was performed.
+
+Feeds and pins stay in this browser and are shared by accounts using it. Shared
+URLs include the public feed name, sources and filters. Newest loaded first
+sorts returned casts only; no complete global feed or personalized ranking is
+claimed. Reads remain bounded to eight sources, four concurrent requests and
+64 pages per source. Hypersnap availability and indexed-history limits remain.
+
+Full final gate output: `/tmp/opencaster-feeds-final-verify-20261026.log`.
+The committed-range `yarn check:devlog --base be812e55 --head HEAD` passed for
+seven shipped files and the new `choose-your-public-timelines` milestone. That
+is a local feature comparison; deployment still requires checking the actual
+pre-release deployed commit and following the fresh-asset release procedure.
+
+# Infinite timeline browsing deployed · 2026-10-26
+
+Release `11f8ad59a477bb112f05adb6fabf07b6fbff2c4c` is live on
+**https://opencaster.org** at 100% traffic as Worker version
+`234ac97d-665b-4d00-8669-70614a872788`, deployment
+`b3e13d69-ed2c-4746-a27a-d43954f38ea7`. The release includes implementation
+`cb71fddd38ba4e4930cd100d5bef362320a5e2bb` and its separate milestone. Both
+commits were pushed to the existing `codex/farcaster-conversation-links` branch
+before deployment. In-progress workspace changes were excluded from this
+pinned release.
+
+Authenticated Cloudflare deployment metadata established the actual pre-release
+source as `d231a512076c3c15f3771616a5bdfc0506a92350`, Worker version
+`182a2e1e-3e26-4421-94b9-a9623502695e`, deployment
+`b9b5d3f1-2f46-4988-9002-16020d981f8d`. It was confirmed unchanged immediately
+before upload. The dev-log guard passed against that exact deployed source.
+The complete standalone `yarn verify` passed **1,422 tests across 59 files**,
+browser/Worker typechecks and production build, and offline signer
+typecheck/build. Existing Rollup annotation and large-chunk advisories remain.
+Retained Quorum was neither changed nor verified.
+
+Committed sources were archived at
+`/tmp/opencaster-infinite-release-20261026-jlnytoib`; all 201 release inputs
+matched their recorded hashes. The frozen external dependency installation’s
+package manifest and lockfile match this release. The prior public WalletConnect
+identifier was preserved and its deployed bundle was verified before rebuilding.
+Fresh production assets were built into
+`/tmp/opencaster-infinite-production-20261026-6mz5zi41`. Inspection covered all
+28 files, resolved local references, all 42 milestones, the implementation link,
+and absence of fixture wrappers, source maps and symlinks. Wrangler’s dry run
+passed and that exact inspected directory was deployed; its hashes stayed
+unchanged after upload.
+
+Post-deployment metadata confirms 100% traffic on the new Worker, unchanged
+runtime settings and identical bindings, including the private-primary/read-
+backup settings, secret binding, media bucket/quota namespace and analytics
+bindings. Gateway code and configuration were unchanged in this release.
+Public reads verified all 27 non-HTML asset hashes, sharing metadata and headers,
+the social image and robots file. `/api/v1/info` returned 200 and the legacy
+`/devlog` address retained its canonical 308 redirect.
+
+Live desktop browsing started with 25 casts and automatically loaded 50 near
+the bottom, without a More conversations button. At 390×844, scrolling loaded
+75 casts with no alerts or horizontal overflow. The viewport override was
+reset. The live dev log displayed the new Keep scrolling through conversations
+milestone, its exact implementation link and all 42 source links. These checks
+used public reads/navigation only; no production wallet, signing, upload or
+social account action was performed. Available history still depends on
+Hypersnap.
+
+Receipts: `/tmp/opencaster-infinite-release-receipt.json`,
+`/tmp/opencaster-infinite-assets-manifest.json`,
+`/tmp/opencaster-infinite-live-verification.json` and
+`/tmp/opencaster-infinite-release-verify.log`. Screenshots:
+`/tmp/opencaster-infinite-live-desktop.jpg` and
+`/tmp/opencaster-infinite-live-mobile.jpg`.
+
 # Infinite timeline browsing prepared · 2026-10-26
 
 Implementation `cb71fddd38ba4e4930cd100d5bef362320a5e2bb`, authored

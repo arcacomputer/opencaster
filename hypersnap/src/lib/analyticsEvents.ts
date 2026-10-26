@@ -1,13 +1,13 @@
 /** Shared browser/Worker boundary. Only these aggregate labels may leave the app. */
 export const ANALYTICS_PAGES = [
-  'discover', 'following', 'bookmarks', 'notifications', 'channels', 'devlog',
+  'discover', 'following', 'feeds', 'feed', 'bookmarks', 'notifications', 'channels', 'devlog',
   'settings', 'connect', 'search', 'channel', 'profile', 'cast', 'not-found',
 ] as const;
 export type AnalyticsPage = typeof ANALYTICS_PAGES[number];
 
 export const ANALYTICS_ACTIONS = [
   'nav-discover', 'nav-following', 'nav-bookmarks', 'nav-notifications', 'nav-search',
-  'nav-channels', 'nav-devlog', 'nav-settings', 'nav-profile', 'nav-channel',
+  'nav-channels', 'nav-feeds', 'nav-devlog', 'nav-settings', 'nav-profile', 'nav-channel',
   'connect-open', 'landing-explore', 'composer-open', 'node-support-open',
   'theme-toggle', 'source-open', 'hypersnap-open', 'shortcuts-open',
   'cast-open', 'cast-parent-open', 'cast-replies-open', 'cast-quote-open',

@@ -6,6 +6,7 @@ import { normalizeHypersnapEnsName } from '../src/lib/ensName';
 import { handleAnalyticsEvents, recordRequestMetric, type AnalyticsEnv } from './analytics';
 import { fetchUpstream, InvalidUpstreamResponseError, parseUpstreamObject, resolveReadFallback, resolveUpstream, type UpstreamConfig } from './upstream';
 import { withShareUrl } from './sharing';
+import { handleShareImage } from './shareImages';
 export { MediaUploadQuota } from './media';
 export interface Env extends MediaEnv, AnalyticsEnv {
   ASSETS: { fetch(request: Request): Promise<Response> };
@@ -474,10 +475,15 @@ async function routeRequest(request: Request, env: Env, ctx?: WorkerExecutionCon
     return new Response(null, { status: 308, headers });
   }
   if (url.pathname === '/_analytics/events') return secure(await handleAnalyticsEvents(request, env));
+  if (url.pathname === '/_share' || url.pathname.startsWith('/_share/')) {
+    const response = secure(await handleShareImage(request, env, ctx));
+    response.headers.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    return response;
+  }
   if (url.pathname === '/media' || url.pathname.startsWith('/media/')) return handleMediaRequest(request, env);
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return proxy(request, url, env, ctx);
   if (request.method !== 'GET' && request.method !== 'HEAD') return failure(405, 'method_not_allowed', 'This method is unavailable.');
-  const response = secure(await withShareUrl(await env.ASSETS.fetch(request), url, request.method));
+  const response = secure(await withShareUrl(await env.ASSETS.fetch(request), url, request.method, env, request.signal));
   // The public card can also be embedded directly by link-preview services.
   if (url.pathname === '/opencaster-social-v1.png' || url.pathname === '/opencaster-social-v1.svg') {
     response.headers.set('Cross-Origin-Resource-Policy', 'cross-origin');
@@ -493,7 +499,7 @@ export async function handleRequest(request: Request, env: Env, ctx?: WorkerExec
     : path === '/media' || path.startsWith('/media/') ? 'media'
       // Profile names can contain dots, including ENS/Base names. Only known
       // static namespaces/files are assets; a suffix is not enough to tell.
-      : path.startsWith('/assets/') || path.startsWith('/licenses/') || STATIC_ASSET_PATHS.has(path) ? 'asset'
+      : path.startsWith('/assets/') || path.startsWith('/licenses/') || path.startsWith('/_share/') || path === '/_share' || STATIC_ASSET_PATHS.has(path) ? 'asset'
         : request.method === 'GET' || request.method === 'HEAD' ? 'page' : 'other';
   const started = Date.now();
   let status = 500;

@@ -10,7 +10,7 @@ const cast: Cast = {
   author: { fid: 20, username: 'yes2crypto.eth', display_name: 'YES2Crypto', custody_address: '', profile: { bio: { text: '' } }, follower_count: 0, following_count: 0 },
   text: 'A public cast', timestamp: '2026-10-23T12:00:00Z', embeds: [], reactions: { likes_count: 0, recasts_count: 0 }, replies: { count: 0 },
 };
-const link = 'https://opencaster.org/yes2crypto.eth/0x8d336914';
+const link = `https://opencaster.org/yes2crypto.eth/${cast.hash}`;
 let container: HTMLDivElement; let root: Root;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -26,7 +26,7 @@ async function click(label: string) {
 }
 
 describe('Farcaster-shaped cast sharing', () => {
-  it('uses the same author/prefix URL for manual copying, clipboard, and opening a cast', async () => {
+  it('uses the same exact author/hash URL for manual copying, clipboard, and opening a cast', async () => {
     const copy = vi.fn().mockResolvedValue(undefined);
     vi.spyOn(navigator.clipboard, 'writeText').mockImplementation(copy);
     await render();
@@ -47,6 +47,22 @@ describe('Farcaster-shaped cast sharing', () => {
 
   it('retains author scope through a FID URL when no usable username is available', async () => {
     await render({ ...cast, author: { ...cast.author, username: '' } });
-    expect(container.querySelector('input')?.value).toBe('https://opencaster.org/20/0x8d336914');
+    expect(container.querySelector('input')?.value).toBe(`https://opencaster.org/20/${cast.hash}`);
+  });
+
+  it('upgrades a supplied short path and retains a verified exact path', async () => {
+    for (const path of ['/yes2crypto.eth/0x8d336914', `/yes2crypto.eth/${cast.hash}`]) {
+      await act(async () => root.render(<ShareCastDialog cast={cast} path={path} onClose={() => {}} notify={() => {}} />));
+      expect(container.querySelector('input')?.value).toBe(link);
+    }
+    await act(async () => root.render(<ShareCastDialog cast={cast} path={`/cast/${cast.hash}`} onClose={() => {}} notify={() => {}} />));
+    expect(container.querySelector('input')?.value).toBe(`https://opencaster.org/cast/${cast.hash}`);
+  });
+
+  it('does not share another author or hash through a supplied path', async () => {
+    for (const path of [`/another-author/${cast.hash}`, `/cast/0x${'ab'.repeat(20)}`]) {
+      await act(async () => root.render(<ShareCastDialog cast={cast} path={path} onClose={() => {}} notify={() => {}} />));
+      expect(container.querySelector('input')?.value).toBe(link);
+    }
   });
 });
