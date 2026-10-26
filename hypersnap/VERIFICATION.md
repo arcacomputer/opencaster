@@ -1,3 +1,70 @@
+# Immediate casting feedback merged and deployed · 2026-10-26
+
+Release `92c05e4f8c55f255886ddd0867c6d1038bd1d346` is live at 100% traffic as
+Worker **`a7167a33-6098-4e8b-bc8d-167a9a4a30aa`**, deployment
+`46437390-2fd8-41d1-bf79-82ef2d581141`. The casting milestone links integrated
+implementation `a8bde42399774899be4758f1ec99fbb084e333b4`, authored
+`2026-10-26T18:55:29-03:00`; its original isolated implementation was
+`ef9ac9334e2c511c7d8b2de03719dab83728b044`. The improvements were merged into
+the existing `codex/farcaster-conversation-links` application branch and pushed
+before deployment. Newer committed identity, public feeds and channel/feed
+sharing changes were retained. Unrelated root guidance edits and output remain
+outside the release.
+
+The actual pre-release source was
+`3f154f01ca809b0513a0cfd1377019016fcd8959`, Worker
+`39a9160c-e691-431f-a380-944845bb096b`, deployment
+`4493d665-7f91-4056-b5fb-c44db413bafe`. Authenticated deployment metadata was
+recorded and confirmed unchanged immediately before upload. The dev-log guard
+passed against that exact deployed source for the casting and newly included
+channel/feed-preview milestones.
+
+From the clean external worktree, complete `yarn verify` passed **1,810 tests
+across 72 files**, browser/Worker/dashboard typechecks, production build and
+offline signer typecheck/build. The merged frozen Yarn dependency installation
+matches the committed package manifest and lockfile. An earlier combined run
+exposed a test that asserted a lazy-loaded public Following picker after a fixed
+delay; it now waits for the actual control. The final gate passed after all
+merges and that test correction. Existing WalletConnect annotation and large
+bundle advisories remain. Retained Quorum was neither changed nor verified.
+
+Fresh production assets were built at
+`/tmp/opencaster-casting-production-20261026-0ZdNmZ`. All 230 release inputs
+matched their committed blobs; all 33 asset files were inspected with the
+existing public WalletConnect project identifier preserved. There are no
+fixture wrappers, source maps, symlinks or browser-bundled Worker renderer in
+the production asset directory. Wrangler's dry run confirmed the renderer Wasm
+is included in the Worker bundle. That exact inspected directory was deployed,
+and its hashes remained unchanged. All 32 non-HTML live asset hashes match.
+Deployed runtime and all bindings match the pre-release version, including the
+origin settings and secret binding, media bucket/quota and analytics bindings.
+
+Regression checks cover immediate local publishing cards, explicit submitted,
+uncertain and rejected outcomes, retained drafts, author/full-hash reconciliation,
+receipt/read ordering, closing an in-flight composer, lock/account isolation,
+reply and quote destinations, and token/FID changes between custom/public
+Following feeds. Same-feed refresh and failed refresh retain existing casts.
+Profile Casts/Replies/Photos return one complete filtered underlying page and
+preserve continuation for scrolling. No authorization check or permission was
+removed, and no write is automatically replayed.
+
+Production public reads passed 42 checks covering the new compiled dev log,
+page references, every non-HTML asset, API info, public feed routes, legacy
+redirect and actual profile/cast 1200×630 PNGs. Additional channel and shared
+feed PNG reads also passed at 1200×630. Live browser navigation shows the casting
+milestone first among 47 updates, with its implementation link and current
+identity. Screenshot: `/tmp/opencaster-casting-live-devlog.png`. All production
+checks were public reads/navigation; no real account action, wallet approval,
+upload or cast was performed. Pending/write behavior was tested synthetically.
+
+Receipts: `/tmp/opencaster-casting-release-receipt.json`,
+`/tmp/opencaster-casting-release-base.json`,
+`/tmp/opencaster-casting-release-assets-manifest.json`,
+`/tmp/opencaster-casting-release-verify.log`,
+`/tmp/opencaster-casting-release-devlog.log`,
+`/tmp/opencaster-casting-live-verification.json` and
+`/tmp/opencaster-casting-sharing-live-verification.json`.
+
 # Channel and custom-feed previews deployed · 2026-10-26
 
 Implementation `0c749778f220643a0e2dd3186baee6fd87b895c6`, authored
