@@ -1,9 +1,9 @@
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
-import { IconSettings, IconKeyboard, IconBell, IconDots, IconTrash, IconArrowLeft, IconArrowUpRight, IconBookmark, IconChevronRight, IconCompass, IconHash, IconHeart, IconHome, IconLock, IconPencil, IconMessageCircle, IconMoon, IconRefresh, IconRepeat, IconSearch, IconShare, IconShieldLock, IconSparkles, IconSun, IconUser, IconUsers, IconWorld, IconX } from '@tabler/icons-react';
+import { IconSettings, IconKeyboard, IconBell, IconDots, IconTrash, IconArrowLeft, IconArrowUpRight, IconBookmark, IconChevronRight, IconCompass, IconHash, IconHeart, IconHome, IconLayoutList, IconPin, IconLock, IconPencil, IconMessageCircle, IconMoon, IconRefresh, IconRepeat, IconSearch, IconShare, IconShieldLock, IconSparkles, IconSun, IconUser, IconUsers, IconWorld, IconX } from '@tabler/icons-react';
 import { Button, Input, Modal } from './components/ui';
 import { getFeed, getProfileFeed, hasImageEmbed, getCast, getChannels, getChannel, getUser, getInfo, getConversation, type Channel, type Cast, type User, type ConversationNode } from './lib/api';
 import type { WalletSession } from './lib/auth';
-import { castPath, castPermalink, parseRoute, parseLocalPath, routePath, searchPath, profilePath, publicUrl, connectReturnPath, type AppRoute } from './lib/navigation';
+import { castPath, castPermalink, parseRoute, parseLocalPath, routePath, searchPath, profilePath, feedPath, followingPath, publicUrl, connectReturnPath, type AppRoute } from './lib/navigation';
 import { ShareCastDialog } from './components/ShareCast';
 import FollowButton from './components/FollowButton';
 import FollowListDialog from './components/FollowListDialog';
@@ -34,9 +34,12 @@ import { quorumSocialPath } from './lib/socialLinks';
 import { trackPageView } from './lib/analytics';
 import { getCastAncestors, matchesParentCast, parentCastReference, type CastAncestors } from './lib/castContext';
 import { createParentCastReader } from './lib/parentCastReader';
+import { decodeFeed, encodeFeed, newSavedFeed, normalizeFeedDefinition, orderFeedCasts, readSavedFeeds, writeSavedFeeds, type FeedDefinition, type SavedFeed } from './lib/customFeeds';
+import { readCustomFeed } from './lib/customFeedReader';
 import './familiar.scss';
 import './cast-features.scss';
 import './reply-context.scss';
+import './feeds.scss';
 
 const ContentSettings = lazy(() => import('./components/ContentSettings'));
 const AnalyticsSettings = lazy(() => import('./components/AnalyticsSettings'));
@@ -46,6 +49,9 @@ const ParentCastRead = createContext<typeof getCast>(getCast);
 const DevLog = lazy(() => import('./components/DevLog'));
 const ConnectAccount = lazy(() => import('./components/ConnectAccount'));
 const DeviceSettings = lazy(() => import('./components/ConnectAccount').then(module => ({ default: module.DeviceSettings })));
+const FeedsView = lazy(() => import('./components/Feeds').then(module => ({ default: module.FeedsView })));
+const FeedHeader = lazy(() => import('./components/Feeds').then(module => ({ default: module.FeedHeader })));
+const PublicFollowingPicker = lazy(() => import('./components/Feeds').then(module => ({ default: module.PublicFollowingPicker })));
 
 type ConversationRoute = Extract<AppRoute, { kind: 'cast' | 'cast-alias' }>;
 type FeedRoute = Exclude<AppRoute, { kind: 'cast' | 'cast-alias' | 'connect' }>;
@@ -267,7 +273,12 @@ export default function App() {
   const signIn = route.kind === 'connect';
   const channel = base.kind === 'channel' ? base.channel : '';
   const profileTab = base.kind === 'profile' ? base.tab ?? 'casts' : 'casts';
-  const featureView = view === 'search' || view === 'notifications' || view === 'channels' || view === 'devlog' || view === 'settings' || view === 'connect';
+  const featureView = view === 'search' || view === 'notifications' || view === 'channels' || view === 'feeds' || view === 'devlog' || view === 'settings' || view === 'connect';
+  const feedToken = base.kind === 'feed' ? base.token : undefined;
+  const customFeed = useMemo(() => feedToken ? decodeFeed(feedToken) : undefined, [feedToken]);
+  const [savedFeeds, setSavedFeeds] = useState<SavedFeed[]>(readSavedFeeds);
+  const pinnedFeeds = savedFeeds.filter(item => item.pinned);
+  const savedFeed = useMemo(() => customFeed ? savedFeeds.find(item => encodeFeed(item.definition) === encodeFeed(customFeed)) : undefined, [savedFeeds, customFeed]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [savedChannels, setSavedChannels] = useState<Channel[]>(readChannelPins);
   const [channelInfo, setChannelInfo] = useState<Channel | null>(null);
@@ -275,6 +286,7 @@ export default function App() {
   const channelCache = useRef(new Map<string, Channel>());
   const profileIdentifier = base.kind === 'profile' ? base.identifier : undefined;
   const [session, setSession] = useState<WalletSession | null>(null);
+  const followingFid = base.kind === 'following' ? base.fid ?? session?.fid : undefined;
   const connectFlow = useRef<ConnectFlow | null>(null);
   const connectGeneration = useRef(0);
   const connectReturning = useRef(false);
@@ -461,7 +473,7 @@ export default function App() {
     } catch (error) { if (stillCurrent()) { setFollowError(message(error)); setFollowingProfile(null); } else notify(message(error)); }
     finally { setFollowBusy(false); }
   }
-  const activeTitle = view === 'profile' ? profile?.display_name || profile?.username || 'Profile' : view === 'channel' ? channelInfo?.name || channel : view === 'following' ? 'Following' : view === 'bookmarks' ? 'Bookmarks' : view === 'not-found' ? 'Page not found' : view === 'notifications' ? 'Notifications' : view === 'search' ? 'Search' : view === 'channels' ? 'Channels' : view === 'devlog' ? 'Dev log' : view === 'settings' ? 'Settings' : view === 'connect' ? 'Connect your identity' : 'Discover';
+  const activeTitle = view === 'feed' ? customFeed?.name || 'Feed' : view === 'feeds' ? 'Feeds' : view === 'profile' ? profile?.display_name || profile?.username || 'Profile' : view === 'channel' ? channelInfo?.name || channel : view === 'following' ? 'Following' : view === 'bookmarks' ? 'Bookmarks' : view === 'not-found' ? 'Page not found' : view === 'notifications' ? 'Notifications' : view === 'search' ? 'Search' : view === 'channels' ? 'Channels' : view === 'devlog' ? 'Dev log' : view === 'settings' ? 'Settings' : view === 'connect' ? 'Connect your identity' : 'Discover';
   const profileFid = profile?.fid;
   const sessionFid = session?.fid;
   const sessionPublicKey = session?.publicKey;
@@ -536,7 +548,7 @@ export default function App() {
   useEffect(() => { document.documentElement.classList.toggle('dark', dark); try { localStorage.setItem('quorum.theme', dark ? 'dark' : 'light'); } catch { /* Theme still works for this tab. */ } }, [dark]);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 6500); return () => clearTimeout(timer); }, [toast]);
   useEffect(() => () => currentSession.current?.dispose(), []);
-  useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [view, channel, profile?.fid, profileTab]);
+  useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [view, channel, profile?.fid, profileTab, feedToken, followingFid]);
   const threadOpen = isConversationRoute(route);
   const threadPath = threadOpen ? routePath(route) : '';
   const threadHeading = useRef<HTMLHeadingElement>(null);
@@ -556,15 +568,15 @@ export default function App() {
     const controller = new AbortController();
     feedGeneration.current += 1; feedMoreRead.current?.abort(); feedMoreRead.current = null; feedCursors.current = new Set();
     setError(''); setMoreError(''); setPaginationNotice(''); setCasts([]); setCursor(null); setLoadingMore(false);
-    if (featureView || view === 'bookmarks' || view === 'not-found' || (view === 'profile' && profileFid === undefined) || (view === 'following' && sessionFid === undefined)) { setLoading(false); return; }
+    if (featureView || view === 'bookmarks' || view === 'not-found' || (view === 'profile' && profileFid === undefined) || (view === 'following' && followingFid === undefined) || (view === 'feed' && !customFeed)) { setLoading(false); return; }
     setLoading(true);
-    const request = view === 'profile' && profileFid !== undefined ? getProfileFeed({ fid: profileFid, tab: profileTab, limit: 25, signal: controller.signal }) : getFeed({ kind: view === 'channel' ? 'channel' : view === 'following' ? 'following' : 'trending', fid: sessionFid, channel, ...(view === 'discover' ? { timeWindow: trendingWindow } : {}), limit: 25, signal: controller.signal });
+    const request = customFeed ? readCustomFeed(customFeed, null, controller.signal) : view === 'profile' && profileFid !== undefined ? getProfileFeed({ fid: profileFid, tab: profileTab, limit: 25, signal: controller.signal }) : getFeed({ kind: view === 'channel' ? 'channel' : view === 'following' ? 'following' : 'trending', fid: view === 'following' ? followingFid : sessionFid, channel, ...(view === 'discover' ? { timeWindow: trendingWindow } : {}), limit: 25, signal: controller.signal });
     request
       .then(data => { if (!controller.signal.aborted) { setCasts(data.casts); setCursor(data.next?.cursor || null); } })
       .catch(error => { if (!controller.signal.aborted) setError(message(error)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { controller.abort(); feedMoreRead.current?.abort(); };
-  }, [view, channel, sessionFid, sessionPublicKey, profileFid, profileTab, trendingWindow, refresh, featureView]);
+  }, [view, channel, sessionFid, sessionPublicKey, profileFid, profileTab, trendingWindow, refresh, featureView, followingFid, customFeed]);
   useEffect(() => {
     if (conversationHash === undefined) { setThread(null); setConversation(null); setThreadError(''); setThreadErrorKey(''); return; }
     const key = castPath(conversationHash);
@@ -611,6 +623,25 @@ export default function App() {
     setSavedChannels(next);
     if (!writeChannelPins(next)) notify('Channel shortcuts will last for this tab. Browser storage is unavailable.');
   }
+  function updateSavedFeeds(next: SavedFeed[], success: string) {
+    setSavedFeeds(next);
+    notify(writeSavedFeeds(next) ? success : 'Feeds will last for this tab. Browser storage is unavailable.');
+  }
+  function saveFeed(definition: FeedDefinition, existingId?: string) {
+    const valid = normalizeFeedDefinition(definition);
+    if (!valid) throw new Error('Choose a valid name, sources and filters for this feed.');
+    const existing = existingId ? savedFeeds.find(item => item.id === existingId) : savedFeeds.find(item => encodeFeed(item.definition) === encodeFeed(valid));
+    if (!existing && savedFeeds.length >= 30) throw new Error('Save up to 30 feeds in this browser. Remove one before adding another.');
+    const next = existing ? savedFeeds.map(item => item.id === existing.id ? { ...item, definition: valid } : item) : [...savedFeeds, newSavedFeed(valid)];
+    updateSavedFeeds(next, existing ? 'Feed updated on this browser.' : 'Feed saved on this browser.');
+    if (view === 'feed') navigate(feedPath(valid));
+  }
+  function toggleFeedPin(id: string) {
+    const target = savedFeeds.find(item => item.id === id);
+    if (!target) return;
+    updateSavedFeeds(savedFeeds.map(item => item.id === id ? { ...item, pinned: !item.pinned } : item), target.pinned ? 'Feed unpinned.' : 'Feed pinned on this browser.');
+  }
+  function deleteFeed(id: string) { updateSavedFeeds(savedFeeds.filter(item => item.id !== id), 'Feed removed from this browser.'); }
   function openChannel(item: Channel) { channelCache.current.set(item.id, item); navigate(`/channel/${item.id}`); }
   async function loadMore() {
     // Observer callbacks can arrive together before React commits busy state.
@@ -619,7 +650,7 @@ export default function App() {
     const generation = feedGeneration.current;
     const controller = new AbortController(); feedMoreRead.current = controller;
     try {
-      const data = await (view === 'profile' && profile ? getProfileFeed({ fid: profile.fid, tab: profileTab, cursor, limit: 25, signal: controller.signal }) : getFeed({ kind: view === 'channel' ? 'channel' : view === 'following' ? 'following' : 'trending', fid: session?.fid, channel, ...(view === 'discover' ? { timeWindow: trendingWindow } : {}), cursor, limit: 25, signal: controller.signal }));
+      const data = await (customFeed ? readCustomFeed(customFeed, cursor, controller.signal) : view === 'profile' && profile ? getProfileFeed({ fid: profile.fid, tab: profileTab, cursor, limit: 25, signal: controller.signal }) : getFeed({ kind: view === 'channel' ? 'channel' : view === 'following' ? 'following' : 'trending', fid: view === 'following' ? followingFid : session?.fid, channel, ...(view === 'discover' ? { timeWindow: trendingWindow } : {}), cursor, limit: 25, signal: controller.signal }));
       if (generation !== feedGeneration.current || controller.signal.aborted) return;
       feedCursors.current.add(cursor);
       const next = data.next?.cursor || null;
@@ -628,7 +659,7 @@ export default function App() {
         const merged = new Map(previous.map(cast => [cast.hash.replace(/^0x/i, '').toLowerCase(), cast]));
         for (const cast of data.casts) merged.set(cast.hash.replace(/^0x/i, '').toLowerCase(), cast);
         const values = [...merged.values()];
-        return view === 'channel' ? values.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp) || a.hash.localeCompare(b.hash)) : values;
+        return customFeed ? orderFeedCasts(values, customFeed) : view === 'channel' ? values.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp) || a.hash.localeCompare(b.hash)) : values;
       }); setCursor(repeated ? null : next);
       if (repeated) setPaginationNotice('The node repeated a feed page. Refresh the feed to check for more conversations.');
     } catch (error) { if (generation === feedGeneration.current && !controller.signal.aborted) setMoreError(message(error)); }
@@ -670,13 +701,14 @@ export default function App() {
   const filteredCount = feedCandidates.length - visibleCasts.length;
   if (!session && !exploring && route.kind === 'discover') return <Landing onSignIn={() => requestSignIn()} onExplore={() => { try { localStorage.setItem(exploreKey, '1'); } catch { /* Exploring still works for this tab. */ } setExploring(true); }} onNavigate={path => navigate(path)} />;
   return <ParentCastRead.Provider value={parentReader.read}><ContentControls.Provider value={controls}><div className={`app ${threadOpen ? 'app--conversation' : ''}`}>
-    <aside className="sidebar">
+    <aside className={`sidebar ${pinnedFeeds.length ? 'sidebar--feeds' : ''}`}>
       <a data-analytics="nav-discover" href="/" onClick={event => localClick(event, () => navigate('/'))} className="wordmark"><img src="/opencaster-symbol.svg" alt="" />Opencaster</a>
       <p className="brand-credit">Powered by <a href="https://arca.computer" target="_blank" rel="noopener noreferrer">Arca Computer</a></p>
       <div className="network-label"><span className="status-dot" /> Runs on Hypersnap <span className="beta">BETA</span></div>
       <nav aria-label="Main navigation">
         <Button data-analytics="nav-discover" variant="ghost" className={`nav-item ${view === 'discover' ? 'active' : ''}`} onClick={() => navigate('/')}><IconCompass size={21} />Discover <IconSparkles size={15} className="nav-spark" /></Button>
         <Button data-analytics="nav-following" variant="ghost" className={`nav-item ${view === 'following' ? 'active' : ''}`} onClick={() => navigate('/following')}><IconUsers size={21} />Following</Button>
+        <a data-analytics="nav-feeds" className={`button button--ghost nav-item ${view === 'feeds' || view === 'feed' ? 'active' : ''}`} href="/feeds" aria-current={view === 'feeds' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/feeds'))}><IconLayoutList size={21} />Feeds</a>
         <Button data-analytics="nav-search" variant="ghost" className={`nav-item ${view === 'search' ? 'active' : ''}`} onClick={() => navigate('/search')}><IconSearch size={21} />Search</Button>
         <Button data-analytics="nav-notifications" variant="ghost" className={`nav-item ${view === 'notifications' ? 'active' : ''}`} onClick={() => navigate('/notifications')}><IconBell size={21} />Notifications</Button>
         <Button data-analytics="nav-channels" variant="ghost" className={`nav-item ${view === 'channels' ? 'active' : ''}`} onClick={() => navigate('/channels')}><IconHash size={21} />Channels</Button>
@@ -685,6 +717,7 @@ export default function App() {
         <a data-analytics="nav-settings" className={`button button--ghost nav-item ${view === 'settings' ? 'active' : ''}`} href="/settings" aria-current={view === 'settings' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/settings'))}><IconSettings size={21} />Settings</a>
       </nav>
       {session && <Button data-analytics="composer-open" className="sidebar-cast" onClick={() => setComposeOpen(true)}><IconPencil size={19} />Cast</Button>}
+      {pinnedFeeds.length > 0 && <><div className="sidebar__section-label">PINNED FEEDS <IconPin size={14} /></div><nav aria-label="Pinned feeds">{pinnedFeeds.map(item => <a key={item.id} className={`button button--ghost channel-nav ${savedFeed?.id === item.id ? 'active' : ''}`} href={feedPath(item.definition)} aria-current={savedFeed?.id === item.id ? 'page' : undefined} onClick={event => localClick(event, () => navigate(feedPath(item.definition)))}><IconLayoutList size={17} /><span>{item.definition.name}</span></a>)}</nav></>}
       {savedChannels.length > 0 && <><div className="sidebar__section-label">SAVED ON THIS BROWSER <IconBookmark size={14} /></div><nav aria-label="Saved channels">{savedChannels.slice(0, 8).map(item => <Button data-analytics="nav-channel" key={item.id} variant="ghost" className={`channel-nav ${view === 'channel' && channel === item.id ? 'active' : ''}`} onClick={() => openChannel(item)}><span className="channel-mark"><IconHash size={17} /></span>{item.name || item.id}</Button>)}</nav></>}
       <div className="sidebar-explore">
       <div className="sidebar__section-label">EXPLORE CHANNELS <IconHash size={14} /></div>
@@ -694,9 +727,12 @@ export default function App() {
     </aside>
     <main className="main">
       <div className="main-base" hidden={threadOpen}>
-      <header className="page-header"><a data-analytics="nav-discover" className="page-header__logo" href="/" aria-label="Opencaster home" onClick={event => localClick(event, () => navigate('/'))}><img src="/opencaster-symbol.svg" alt="" /></a>{(view === 'profile' || view === 'channel') && <Button variant="ghost" className="page-header__back" aria-label={view === 'channel' ? 'Back to channels' : 'Back to discover'} onClick={() => navigate(view === 'channel' ? '/channels' : '/')}><IconArrowLeft size={20} /></Button>}<h1>{activeTitle}<span className="title-star">✳</span></h1><div className="header-actions">{networkError && <span className="live-pill"><span className="status-dot status-dot--offline" />Node unavailable</span>}{view !== 'devlog' && view !== 'settings' && <Button data-analytics="feed-refresh" variant="ghost" aria-label="Refresh feed" onClick={() => setRefresh(n => n + 1)}><IconRefresh size={19} className={loading ? 'spin' : ''} /></Button>}<a data-analytics="nav-bookmarks" className="button button--ghost header-bookmarks" href="/bookmarks" aria-label="Bookmarks" aria-current={view === 'bookmarks' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/bookmarks'))}><IconBookmark size={19} /></a><Button data-analytics="nav-settings" variant="ghost" className="header-content-settings" aria-label="Settings" onClick={() => navigate('/settings')}><IconSettings size={19} /></Button><Button data-analytics={session ? 'nav-profile' : 'connect-open'} className="mobile-connect" variant="secondary" onClick={() => session ? navigate('/profile') : requestSignIn()}>{session ? 'My profile' : 'Sign in'}</Button></div></header>
+      <header className={`page-header ${view === 'feed' ? 'page-header--feed' : ''}`}><a data-analytics="nav-discover" className="page-header__logo" href="/" aria-label="Opencaster home" onClick={event => localClick(event, () => navigate('/'))}><img src="/opencaster-symbol.svg" alt="" /></a>{(view === 'profile' || view === 'channel') && <Button variant="ghost" className="page-header__back" aria-label={view === 'channel' ? 'Back to channels' : 'Back to discover'} onClick={() => navigate(view === 'channel' ? '/channels' : '/')}><IconArrowLeft size={20} /></Button>}<h1>{activeTitle}<span className="title-star">✳</span></h1><div className="header-actions">{networkError && <span className="live-pill"><span className="status-dot status-dot--offline" />Node unavailable</span>}{view !== 'devlog' && view !== 'settings' && <Button data-analytics="feed-refresh" variant="ghost" aria-label="Refresh feed" onClick={() => setRefresh(n => n + 1)}><IconRefresh size={19} className={loading ? 'spin' : ''} /></Button>}<a data-analytics="nav-bookmarks" className="button button--ghost header-bookmarks" href="/bookmarks" aria-label="Bookmarks" aria-current={view === 'bookmarks' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/bookmarks'))}><IconBookmark size={19} /></a><Button data-analytics="nav-settings" variant="ghost" className="header-content-settings" aria-label="Settings" onClick={() => navigate('/settings')}><IconSettings size={19} /></Button><Button data-analytics={session ? 'nav-profile' : 'connect-open'} className="mobile-connect" variant="secondary" onClick={() => session ? navigate('/profile') : requestSignIn()}>{session ? 'My profile' : 'Sign in'}</Button></div></header>
       {view !== 'devlog' && view !== 'settings' && view !== 'profile' && <div className="compact-tools"><form className="search" onSubmit={search}><IconSearch size={18} /><Input aria-label="Search casts or people" placeholder="Search casts or @people" value={query} onChange={event => setQuery(event.target.value)} /><Button data-analytics="search-submit" variant="ghost" type="submit" aria-label="Search"><IconChevronRight size={18} /></Button></form><nav className="channel-chips" aria-label="Explore channels">{channels.map(item => <Button data-analytics="nav-channel" key={item.id} variant="ghost" className={view === 'channel' && channel === item.id ? 'active' : ''} onClick={() => navigate(`/channel/${item.id}`)}>/{item.id}</Button>)}<Button data-analytics="nav-channels" variant="ghost" onClick={() => navigate('/channels')}>All channels</Button></nav></div>}
-      {(view === 'discover' || view === 'following') && <nav className="feature-tabs home-feed-tabs" aria-label="Home feeds"><a data-analytics="nav-discover" href="/" aria-current={view === 'discover' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/'))}>Discover</a><a data-analytics="nav-following" href="/following" aria-current={view === 'following' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/following'))}>Following</a></nav>}
+      {(view === 'discover' || view === 'following' || view === 'feeds' || view === 'feed') && <nav className="feature-tabs home-feed-tabs pinned-feed-tabs" aria-label="Home feeds"><a data-analytics="nav-discover" href="/" aria-current={view === 'discover' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/'))}>Discover</a><a data-analytics="nav-following" href="/following" aria-current={view === 'following' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/following'))}>Following</a>{pinnedFeeds.map(item => <a key={item.id} href={feedPath(item.definition)} aria-current={savedFeed?.id === item.id ? 'page' : undefined} onClick={event => localClick(event, () => navigate(feedPath(item.definition)))}><IconPin size={14} />{item.definition.name}</a>)}<a data-analytics="nav-feeds" href="/feeds" aria-current={view === 'feeds' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/feeds'))}>Feeds</a></nav>}
+      {view === 'feeds' && <Suspense fallback={<p className="devlog-loading" role="status">Loading feeds…</p>}><FeedsView feeds={savedFeeds} onOpen={definition => navigate(feedPath(definition))} onSave={saveFeed} onTogglePin={toggleFeedPin} onDelete={deleteFeed} sessionFid={session?.fid} /></Suspense>}
+      {view === 'feed' && customFeed && <Suspense fallback={<p className="devlog-loading" role="status">Loading feed controls…</p>}><FeedHeader key={feedToken} definition={customFeed} saved={savedFeed} onSave={saveFeed} onTogglePin={toggleFeedPin} onNavigate={navigate} notify={notify} /></Suspense>}
+      {view === 'following' && <Suspense fallback={<p className="devlog-loading" role="status">Loading public feed lookup…</p>}><PublicFollowingPicker key={followingFid ?? 'guest'} fid={followingFid} onOpen={fid => navigate(followingPath(fid))} />{followingFid !== undefined && <div className="feed-heading"><Button variant="secondary" onClick={() => navigate(feedPath({ version: 1, name: `Following · FID ${followingFid}`, sources: [{ kind: 'following', fid: followingFid }], order: 'source', filters: { includeWords: [], excludeWords: [], hideReplies: false, imagesOnly: false } }))}>Customize this timeline</Button></div>}</Suspense>}
       <NodeSupportBanner visible={view === 'discover'} />
       {view === 'profile' && profile && <section className="profile">
         <div className={`profile-cover ${safeUrl(profile.profile?.banner?.url) ? '' : 'profile-cover--empty'}`}>{safeUrl(profile.profile?.banner?.url) && <img className="profile-banner" src={safeUrl(profile.profile.banner?.url)} alt="Profile banner" referrerPolicy="no-referrer" />}</div>
@@ -705,6 +741,7 @@ export default function App() {
         <p className="profile__bio"><LinkedText text={profile.profile?.bio?.text || 'A voice on the open social web.'} onNavigate={navigateSocialLink} /></p>
         <ProfileDetails user={profile} />
         <div className="profile__counts"><Button data-analytics="profile-following-open" variant="ghost" onClick={() => setFollowList('following')}><strong>{short(profile.following_count)}</strong> following</Button><Button data-analytics="profile-followers-open" variant="ghost" onClick={() => setFollowList('followers')}><strong>{short(profile.follower_count)}</strong> followers</Button></div>
+        <a href={followingPath(profile.fid)} onClick={event => localClick(event, () => navigate(followingPath(profile.fid)))}>Browse this account’s public Following feed</a>
         {session?.fid !== profile.fid && followError && <div className="profile-follow"><p className="error" role="alert">{followError}</p><Button variant="secondary" onClick={() => setFollowRefresh(value => value + 1)}>Check follow status</Button></div>}
         {session?.fid === profile.fid && <div className="profile-device-actions"><Button data-analytics="device-access-open" variant="secondary" className="profile-signout" onClick={() => setDeviceSettings(true)}><IconShieldLock size={17} />Device access</Button><Button data-analytics="session-lock" variant="ghost" className="profile-signout" onClick={() => lockSession()}><IconLock size={17} />Lock this tab</Button></div>}
         {session && ![5, 6, 11].every(scope => session.scopes.includes(scope)) && <p className="profile-upgrade">Follows and profile editing require additional device permissions. Your wallet will show the permissions before you approve a new key.</p>}
@@ -724,7 +761,7 @@ export default function App() {
       {view === 'bookmarks' && <BookmarkTools query={bookmarkQuery} onQueryChange={setBookmarkQuery} sort={bookmarkSort} onSortChange={setBookmarkSort} count={visibleCasts.length} total={bookmarks.length} onClear={() => { setBookmarks([]); setBookmarkQuery(''); if (!saveBookmarks([])) notify('Bookmarks cleared for this tab. Browser storage is unavailable.'); }} />}
       {filteredCount > 0 && <div className="content-filter-summary" role="status"><span>{filteredCount} loaded {filteredCount === 1 ? 'cast is' : 'casts are'} filtered on this browser.</span><Button data-analytics="nav-settings" variant="ghost" onClick={() => navigate('/settings')}>Manage controls</Button><Button variant="ghost" onClick={() => setRevealState(current => ({ scope: preferenceScope, hashes: new Set([...(current.scope === preferenceScope ? current.hashes : []), ...feedCandidates.map(cast => bookmarkHash(cast.hash)!)]) }))}>Show for this view</Button></div>}
       {(view === 'discover' || view === 'bookmarks') && <div className="feed-heading"><div>{view === 'discover' ? <IconSparkles size={17} /> : <IconHome size={17} />}<span>{view === 'discover' ? 'Trending on Hypersnap' : 'Saved for later'}</span></div><span>{view === 'discover' ? <span className="feed-window"><label htmlFor="trending-window">Trending over</label><select data-analytics="feed-window" id="trending-window" aria-label="Trending time window" value={trendingWindow} onChange={event => setTrendingWindow(event.target.value as typeof trendingWindow)}>{([['1h', '1 hour'], ['6h', '6 hours'], ['12h', '12 hours'], ['24h', '24 hours'], ['7d', '7 days']] as const).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></span> : 'Stored on this device'}</span></div>}
-      {view === 'not-found' ? <div className="empty"><IconCompass size={35} /><h3>That page does not exist.</h3><p>Check the profile or cast link, or return to Discover.</p><Button data-analytics="nav-discover" onClick={() => navigate('/')}>Open Discover</Button></div> : view === 'profile' && !profile ? <div className="empty" role={profileLoading ? 'status' : undefined}><IconUsers size={35} /><h3>{profileLoading ? 'Loading profile…' : profileError ? 'Profile unavailable' : 'Your profile on Hypersnap'}</h3><p>{profileError || (profileLoading ? 'Finding this public identity on Hypersnap.' : 'Sign in to open your profile, or search for a username or FID.')}</p>{profileError ? <Button variant="secondary" onClick={() => setRefresh(n => n + 1)}>Try again</Button> : !profileLoading && <Button data-analytics="connect-open" onClick={() => requestSignIn()}>Sign in</Button>}</div> : loading ? <div aria-label="Loading casts" role="status" className="skeleton-list">{[0, 1, 2].map(n => <div className="skeleton-cast" key={n}><span className="skeleton-avatar" /><div><span /><span /><span /></div></div>)}<p className="muted">Finding conversations on Hypersnap…</p></div> : error ? <div className="empty"><IconWorld size={35} /><h3>The network is taking a moment.</h3><p>{error}</p><Button variant="secondary" onClick={() => setRefresh(n => n + 1)}><IconRefresh size={16} />Try again</Button></div> : view === 'following' && !session ? <div className="empty"><IconUsers size={35} /><h3>Your people are here.</h3><p>Sign in with your Farcaster account to see casts from the people you follow.</p><Button data-analytics="connect-open" onClick={() => requestSignIn()}>Sign in</Button></div> : visibleCasts.length ? <div className="feed">{visibleCasts.map(cast => card(cast))}</div> : <div className="empty"><IconBookmark size={35} /><h3>{filteredCount ? 'Your content controls are active.' : view === 'bookmarks' && bookmarkQuery.trim() ? 'No saved casts match.' : view === 'bookmarks' ? 'A place for the good stuff.' : cursor ? 'Looking for more conversations…' : 'The conversation is open.'}</h3><p>{filteredCount ? 'Manage your filters or reveal the loaded casts for this view.' : view === 'bookmarks' && bookmarkQuery.trim() ? 'Try another word, person or channel.' : view === 'bookmarks' ? 'Tap the bookmark on any cast to save it here.' : cursor ? 'Keep scrolling to browse the next available casts.' : 'No casts returned for this feed yet. Try another channel or start a conversation.'}</p></div>}
+      {view === 'not-found' ? <div className="empty"><IconCompass size={35} /><h3>That page does not exist.</h3><p>Check the profile or cast link, or return to Discover.</p><Button data-analytics="nav-discover" onClick={() => navigate('/')}>Open Discover</Button></div> : view === 'profile' && !profile ? <div className="empty" role={profileLoading ? 'status' : undefined}><IconUsers size={35} /><h3>{profileLoading ? 'Loading profile…' : profileError ? 'Profile unavailable' : 'Your profile on Hypersnap'}</h3><p>{profileError || (profileLoading ? 'Finding this public identity on Hypersnap.' : 'Sign in to open your profile, or search for a username or FID.')}</p>{profileError ? <Button variant="secondary" onClick={() => setRefresh(n => n + 1)}>Try again</Button> : !profileLoading && <Button data-analytics="connect-open" onClick={() => requestSignIn()}>Sign in</Button>}</div> : loading ? <div aria-label="Loading casts" role="status" className="skeleton-list">{[0, 1, 2].map(n => <div className="skeleton-cast" key={n}><span className="skeleton-avatar" /><div><span /><span /><span /></div></div>)}<p className="muted">Finding conversations on Hypersnap…</p></div> : error ? <div className="empty"><IconWorld size={35} /><h3>The network is taking a moment.</h3><p>{error}</p><Button variant="secondary" onClick={() => setRefresh(n => n + 1)}><IconRefresh size={16} />Try again</Button></div> : view === 'following' && followingFid === undefined ? <div className="empty"><IconUsers size={35} /><h3>Explore someone’s public timeline.</h3><p>Choose an account above to see casts from the people they follow. Browsing does not require a wallet.</p></div> : visibleCasts.length ? <div className="feed">{visibleCasts.map(cast => card(cast))}</div> : <div className="empty"><IconBookmark size={35} /><h3>{filteredCount ? 'Your content controls are active.' : view === 'bookmarks' && bookmarkQuery.trim() ? 'No saved casts match.' : view === 'bookmarks' ? 'A place for the good stuff.' : cursor ? 'Looking for more conversations…' : 'The conversation is open.'}</h3><p>{filteredCount ? 'Manage your filters or reveal the loaded casts for this view.' : view === 'bookmarks' && bookmarkQuery.trim() ? 'Try another word, person or channel.' : view === 'bookmarks' ? 'Tap the bookmark on any cast to save it here.' : cursor ? 'Keep scrolling to browse the next available casts.' : 'No casts returned for this feed yet. Try another channel or start a conversation.'}</p></div>}
       {!loading && !error && view !== 'bookmarks' && cursor && <FeedPagination cursor={cursor} busy={loadingMore} error={moreError} paused={threadOpen} onLoad={() => void loadMore()} />}
       {!loading && !error && (visibleCasts.length > 0 || paginationNotice) && !cursor && <p className="feed-end" role="status">{paginationNotice || (view === 'bookmarks' ? 'You’re connected to the open social web.' : 'You’ve reached the end of the casts available in this feed.')} <IconWorld size={13} /></p>}
       {view === 'following' && session && <SuggestedPeople fid={session.fid} onProfile={openProfile} />}
@@ -743,10 +780,11 @@ export default function App() {
     {session && (view === 'discover' || view === 'following' || (view === 'channel' && composeParentUrl)) && <Button data-analytics="composer-open" className="compose-fab" aria-label="Write a new cast" onClick={() => setComposeOpen(true)}><IconPencil size={23} /></Button>}
     <nav className="mobile-nav" aria-label="Mobile navigation">{([
       ['Discover', '/', <IconHome key="icon" />, view === 'discover' || view === 'following'],
+      ['Feeds', '/feeds', <IconLayoutList key="icon" />, view === 'feeds' || view === 'feed'],
       ['Search', '/search', <IconSearch key="icon" />, view === 'search'],
       ['Channels', '/channels', <IconHash key="icon" />, view === 'channels' || view === 'channel'],
       ['Notifications', '/notifications', <IconBell key="icon" />, view === 'notifications'],
-    ] as const).map(([label, path, icon, active]) => <Button data-analytics={path === '/' ? 'nav-discover' : path === '/search' ? 'nav-search' : path === '/channels' ? 'nav-channels' : 'nav-notifications'} key={path} variant="ghost" aria-label={label} aria-current={active ? 'page' : undefined} onClick={() => navigate(path)}>{icon}</Button>)}<Button data-analytics={session ? 'nav-profile' : 'connect-open'} variant="ghost" aria-label="Account" aria-current={view === 'profile' && session && profile?.fid === session.fid ? 'page' : undefined} onClick={() => session ? navigate('/profile') : requestSignIn()}>{session ? <Avatar user={session.user} /> : <IconUser />}</Button></nav>
+    ] as const).map(([label, path, icon, active]) => <Button data-analytics={path === '/' ? 'nav-discover' : path === '/feeds' ? 'nav-feeds' : path === '/search' ? 'nav-search' : path === '/channels' ? 'nav-channels' : 'nav-notifications'} key={path} variant="ghost" aria-label={label} aria-current={active ? 'page' : undefined} onClick={() => navigate(path)}>{icon}</Button>)}<Button data-analytics={session ? 'nav-profile' : 'connect-open'} variant="ghost" aria-label="Account" aria-current={view === 'profile' && session && profile?.fid === session.fid ? 'page' : undefined} onClick={() => session ? navigate('/profile') : requestSignIn()}>{session ? <Avatar user={session.user} /> : <IconUser />}</Button></nav>
     {toast && <div className="toast" role="status"><span>{toast}</span><Button variant="ghost" aria-label="Dismiss notification" onClick={() => setToast('')}><IconX size={17} /></Button></div>}
     {deviceSettings && session && <Suspense fallback={<Modal title="This device’s access" onClose={() => setDeviceSettings(false)}><p role="status">Loading device settings…</p></Modal>}><DeviceSettings session={session} onClose={() => setDeviceSettings(false)} onLock={revoked => lockSession(session, revoked)} notify={notify} /></Suspense>}
     {followList && profile && <FollowListDialog key={`${profile.fid}:${followList}`} user={profile} kind={followList} loadPage={getFollows} onProfile={openProfile} onClose={() => setFollowList(null)} />}
