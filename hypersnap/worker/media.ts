@@ -96,7 +96,7 @@ async function activeSigner(grant: MediaUploadGrant, env: MediaEnv): Promise<boo
 const ascii = (bytes: Uint8Array, start: number, length: number) => String.fromCharCode(...bytes.subarray(start, start + length));
 /** Image signatures and declared dimensions are validated server-side. SVG,
  * HTML and arbitrary MIME data are never stored or rendered as active content. */
-export function validateImage(bytes: Uint8Array, type: MediaType): void {
+export function validateImage(bytes: Uint8Array, type: MediaType): { width: number; height: number } {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let width = 0;
   let height = 0;
@@ -133,6 +133,7 @@ export function validateImage(bytes: Uint8Array, type: MediaType): void {
     }
   }
   if (!width || !height || width > 8192 || height > 8192 || width * height > 25_000_000) throw new Error('Invalid or oversized image');
+  return { width, height };
 }
 
 /** Called only for /media paths, before the SPA fallback. */

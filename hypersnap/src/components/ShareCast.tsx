@@ -1,12 +1,17 @@
 import { useId, useRef, useState } from 'react';
 import { IconArrowUpRight, IconCopy, IconShare } from '@tabler/icons-react';
 import type { Cast } from '../lib/api';
-import { castPermalink, publicUrl } from '../lib/navigation';
+import { castPermalink, matchesCastRoute, parseLocalPath, publicUrl } from '../lib/navigation';
 import { Button, Input, Modal } from './ui';
 
 /** Shares public cast content only. This dialog never reads account or wallet state. */
-export function ShareCastDialog({ cast, path = castPermalink(cast), onClose, notify }: { cast: Cast; path?: string; onClose(): void; notify(text: string): void }) {
-  const link = publicUrl(path);
+export function ShareCastDialog({ cast, path, onClose, notify }: { cast: Cast; path?: string; onClose(): void; notify(text: string): void }) {
+  const target = path ? parseLocalPath(path) : undefined;
+  // Newly shared links identify the exact cast, including older posts whose
+  // short hash is outside the preview crawler's bounded recent-history scan.
+  const exact = target && matchesCastRoute(target, cast)
+    && (target.kind === 'cast' || (target.kind === 'cast-alias' && target.hashPrefix.length === 42));
+  const link = publicUrl(exact ? path! : castPermalink(cast, { fullHash: true }));
   const inputId = useId();
   const statusId = useId();
   const input = useRef<HTMLInputElement>(null);

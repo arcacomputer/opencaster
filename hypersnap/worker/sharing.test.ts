@@ -179,7 +179,7 @@ describe('canonical public sharing URLs', () => {
 });
 
 describe('sharing metadata at the Worker boundary', () => {
-  it('returns deep-link identity with the generic platform card, independent of JavaScript, user agent, and the node', async () => {
+  it('keeps the generic card when a public profile or cast cannot be loaded, for every user agent', async () => {
     const { fetch, assets, env } = fixture();
     for (const [path, target] of [['/', '/'], ['/alice', '/profile/alice'], ['/42/0xabcdef12?utm_source=telegram', '/42/0xabcdef12'], ['/unknown/extra/path', '/']]) {
       for (const userAgent of ['TelegramBot (like TwitterBot)', 'Twitterbot/1.0', 'Mozilla/5.0']) {
@@ -198,7 +198,7 @@ describe('sharing metadata at the Worker boundary', () => {
       }
     }
     expect(assets).toHaveBeenCalledTimes(12);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalled();
   });
 
   it('serves HEAD canonical headers with no HTML body or upstream lookup', async () => {

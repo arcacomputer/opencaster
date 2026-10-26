@@ -69,15 +69,30 @@ CI validates that an entry exists and its source is real; release review still c
 
 Shared links include Open Graph metadata for Telegram and other link-preview
 clients, plus an X large-image card. The initial HTML contains the title,
-description, image URL and image alt text; crawlers do not need JavaScript or a
-Hypersnap API request. The public 1200×630 PNG introduces Opencaster as an open
-source social client for Hypersnap, powered by Arca Computer.
+description, image URL and image alt text; crawlers do not need JavaScript.
+The public 1200×630 site card introduces Opencaster as an open source social
+client for Hypersnap, powered by Arca Computer.
 
 The gateway preserves recognized profile, cast, channel and other page URLs in
 the canonical and Open Graph URL fields, using `https://opencaster.org` and only
-supported query fields. These links currently share the platform introduction;
-they do not generate individual author portraits or cast excerpts. Preview
-appearance and refresh timing depend on each sharing app's cache and settings.
+supported query fields. Public profiles show the person’s name, bio and an
+individual profile card. Public casts show the author, text (including protocol
+mentions) and an individual cast card. Cards include supported avatars and the
+first supported image attachment; other imagery uses initials or a text card.
+Only our content-addressed media and the fixed imagedelivery.net image CDN are
+read, with raster type, byte, dimension and time limits. No arbitrary image
+host or external rendering service is contacted.
+
+These public reads share a four-second deadline. Exact cast hashes are verified
+against the requested author where supplied; existing short links scan at most
+500 recent native history receipts and fall back when unavailable or ambiguous.
+Newly copied/shared cast links carry the full hash so older casts do not depend
+on that scan. Missing or deleted data retains the site introduction. Generated
+PNGs expire after five minutes at our edge; a deleted cast or changed profile
+can remain in a preview during that interval. Some writing systems and emoji
+may lack glyphs in the bundled font; metadata preserves the Unicode text.
+Preview appearance, cropping and refresh timing also depend on each sharing
+app’s cache and settings.
 The versioned image lives beside its editable SVG in `public/`; use a new image
 filename and update both metadata sets when replacing published artwork.
 Re-render the PNG from `hypersnap/` with
@@ -109,7 +124,7 @@ Excluded: creating Farcaster accounts, paid storage/on-chain registration, seed 
 
 See [FEATURE_SUPPORT.md](FEATURE_SUPPORT.md) for the source-backed feature matrix and upstream limitations.
 
-Cast permalinks and the share dialog use `opencaster.org/<username>/0x<8-hex-prefix>`, matching the author and short hash format in Farcaster links. Known casts open directly within the current tab; newly loaded short links still use the bounded Hypersnap lookup below. Automatically opening a verified short-link match retains that URL, while choosing among multiple returned matches opens an author-scoped full-hash path. If the author has no usable username, the link uses their FID. Legacy `/cast/<full-hash>` URLs remain valid and move to the author-style permalink once the cast is loaded.
+Timeline cast permalinks use `opencaster.org/<username>/0x<8-hex-prefix>`, matching the author and short hash format in Farcaster links. The share dialog copies the author-scoped full-hash form for exact social previews, including older casts. Known casts open directly within the current tab; newly loaded short links still use the bounded Hypersnap lookup below. Automatically opening a verified short-link match retains that URL, while choosing among multiple returned matches opens an author-scoped full-hash path. If the author has no usable username, the link uses their FID. Legacy `/cast/<full-hash>` URLs remain valid and move to the author-style permalink once the cast is loaded.
 
 For a Farcaster-style cast link, replace its host with `opencaster.org`, keeping `/<author>/0x<hash>` intact. Changing a host cannot restore a cast unavailable from Hypersnap. Hashes may contain 8–40 hexadecimal characters in complete bytes. Full hashes use an exact author/FID lookup. Hypersnap currently has no native short-hash index, so short links search the author's available history in explicit batches of up to four 250-message pages. When a fully checked history page returns one currently available cast verified by its exact author and full hash, the conversation opens immediately and cancels remaining lookup reads. No confirmation click or completed history scan is required. This selects the first available verified match; it does not establish that the prefix is unique throughout the author’s history. If a returned snapshot contains multiple verified matches, choose an exact author/full-hash **Open cast** link. If no match has been found, **Search older casts** checks another bounded batch; an incomplete search never claims absence. Each batch has a 25-second deadline, at most four simultaneous candidate reads, and bounded cumulative history/candidate limits. History includes cast removals; matched adds are hydrated again to confirm current availability. Deleted/pruned casts or data absent from this node cannot be restored by changing a URL. These are public Hypersnap reads; Farcaster client account status is not queried.
 
