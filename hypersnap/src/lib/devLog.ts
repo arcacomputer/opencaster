@@ -19,6 +19,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'channel-and-custom-feed-sharing-previews',
+    date: '2026-10-26',
+    title: 'Share what a channel or feed is about',
+    summary: 'Channel and custom-feed links now carry their own previews, so people can see the topic or recipe before opening Opencaster.',
+    changes: [
+      'Show a channel’s name, identifier, description, supported image and available participant count in its public preview. Channels without a description or supported image use a simple topic card.',
+      'Show a shared custom feed’s name, public sources, ordering and filters. Summarize long source lists and phrases in the image, with the validated recipe preserved in the shared link.',
+      'Supply the card and page metadata before JavaScript runs, without a wallet connection. Feed previews use the public recipe in the link; browser-local saves, pins and account preferences remain local.',
+      'Describe the feed recipe without promising current results or a complete archive. Unavailable channels retain the site introduction, generated cards expire at our edge after five minutes, and sharing apps control their own preview caches.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/0c749778f220643a0e2dd3186baee6fd87b895c6',
+    tag: 'Social',
+  },
+  {
     id: 'opencaster-open-door-identity',
     date: '2026-10-26',
     title: 'An open door to the conversation',
