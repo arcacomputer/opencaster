@@ -96,7 +96,7 @@ app’s cache and settings.
 The versioned image lives beside its editable SVG in `public/`; use a new image
 filename and update both metadata sets when replacing published artwork.
 Re-render the PNG from `hypersnap/` with
-`rsvg-convert -o public/opencaster-social-v1.png public/opencaster-social-v1.svg`.
+`rsvg-convert -o public/opencaster-social-v2.png public/opencaster-social-v2.svg`.
 The SVG outlines its text and needs no installed fonts.
 
 ## Supported behavior

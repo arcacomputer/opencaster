@@ -35,6 +35,19 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'opencaster-open-door-identity',
+    date: '2026-10-26',
+    title: 'An open door to the conversation',
+    summary: 'Opencaster has a new open-door logo: a welcoming arch with the door swung open.',
+    changes: [
+      'Bring the new mark to desktop and mobile navigation, the welcome screen and browser tab, using the familiar plum, warm-white and lavender colors.',
+      'Refresh the site introduction card and individual profile and cast previews with the same open-door identity. Published older site-card image addresses remain available.',
+      'Give the refreshed site card a new image address and separate generated previews from the previous logo’s edge cache. Sharing apps still control when their own cached previews refresh.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/970900707d709cffe6885af4c079b7a21690b587',
+    tag: 'Launch',
+  },
+  {
     id: 'individual-cast-and-profile-share-previews',
     date: '2026-10-26',
     title: 'The person or post behind a shared link',

@@ -32,8 +32,8 @@ describe('public sharing card SVG layout', () => {
     expect(lines(svg, 'profile-bio').join(' ')).toBe(profile.bio);
     expect(role(svg, 'profile-counts')).toBe('1.2K followers   ·   84 following');
     expect(role(svg, 'avatar-initials')).toBe('AR');
-    expect(svg).toContain('d="M69 25a32 32 0 1 0 8 43"');
-    expect(svg).toContain('d="M53 46a14 14 0 0 1 14 14M55 27a31 31 0 0 1 31 31"');
+    expect(svg).toContain('d="M17 78V49a33 33 0 0 1 66 0v29H69V49a19 19 0 0 0-38 0v29Z"');
+    expect(svg).toContain('d="M51 47.8q0-1.3 1.2-1.9l11.1-5.8q1.7-.9 1.7 1.1v41.1q0 2-1.7 1L52.2 77q-1.2-.7-1.2-2Z"');
     expect(role(svg, 'footer')).toContain('Hypersnap');
     expect(role(svg, 'domain')).toBe('opencaster.org');
     expect(svg).not.toContain(profile.avatarUrl);

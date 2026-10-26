@@ -113,7 +113,7 @@ function rasterDataUrl(value: string | undefined): string | undefined {
 }
 
 function symbol(x: number, y: number, size: number): string {
-  return `<g transform="translate(${x} ${y}) scale(${size / 100})"><rect width="100" height="100" rx="26" fill="#292335"/><path d="M69 25a32 32 0 1 0 8 43" fill="none" stroke="#F4EDFF" stroke-width="9" stroke-linecap="round"/><path d="M53 46a14 14 0 0 1 14 14M55 27a31 31 0 0 1 31 31" fill="none" stroke="#C4A7FF" stroke-width="7" stroke-linecap="round"/><circle cx="49" cy="64" r="5" fill="#C4A7FF"/></g>`;
+  return `<g transform="translate(${x} ${y}) scale(${size / 100})"><rect width="100" height="100" rx="26" fill="#292335"/><path d="M17 78V49a33 33 0 0 1 66 0v29H69V49a19 19 0 0 0-38 0v29Z" fill="#F4EDFF"/><path d="M51 47.8q0-1.3 1.2-1.9l11.1-5.8q1.7-.9 1.7 1.1v41.1q0 2-1.7 1L52.2 77q-1.2-.7-1.2-2Z" fill="#C4A7FF"/></g>`;
 }
 
 function initials(profile: ShareProfile): string {

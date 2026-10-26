@@ -57,7 +57,7 @@ describe('initial social sharing document and public assets', () => {
     expect(canonical(HTML)).toBe(`${ORIGIN}/`);
     expect(meta(HTML, 'og:url')).toBe(canonical(HTML));
     const image = meta(HTML, 'og:image');
-    expect(image).toBe(`${ORIGIN}/opencaster-social-v1.png`);
+    expect(image).toBe(`${ORIGIN}/opencaster-social-v2.png`);
     expect(meta(HTML, 'og:image:secure_url')).toBe(image);
     expect(meta(HTML, 'twitter:image')).toBe(image);
     expect(meta(HTML, 'og:image:type')).toBe('image/png');
@@ -67,7 +67,7 @@ describe('initial social sharing document and public assets', () => {
   });
 
   it('ships a real PNG whose dimensions match the crawler metadata', () => {
-    const png = readFileSync(new URL('../public/opencaster-social-v1.png', import.meta.url));
+    const png = readFileSync(new URL('../public/opencaster-social-v2.png', import.meta.url));
     expect([...png.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
     expect(png.toString('ascii', 12, 16)).toBe('IHDR');
     expect(png.readUInt32BE(16)).toBe(Number(meta(HTML, 'og:image:width')));
@@ -81,7 +81,7 @@ describe('initial social sharing document and public assets', () => {
     expect(robots).toMatch(/^User-agent:\s*\*\s*$/im);
     expect(robots).toMatch(/^Allow:\s*\/\s*$/im);
     expect(robots).not.toMatch(/^Disallow:\s*\/\s*$/im);
-    for (const pathname of ['/robots.txt', '/opencaster-social-v1.png', '/opencaster-social-v1.svg']) {
+    for (const pathname of ['/robots.txt', '/opencaster-social-v1.png', '/opencaster-social-v1.svg', '/opencaster-social-v2.png', '/opencaster-social-v2.svg']) {
       expect(parseRoute({ pathname, search: '' }).kind).toBe('not-found');
     }
   });
@@ -219,7 +219,7 @@ describe('sharing metadata at the Worker boundary', () => {
       const image = new URL(request.url).pathname.endsWith('.png');
       return new Response(image ? bytes : 'User-agent: *\nAllow: /\n', { headers: { 'Content-Type': image ? 'image/png' : 'text/plain', 'Cache-Control': 'public, max-age=86400', ETag: '"static-file"', ...(image ? { 'Content-Length': String(bytes.length) } : {}) } });
     } } };
-    const card = await handleRequest(new Request(`${ORIGIN}/opencaster-social-v1.png`), env);
+    const card = await handleRequest(new Request(`${ORIGIN}/opencaster-social-v2.png`), env);
     expect(new Uint8Array(await card.arrayBuffer())).toEqual(bytes);
     expect(card.headers.get('Content-Type')).toBe('image/png');
     expect(card.headers.get('Cache-Control')).toBe('public, max-age=86400');
