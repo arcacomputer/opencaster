@@ -1,3 +1,51 @@
+# Infinite timeline browsing prepared · 2026-10-26
+
+Implementation `cb71fddd38ba4e4930cd100d5bef362320a5e2bb`, authored
+`2026-10-26T17:15:41-03:00`, replaces timeline pagination buttons with automatic
+loading near the bottom of Discover, Following, channel feeds and profile tabs.
+Existing casts stay readable during loading; failed pages require an explicit
+retry. Sparse and locally filtered pages retain continuation, obsolete requests
+are cancelled, and repeated cursors stop safely. The dev-log milestone links
+that implementation and preserves the earlier entries. This change is prepared
+locally and **has not been deployed**.
+
+The final standalone `yarn verify` passed **1,422 tests across 59 files**, browser
+and Worker typechecks, the production browser build, and offline signer
+typecheck/build. Verification ran from `hypersnap/` in a fresh external copy at
+`/var/folders/dj/z0hgcnzx62504_nbgstgp_yc0000gn/T/opencaster-infinite-20261026-dzmmexu9`.
+All 201 source/config/asset inputs, including the parent license, matched the
+workspace after the run. Its dependency manifest and frozen Yarn lockfile match
+the existing external installation used for dependencies. No dependency or
+lockfile changed. Existing Rollup annotation and large-chunk advisories remain.
+The final gate also includes the concurrently committed sharing-card changes.
+
+The added component and App integration checks cover observer activation and
+cleanup, same-tick duplicate notifications, sparse and filtered pages, explicit
+retry, exhaustion, cursor cycles, refresh, background-conversation pause/resume,
+and browsers without IntersectionObserver. Existing profile-tab and trending-
+window cancellation checks now use observer events; channel ordering and
+normalized-hash deduplication remain checked.
+
+An isolated localhost browser preview served only synthetic identities and API
+responses, with no upstream proxy. Desktop scrolling loaded casts 1–25 and then
+26–50 automatically. A deliberate next-page HTTP 503 left the existing 50 casts
+readable with Try again; an explicit retry loaded 51–75 and showed the end of
+available casts. At 390×844, scrolling also advanced from 25 to 50 with loading
+feedback and no horizontal overflow. The viewport override was reset afterward.
+Screenshots: `/tmp/opencaster-infinite-desktop.jpg` and
+`/tmp/opencaster-infinite-mobile.jpg`.
+
+`yarn check:devlog --base d231a512` passed for the three shipped runtime/style
+files and the new `automatic-timeline-browsing` milestone. That base is the
+pre-implementation local commit, not a newly established production release
+base. A deployment still needs the actual deployed base and the repository’s
+fresh-asset release procedure. No production account action, wallet signature,
+upload, push or deployment was performed for this change. Hypersnap availability
+and indexed-history limits remain; retained Quorum was not changed or verified.
+
+Full gate output: `/tmp/opencaster-infinite-final-verify-20261026.log`.
+The external copy’s `source-manifest.json` records the checked input hashes.
+
 # Private analytics dashboard deployed · 2026-10-24
 
 The private dashboard is live at **https://analytics.opencaster.org**. The

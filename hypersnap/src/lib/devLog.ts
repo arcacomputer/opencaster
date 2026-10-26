@@ -19,6 +19,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'automatic-timeline-browsing',
+    date: '2026-10-26',
+    title: 'Keep scrolling through conversations',
+    summary: 'Discover more conversations as you scroll, without stopping to press a button at the end of each page.',
+    changes: [
+      'Automatically load the next page near the bottom of Discover, Following, channel feeds and every profile tab, with a quiet loading message while existing casts stay readable.',
+      'Continue through sparse pages and casts hidden by your browser-local content controls without revealing filtered content. Keep duplicate casts out and preserve the feed’s existing ordering.',
+      'Pause automatic loading while a conversation is open, cancel obsolete requests when switching feeds, and keep a failed page available for an explicit retry.',
+      'Continue until Hypersnap supplies no next page; stop safely if the node repeats an earlier page cursor. Available history and node availability still determine how far you can browse, and browsers without automatic scroll detection retain a manual loading option.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/cb71fddd38ba4e4930cd100d5bef362320a5e2bb',
+    tag: 'Social',
+  },
+  {
     id: 'opencaster-social-sharing-cards',
     date: '2026-10-26',
     title: 'A proper introduction when you share a link',
