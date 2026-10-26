@@ -167,15 +167,50 @@ function castCard(data: Extract<ShareData, { kind: 'cast' }>, image: string | un
     ? `<defs><clipPath id="attachment-clip"><rect x="764" y="267" width="370" height="263" rx="18"/></clipPath></defs><rect x="763" y="266" width="372" height="265" rx="19" fill="#292335" stroke="#C4A7FF" stroke-opacity=".3"/><image data-role="cast-image" href="${attachment}" x="764" y="267" width="370" height="263" preserveAspectRatio="xMidYMid slice" clip-path="url(#attachment-clip)"/>` : ''}`;
 }
 
+function channelCard(data: Extract<ShareData, { kind: 'channel' }>, image: string | undefined): string {
+  const channel = data.channel;
+  const name = clean(channel.name || (channel.id ? `/${channel.id}` : 'Channel')).replace(/\s+/g, ' ');
+  const nameSize = lineWidth(graphemes(name), 60) > 770 ? 52 : 60;
+  const names = wrap(name, nameSize, 770, 2);
+  const nameTop = names.length > 1 ? 226 : 241;
+  const nameBottom = nameTop + (names.length - 1) * 61;
+  const participants = count(channel.members);
+  return `<g opacity=".45"><circle cx="1014" cy="323" r="157" fill="none" stroke="#C4A7FF" stroke-opacity=".22"/><circle cx="1014" cy="323" r="207" fill="none" stroke="#C4A7FF" stroke-opacity=".12"/></g><rect x="64" y="162" width="43" height="5" rx="2.5" fill="${LAVENDER}"/>${textBlock('channel-name', names, 64, nameTop, nameSize, 61, `fill="${INK}" font-weight="700" letter-spacing="-1.8"`)}${textBlock('channel-id', wrap(channel.id ? `/${channel.id}` : 'Hypersnap channel', 27, 770, 1), 66, nameBottom + 43, 27, 35, `fill="${LAVENDER}"`)}${textBlock('channel-description', wrap(channel.description || 'Explore this channel’s casts and conversations on Hypersnap.', 29, 770, names.length > 1 ? 3 : 4), 66, nameBottom + 103, 29, 39, `fill="${MUTED}"`)}<defs><clipPath id="channel-clip"><rect x="910" y="206" width="208" height="208" rx="48"/></clipPath></defs><rect x="905" y="201" width="218" height="218" rx="53" fill="#C4A7FF" fill-opacity=".12"/><rect x="910" y="206" width="208" height="208" rx="48" fill="url(#avatar)" stroke="#C4A7FF" stroke-opacity=".35" stroke-width="2"/>${image
+    ? `<image data-role="channel-image" href="${image}" x="910" y="206" width="208" height="208" preserveAspectRatio="xMidYMid slice" clip-path="url(#channel-clip)"/>`
+    : text('channel-symbol', '#', 1014, 355, 126, `fill="${INK}" text-anchor="middle" font-weight="600"`)}${text('channel-counts', participants === undefined ? 'A public Hypersnap channel' : `${participants} ${channel.members === 1 ? 'participant' : 'participants'}`, 66, 523, 25, `fill="${INK}" font-weight="500"`)}`;
+}
+
+function feedCard(data: Extract<ShareData, { kind: 'feed' }>): string {
+  const feed = data.feed;
+  const name = clean(feed.name || 'Custom feed').replace(/\s+/g, ' ');
+  const sources = feed.sources.slice(0, 4).map(source => wrap(source, 26, 550, 1)[0] || 'Public Hypersnap source');
+  const rules = feed.rules.slice(0, 5).map(rule => wrap(rule.replace(/^Includes any phrase: /, 'Match any: ').replace(/^Excludes any phrase: /, 'Exclude: '), 23, 326, 1)[0] || 'Public feed rule');
+  const sourceCount = Number.isSafeInteger(feed.sourceCount) && feed.sourceCount >= 0 ? feed.sourceCount : feed.sources.length;
+  const remaining = Math.max(0, sourceCount - sources.length);
+  return `${textBlock('feed-name', wrap(name, 54, 1000, 2), 64, 211, 54, 61, `fill="${INK}" font-weight="700" letter-spacing="-1.6"`)}<rect x="64" y="304" width="652" height="231" rx="20" fill="#C4A7FF" fill-opacity=".045" stroke="#C4A7FF" stroke-opacity=".15"/><rect x="736" y="304" width="400" height="231" rx="20" fill="#C4A7FF" fill-opacity=".045" stroke="#C4A7FF" stroke-opacity=".15"/>${text('feed-source-label', `${sourceCount} ${sourceCount === 1 ? 'SOURCE' : 'SOURCES'}`, 88, 341, 17, `fill="${LAVENDER}" font-weight="600" letter-spacing="2"`)}${textBlock('feed-sources', sources.length ? sources : ['Public Hypersnap sources'], 88, 381, 26, 34, `fill="${INK}"`)}${remaining ? text('feed-more-sources', `+ ${remaining} more ${remaining === 1 ? 'source' : 'sources'}`, 88, 518, 21, `fill="${MUTED}"`) : ''}${text('feed-rule-label', 'FILTERS & ORDER', 760, 341, 17, `fill="${LAVENDER}" font-weight="600" letter-spacing="2"`)}${textBlock('feed-rules', rules.length ? rules : ['Source order (as loaded)'], 760, 380, 23, 30, `fill="${INK}"`)}`;
+}
+
 /** Original, deterministic 1200×630 artwork. The caller supplies public display
  * data and optional validated raster bytes; the layout never fetches resources.
  */
 export function buildShareSvg(data: ShareData, options: ShareImageOptions = {}): string {
   const title = data.kind === 'profile'
     ? `${data.profile.displayName || data.profile.username} on Opencaster`
-    : `${data.profile.displayName || data.profile.username} on Opencaster: ${data.text}`;
-  const description = data.kind === 'profile' ? data.profile.bio : data.text;
+    : data.kind === 'cast' ? `${data.profile.displayName || data.profile.username} on Opencaster: ${data.text}`
+      : data.kind === 'channel' ? `${data.channel.name || `/${data.channel.id}`} on Opencaster`
+        : `${data.feed.name || 'Custom feed'} on Opencaster`;
+  const description = data.kind === 'profile' ? data.profile.bio : data.kind === 'cast' ? data.text
+    : data.kind === 'channel' ? data.channel.description : [...data.feed.sources, ...data.feed.rules].join(' · ');
   const avatarData = rasterDataUrl(options.avatarDataUrl);
   const attachmentData = data.kind === 'cast' ? rasterDataUrl(options.imageDataUrl) : undefined;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" role="img" aria-labelledby="share-title share-description"><title id="share-title">${escapeXml(title.slice(0, 500))}</title><desc id="share-description">${escapeXml(description.slice(0, 600))}</desc><defs><linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#211B2C"/><stop offset="1" stop-color="#15121E"/></linearGradient><radialGradient id="glow" cx=".86" cy=".35" r=".7"><stop stop-color="#7F54B6" stop-opacity=".21"/><stop offset="1" stop-color="#7F54B6" stop-opacity="0"/></radialGradient><linearGradient id="avatar" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#5B4278"/><stop offset="1" stop-color="#342442"/></linearGradient></defs><rect width="1200" height="630" fill="url(#background)"/><rect width="1200" height="630" fill="url(#glow)"/><path d="M0 1H1200" stroke="#C4A7FF" stroke-opacity=".3"/><g font-family="Inter, sans-serif">${symbol(64, 45, 57)}${text('brand', 'Opencaster', 138, 84, 34, `fill="${INK}" font-weight="700" letter-spacing="-.9"`)}<rect x="${data.kind === 'profile' ? 1006 : 1042}" y="58" width="${data.kind === 'profile' ? 128 : 92}" height="34" rx="17" fill="#C4A7FF" fill-opacity=".1" stroke="#C4A7FF" stroke-opacity=".23"/>${text('card-kind', data.kind === 'profile' ? 'PROFILE' : 'CAST', data.kind === 'profile' ? 1070 : 1088, 81, 15, `fill="${LAVENDER}" text-anchor="middle" font-weight="600" letter-spacing="2"`)}<path d="M64 126H1136" stroke="#C4A7FF" stroke-opacity=".12"/>${data.kind === 'profile' ? profileCard(data.profile, avatarData) : castCard(data, avatarData, attachmentData)}<path d="M64 557H1136" stroke="#C4A7FF" stroke-opacity=".2"/>${text('footer', data.kind === 'profile' ? 'Public profile on Hypersnap' : 'A conversation on Hypersnap', 66, 597, 20, `fill="${MUTED}"`)}${text('domain', 'opencaster.org', 1134, 597, 22, `fill="${INK}" text-anchor="end" font-weight="500"`)}</g></svg>`;
+  const badge = data.kind === 'profile' ? { label: 'PROFILE', x: 1006, width: 128, center: 1070 }
+    : data.kind === 'cast' ? { label: 'CAST', x: 1042, width: 92, center: 1088 }
+      : data.kind === 'channel' ? { label: 'CHANNEL', x: 984, width: 150, center: 1059 }
+        : { label: 'CUSTOM FEED', x: 932, width: 202, center: 1033 };
+  const card = data.kind === 'profile' ? profileCard(data.profile, avatarData)
+    : data.kind === 'cast' ? castCard(data, avatarData, attachmentData)
+      : data.kind === 'channel' ? channelCard(data, avatarData) : feedCard(data);
+  const footer = data.kind === 'profile' ? 'Public profile on Hypersnap' : data.kind === 'cast' ? 'A conversation on Hypersnap'
+    : data.kind === 'channel' ? 'Public channel on Hypersnap' : 'Custom feed on Hypersnap';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" role="img" aria-labelledby="share-title share-description"><title id="share-title">${escapeXml(title.slice(0, 500))}</title><desc id="share-description">${escapeXml(description.slice(0, 600))}</desc><defs><linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#211B2C"/><stop offset="1" stop-color="#15121E"/></linearGradient><radialGradient id="glow" cx=".86" cy=".35" r=".7"><stop stop-color="#7F54B6" stop-opacity=".21"/><stop offset="1" stop-color="#7F54B6" stop-opacity="0"/></radialGradient><linearGradient id="avatar" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#5B4278"/><stop offset="1" stop-color="#342442"/></linearGradient></defs><rect width="1200" height="630" fill="url(#background)"/><rect width="1200" height="630" fill="url(#glow)"/><path d="M0 1H1200" stroke="#C4A7FF" stroke-opacity=".3"/><g font-family="Inter, sans-serif">${symbol(64, 45, 57)}${text('brand', 'Opencaster', 138, 84, 34, `fill="${INK}" font-weight="700" letter-spacing="-.9"`)}<rect x="${badge.x}" y="58" width="${badge.width}" height="34" rx="17" fill="#C4A7FF" fill-opacity=".1" stroke="#C4A7FF" stroke-opacity=".23"/>${text('card-kind', badge.label, badge.center, 81, 15, `fill="${LAVENDER}" text-anchor="middle" font-weight="600" letter-spacing="2"`)}<path d="M64 126H1136" stroke="#C4A7FF" stroke-opacity=".12"/>${card}<path d="M64 557H1136" stroke="#C4A7FF" stroke-opacity=".2"/>${text('footer', footer, 66, 597, 20, `fill="${MUTED}"`)}${text('domain', 'opencaster.org', 1134, 597, 22, `fill="${INK}" text-anchor="end" font-weight="500"`)}</g></svg>`;
 }

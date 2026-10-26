@@ -36,19 +36,34 @@ export async function withShareUrl(response: Response, url: URL, method: string,
 
 /** Replace only our known head tags; untrusted display values stay escaped. */
 export function individualMetadata(html: string, data: ShareData): string {
-  const profile = data.profile;
-  const identity = profile.username ? `${profile.displayName} (@${profile.username})` : `${profile.displayName} (FID ${profile.fid})`;
-  const title = `${identity}${data.kind === 'cast' ? ' posted' : ''} · Opencaster`;
-  const description = data.kind === 'cast' ? data.text || 'An image cast on Hypersnap. View the full conversation on Opencaster.'
-    : profile.bio || `View ${identity}’s public Hypersnap profile, casts and conversations on Opencaster.`;
+  let title: string;
+  let description: string;
+  let alt: string;
+  if (data.kind === 'channel') {
+    const { channel } = data;
+    title = `${channel.name} (/${channel.id}) · Opencaster`;
+    description = channel.description || `Explore /${channel.id}, a public Hypersnap channel, on Opencaster.`;
+    alt = `Channel ${channel.name} (/${channel.id}): ${description}`;
+  } else if (data.kind === 'feed') {
+    const { feed } = data;
+    title = `${feed.name} · Custom feed · Opencaster`;
+    description = `${feed.sourceCount} public ${feed.sourceCount === 1 ? 'source' : 'sources'}: ${feed.sources.join('; ')}. ${feed.rules.join('; ')}.`;
+    alt = `Custom feed ${feed.name}: ${description}`;
+  } else {
+    const profile = data.profile;
+    const identity = profile.username ? `${profile.displayName} (@${profile.username})` : `${profile.displayName} (FID ${profile.fid})`;
+    title = `${identity}${data.kind === 'cast' ? ' posted' : ''} · Opencaster`;
+    description = data.kind === 'cast' ? data.text || 'An image cast on Hypersnap. View the full conversation on Opencaster.'
+      : profile.bio || `View ${identity}’s public Hypersnap profile, casts and conversations on Opencaster.`;
+    alt = data.kind === 'cast' ? `Cast by ${identity}: ${data.text}` : `Profile of ${identity}${profile.bio ? `: ${profile.bio}` : ''}`;
+  }
   const image = `${APP_ORIGIN}${shareImagePath(data)}`;
-  const alt = data.kind === 'cast' ? `Cast by ${identity}: ${data.text}` : `Profile of ${identity}${profile.bio ? `: ${profile.bio}` : ''}`;
   const values: Record<string, string> = {
     description, 'og:title': title, 'twitter:title': title,
     'og:description': description, 'twitter:description': description,
     'og:image': image, 'og:image:secure_url': image, 'twitter:image': image,
     'og:image:alt': Array.from(alt).slice(0, 420).join(''), 'twitter:image:alt': Array.from(alt).slice(0, 420).join(''),
-    'og:type': data.kind === 'profile' ? 'profile' : 'article',
+    'og:type': data.kind === 'profile' ? 'profile' : data.kind === 'cast' ? 'article' : 'website',
   };
   return html.replace(/<title>[^<]*<\/title>/, () => `<title>${escapeAttribute(title)}</title>`)
     .replace(/<meta\b[^>]*\b(?:name|property)="([^"]+)"[^>]*\/>/g, (tag, name: string) =>
