@@ -19,6 +19,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'faster-content-filtered-feeds',
+    date: '2026-10-27',
+    title: 'Content-filtered feeds render faster',
+    summary: 'Feeds and bookmarks no longer recheck every loaded cast against your mutes and hidden casts each time an unrelated part of the page updates.',
+    changes: [
+      'Filter the loaded feed and bookmarks once per change to the casts, search, sort, reveals or content controls, instead of on every screen update such as a notice or dialog.',
+      'Check muted accounts and hidden casts with direct lookups, and prepare muted words once per settings change. Each cast is checked once rather than twice.',
+      'Filtering results are unchanged: the same casts are hidden, with the same reasons, using the same Unicode matching. Preferences still stay on this browser.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/827b73cfb9afde67424db18fb80c7205ba970d59',
+    tag: 'Reliability',
+  },
+  {
     id: 'short-cast-links-show-matches-earlier',
     date: '2026-10-22',
     title: 'Short cast links show matches sooner',
