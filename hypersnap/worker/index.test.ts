@@ -536,3 +536,70 @@ describe('supported community queries', () => {
     }
   });
 });
+
+describe('edge caching of global reads', () => {
+  function edge() {
+    const store = new Map<string, Response>();
+    const cache = {
+      match: vi.fn(async (key: Request) => store.get(key.url)?.clone()),
+      put: vi.fn(async (key: Request, response: Response) => { store.set(key.url, response); }),
+    };
+    vi.stubGlobal('caches', { default: cache });
+    const pending: Promise<unknown>[] = [];
+    return { store, cache, ctx: { waitUntil: (promise: Promise<unknown>) => { pending.push(promise); } }, settle: () => Promise.all(pending) };
+  }
+
+  it.each([
+    '/v1/info',
+    '/v2/farcaster/feed/trending?limit=25&time_window=24h',
+    '/v2/farcaster/channel/trending?limit=20',
+    '/v2/farcaster/channel/all?limit=50',
+    '/v2/farcaster/channel?id=art&type=id',
+  ])('serves repeated public reads from the edge without contacting the node again: %s', async path => {
+    const { store, ctx, settle } = edge();
+    const fetch = vi.fn().mockResolvedValue(jsonResponse({ value: 'global' })); vi.stubGlobal('fetch', fetch);
+    const first = await handleRequest(new Request(`${BASE}/api${path}`, { headers: { Cookie: 'a=b' } }), env, ctx);
+    await settle();
+    expect(first.status).toBe(200); expect(await first.json()).toEqual({ value: 'global' }); expect(first.headers.get('Cache-Control')).toBe('no-store');
+    expect(store.get(`${BASE}/api${path}`)?.headers.get('Cache-Control')).toMatch(/^public, s-maxage=(15|30|60)$/);
+    const second = await handleRequest(new Request(`${BASE}/api${path}`), env, ctx);
+    expect(second.status).toBe(200); expect(await second.json()).toEqual({ value: 'global' });
+    expect(second.headers.get('Cache-Control')).toBe('no-store'); expect(second.headers.get('Content-Security-Policy')).toBeTruthy();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    '/v2/farcaster/feed/following?fid=7',
+    '/v2/farcaster/notifications?fid=7',
+    '/v2/farcaster/user?fid=7',
+    '/v2/farcaster/channel/members?channel_id=art&limit=25',
+  ])('never caches viewer-specific or uncached reads: %s', async path => {
+    const { cache, ctx, settle } = edge();
+    const fetch = vi.fn().mockImplementation(async () => jsonResponse({ value: 'private' })); vi.stubGlobal('fetch', fetch);
+    for (let i = 0; i < 2; i++) expect((await handleRequest(new Request(`${BASE}/api${path}`), env, ctx)).status).toBe(200);
+    await settle();
+    expect(fetch).toHaveBeenCalledTimes(2); expect(cache.match).not.toHaveBeenCalled(); expect(cache.put).not.toHaveBeenCalled();
+  });
+
+  it('never caches writes, failures or rejected requests', async () => {
+    const { cache, ctx, settle } = edge();
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => jsonResponse({ ok: true })));
+    expect((await handleRequest(new Request(`${BASE}/api/v1/submitMessage`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: new Uint8Array([8, 1]) }), env, ctx)).status).toBe(200);
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => jsonResponse({ message: 'down' }, 500)));
+    expect((await handleRequest(new Request(`${BASE}/api/v1/info`), env, ctx)).status).toBe(502);
+    expect((await handleRequest(new Request(`${BASE}/api/v1/info?extra=1`), env, ctx)).status).toBe(400);
+    expect((await handleRequest(new Request(`${BASE}/api/v1/info`, { headers: { Origin: 'https://evil.example' } }), env, ctx)).status).toBe(403);
+    await settle();
+    expect(cache.put).not.toHaveBeenCalled(); expect(cache.match).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the node when the edge cache is unavailable or fails', async () => {
+    const { cache, ctx, settle } = edge();
+    cache.match.mockRejectedValueOnce(new Error('cache down')); cache.put.mockRejectedValueOnce(new Error('cache down'));
+    const fetch = vi.fn().mockImplementation(async () => jsonResponse({ version: '1' })); vi.stubGlobal('fetch', fetch);
+    expect((await handleRequest(new Request(`${BASE}/api/v1/info`), env, ctx)).status).toBe(200);
+    await settle();
+    expect((await handleRequest(new Request(`${BASE}/api/v1/info`), env)).status).toBe(200);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});

@@ -7,6 +7,7 @@ export { MediaUploadQuota } from './media';
 export interface Env extends MediaEnv {
   ASSETS: { fetch(request: Request): Promise<Response> };
 }
+export interface WorkerContext { waitUntil(promise: Promise<unknown>): void }
 
 const UPSTREAM = 'https://haatz.quilibrium.com';
 const CANONICAL_ORIGIN = 'https://opencaster.org';
@@ -98,6 +99,20 @@ const READ_ENDPOINTS: Record<string, Endpoint> = {
   '/v2/farcaster/cast/quotes': { required: ['identifier', 'type', 'limit'], query: { identifier: hash, type: value => value === 'hash', limit: integer(25) } },
 };
 
+// Global reads whose responses never depend on the viewer. They are shared at
+// the edge for a short TTL; every other read and the write path stay uncached.
+const EDGE_CACHE_TTL_SECONDS: Record<string, number> = {
+  '/v1/info': 15,
+  '/v2/farcaster/feed/trending': 30,
+  '/v2/farcaster/channel/trending': 60,
+  '/v2/farcaster/channel/all': 60,
+  '/v2/farcaster/channel': 60,
+};
+
+function edgeCache(): Cache | undefined {
+  return (globalThis as { caches?: { default?: Cache } }).caches?.default;
+}
+
 function validQuery(params: URLSearchParams, endpoint: Endpoint): boolean {
   const seen = new Set<string>();
   for (const [name, value] of params) {
@@ -138,7 +153,7 @@ async function readLimited(body: ReadableStream<Uint8Array> | null, limit: numbe
   return bytes;
 }
 
-async function proxy(request: Request, url: URL): Promise<Response> {
+async function proxy(request: Request, url: URL, ctx?: WorkerContext): Promise<Response> {
   // The path never controls the destination host. Encoded path separators,
   // alternate authorities, duplicate query keys and unknown fields are rejected.
   if (url.pathname.includes('%') || url.pathname.includes('\\')) return failure(400, 'invalid_path', 'Invalid API path.');
@@ -150,6 +165,19 @@ async function proxy(request: Request, url: URL): Promise<Response> {
   const origin = request.headers.get('Origin');
   if ((origin && origin !== url.origin) || request.headers.get('Sec-Fetch-Site') === 'cross-site') return failure(403, 'origin_denied', 'Cross-site API requests are unavailable.');
   if (isWrite ? url.search !== '' : !validQuery(url.searchParams, endpoint)) return failure(400, 'invalid_query', 'Invalid API query.');
+
+  const ttl = isWrite ? undefined : EDGE_CACHE_TTL_SECONDS[path];
+  const cache = ttl && ctx ? edgeCache() : undefined;
+  // Key on the validated path and query only, never the caller's headers.
+  const cacheKey = cache ? new Request(`${url.origin}${url.pathname}${url.search}`) : undefined;
+  if (cache && cacheKey) {
+    const hit = await cache.match(cacheKey).catch(() => undefined);
+    if (hit) {
+      const headers = new Headers(hit.headers);
+      headers.set('Cache-Control', 'no-store');
+      return secure(new Response(hit.body, { status: hit.status, headers }));
+    }
+  }
 
   let body: Uint8Array | undefined;
   if (isWrite) {
@@ -265,7 +293,14 @@ async function proxy(request: Request, url: URL): Promise<Response> {
     const bytes = await readLimited(upstream.body, MAX_RESPONSE_BYTES);
     const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return failure(502, isWrite ? 'submission_unknown' : 'invalid_response', isWrite ? SUBMISSION_UNKNOWN : 'The node returned an invalid response.');
-    return json(value);
+    const response = json(value);
+    if (cache && cacheKey && ctx) {
+      const stored = response.clone();
+      const headers = new Headers(stored.headers);
+      headers.set('Cache-Control', `public, s-maxage=${ttl}`);
+      ctx.waitUntil(cache.put(cacheKey, new Response(stored.body, { status: 200, headers })).catch(() => undefined));
+    }
+    return response;
   } catch (error) {
     if (isWrite) return failure(controller.signal.aborted ? 504 : 502, 'submission_unknown', SUBMISSION_UNKNOWN);
     if (controller.signal.aborted) return failure(504, 'timeout', 'The Hypersnap node took too long to respond. Try again.');
@@ -276,7 +311,7 @@ async function proxy(request: Request, url: URL): Promise<Response> {
   }
 }
 
-export async function handleRequest(request: Request, env: Env): Promise<Response> {
+export async function handleRequest(request: Request, env: Env, ctx?: WorkerContext): Promise<Response> {
   const url = new URL(request.url);
   if (url.host === LEGACY_HOST) {
     const destination = new URL(CANONICAL_ORIGIN);
@@ -294,7 +329,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     return new Response(null, { status: 308, headers });
   }
   if (url.pathname === '/media' || url.pathname.startsWith('/media/')) return handleMediaRequest(request, env);
-  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return proxy(request, url);
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return proxy(request, url, ctx);
   if (request.method !== 'GET' && request.method !== 'HEAD') return failure(405, 'method_not_allowed', 'This method is unavailable.');
   return secure(await env.ASSETS.fetch(request));
 }
