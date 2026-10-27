@@ -4,7 +4,7 @@ An open source client for everyone. Powered by Arca Computer. Runs on Hypersnap.
 
 ## Run
 
-Use Node 22 and Yarn 1.22. `yarn install --frozen-lockfile`, then `yarn dev`. Vite prints the local URL and proxies `/api` to the same public node used in production. `yarn verify` runs the protocol/API/Worker tests and typechecks both browser and Worker code before the production build.
+Use Node 22 and Yarn 1.22. `yarn install --frozen-lockfile`, then `yarn dev`. Vite prints the local URL and proxies `/api` to the public development default; the production Worker can use the optional [private origin](PRIVATE_ORIGIN.md). `yarn verify` runs the protocol/API/Worker tests and typechecks both browser and Worker code before the production build.
 
 `yarn verify` also typechecks and bundles the offline companion. The parent repository's separate verification belongs to the retained Quorum messenger and needs its linked sibling repositories and dependencies. Never bypass its bot mint guard.
 
@@ -14,7 +14,9 @@ Follow the [release checklist](#release-notes), including the dev log check, ver
 
 Copy `.env.example` to your own ignored `.env.local` for local development, or provide `VITE_WALLETCONNECT_PROJECT_ID` in your build environment for wallet app connections. Obtain your own public project ID from the [Reown Dashboard](https://dashboard.reown.com). Allowlist the precise deployed origins in its project configuration. No Dashboard API secret, private wallet key, social login, or hosted account authentication is needed. Vite embeds this public ID into the browser bundle; changes require a rebuild. Missing configuration disables WalletConnect while browser wallet and offline approval remain available.
 
-The Worker serves static assets and adds CSP, no-referrer, no-store HTML, and other browser security headers. API routes use one fixed upstream (`https://haatz.quilibrium.com`), an explicit route/query allowlist, response size/time bounds, and signed binary message submissions limited to 64 KiB. It forwards neither cookies nor authorization headers, follows no redirects, and emits no application request logs. Public images use a dedicated R2 bucket; a SQLite-backed Durable Object enforces upload nonces and daily quotas. Deploy the R2/DO bindings and migration declared in `wrangler.jsonc`; see [MEDIA.md](MEDIA.md) for provisioning, retention, and limits. The upstream node remains a network availability dependency; this version has no failover or independent indexer. Apply appropriate account-level abuse/rate controls before scaling traffic.
+The Worker serves static assets and adds CSP, no-referrer, no-store HTML, and other browser security headers. API routes use a configured server-only primary, an explicit route/query allowlist, response size/time bounds, and signed binary submissions limited to 64 KiB. Production configuration selects the private `https://node.opencaster.org` origin and an explicit, fixed Haatz read backup; incomplete private configuration fails closed. Fork/development configurations with both private settings absent retain the public Haatz default. Eligible reads prefer primary and make at most one backup attempt after transport failure, timeout or HTTP 5xx, within one 20-second deadline. Signed submissions are never replayed automatically, media signer checks remain primary-only, and the origin credential never goes to the backup. `X-Opencaster-Upstream` identifies the selected backend without exposing credentials. See [PRIVATE_ORIGIN.md](PRIVATE_ORIGIN.md) for the complete contract and bounded public-aggregate cache. The current private origin deliberately returns 503 for unready `/v2/` projections, so Haatz serves those reads rather than stale feed/profile data; this does not claim that the private indexes are complete.
+
+The gateway forwards neither browser cookies nor authorization headers, follows no redirects, and emits no custom application request logs. Cloudflare persists platform invocation logs with request metadata and redacted query strings; automatic traces remain disabled. First-party aggregate usage and request-health measurements use the separate Cloudflare Analytics Engine dataset; see [OBSERVABILITY.md](OBSERVABILITY.md) for dashboard links, coverage, schema and visitor opt-out. A separate operator dashboard is configured in `wrangler.analytics.jsonc` for `analytics.opencaster.org`, with Cloudflare Access and Worker-side Access application verification before any analytics query. It requires its own Access application, exact-email policy and deployment; missing authentication configuration denies access. The private local HTML report remains available through `yarn analytics:report`. Public images use a dedicated R2 bucket; a SQLite-backed Durable Object enforces upload nonces and daily quotas. Deploy the R2/DO bindings and migration declared in `wrangler.jsonc`; see [MEDIA.md](MEDIA.md) for provisioning, retention, and limits. Both nodes remain availability dependencies; the gateway is not an independent indexer. Apply appropriate account-level abuse/rate controls before scaling traffic.
 
 ## Signing model
 
@@ -63,16 +65,58 @@ CI runs the guard for PRs and pushes. Default-branch pushes compare the event's 
 
 CI validates that an entry exists and its source is real; release review still checks that the prose accurately covers the changes. It does not intercept a direct manual Wrangler command. Contributors and coding agents must run this checklist for every deployment, including hotfixes. See [AGENTS.md](AGENTS.md).
 
+## Link previews
+
+Shared links include Open Graph metadata for Telegram and other link-preview
+clients, plus an X large-image card. The initial HTML contains the title,
+description, image URL and image alt text; crawlers do not need JavaScript.
+The public 1200×630 site card introduces Opencaster as an open source social
+client for Hypersnap, powered by Arca Computer.
+
+The gateway preserves recognized profile, cast, channel and other page URLs in
+the canonical and Open Graph URL fields, using `https://opencaster.org` and only
+supported query fields. Public profiles show the person’s name, bio and an
+individual profile card. Public casts show the author, text (including protocol
+mentions) and an individual cast card. Cards include supported avatars and the
+first supported image attachment; other imagery uses initials or a text card.
+Channels show their name, topic, supported image and available participant count.
+Shared custom feeds show the recipe’s name, public sources, ordering and filters;
+long source lists and phrases are shortened in the image. Their previews describe
+the shared recipe, without reading anyone’s browser-local saves or pins or
+claiming to show the feed’s current results.
+Only our content-addressed media and the fixed imagedelivery.net image CDN are
+read, with raster type, byte, dimension and time limits. No arbitrary image
+host or external rendering service is contacted.
+
+These public reads share a four-second deadline. Exact cast hashes are verified
+against the requested author where supplied; existing short links scan at most
+500 recent native history receipts and fall back when unavailable or ambiguous.
+Newly copied/shared cast links carry the full hash so older casts do not depend
+on that scan. Missing or deleted data retains the site introduction. Generated
+PNGs expire after five minutes at our edge; a deleted cast or changed profile/channel
+can remain in a preview during that interval. Some writing systems and emoji
+may lack glyphs in the bundled font; metadata preserves the Unicode text.
+Preview appearance, cropping and refresh timing also depend on each sharing
+app’s cache and settings.
+The versioned image lives beside its editable SVG in `public/`; use a new image
+filename and update both metadata sets when replacing published artwork.
+Re-render the PNG from `hypersnap/` with
+`rsvg-convert -o public/opencaster-social-v2.png public/opencaster-social-v2.svg`.
+The SVG outlines its text and needs no installed fonts.
+
 ## Supported behavior
 
 Implemented:
 
+- A wallet-free Feeds area at `/feeds`: create, customize, pin and delete up to 30 browser-local timelines, combining up to eight public account, public Following, channel or trending sources. Choose source order or newest loaded first, literal include/exclude phrases, images only and hidden replies. Pins appear in desktop navigation and the home feed tabs on mobile. Shareable feed links carry the public name, sources and filters; recipients can browse or save a copy without connecting a wallet. Saves and pins are shared by accounts using this browser and do not sync to other devices.
+- Public Following browsing by username or FID, including direct `/following?fid=<fid>` links and access from profiles. These feeds reflect public follows, not another account's private preferences or personal recommendations. Combined feeds filter and sort returned casts, retain per-source pagination, and load at most one page per source with four simultaneous reads. They stop on exhausted/repeated cursors and require an explicit retry after a source failure; after 64 pages per source, further browsing requires a refresh. Node/index limits remain, and loaded ordering does not establish a complete chronological archive or global Latest feed.
+- Automatically loading timelines for Discover, Following, channels and profile tabs, with inline loading/retry feedback and continuation through sparse or locally filtered pages. Scrolling loads the next page near the bottom until Hypersnap returns no continuation; repeated cursors stop safely. Browser history, node availability and indexed-history limits still apply.
 - Public trending feeds with 1-hour to 7-day windows and following home tabs, shareable profile Casts/Replies/Photos/Likes/Recasts tabs, indexed channel discovery/search/detail/feeds and channel posting, bookmarks, dark/light theme, responsive navigation, and session locking.
 - Search public casts or people at `/search`; shareable queries and profile tabs survive Back/Forward and direct loads. Cast search is a bounded ranked result set; people search uses the node’s prefix index.
 - Recent notifications at `/notifications` for follows, reactions, replies and mentions, with All/Unread/type filters and per-account read state stored on this device. Hypersnap’s bounded activity scan is not a complete historical inbox; the client never calls the node’s placeholder mark-seen POST.
 - Protocol quote embeds and confirmed deletion of the connected account’s own casts. Unknown deletion submissions permit read-only reconciliation, with no automatic resubmission.
-- Shareable cast links at `/cast/<full-hash>`, public profiles at `/profile/<fid>` or `/profile/<username>`, and the connected account's `/profile` page. Root `/<username>` profile links and `/<username-or-fid>/0x<hash-prefix>` cast links also work, including supported ENS/Base identifiers. Browser Back/Forward and direct page loads restore these views; sharing uses our canonical domain and full hashes.
-- Nested conversation reading with parent links, casts/replies, and like/recast add/remove. Connected-user reaction state uses actual account-scoped protocol receipts after refresh; unknown reaction writes remain blocked in the active session until their intended state is visible. Existing protocol mentions become clickable profile links using validated UTF-8 insertion positions. The composer resolves a username or FID through Hypersnap and inserts an explicitly selected account mention; ordinary unselected `@text` stays literal.
+- Shareable cast links at `/<username>/0x<8-hex-prefix>` (or the author FID when a username is unavailable), public profiles at `/profile/<fid>` or `/profile/<username>`, and the connected account's `/profile` page. Root `/<username>` profile links and `/<username-or-fid>/0x<hash-prefix>` cast links also work, including supported ENS/Base identifiers. Browser Back/Forward and direct page loads restore these views; sharing uses our canonical domain and the same author/hash-prefix path shape as Farcaster. Existing `/cast/<full-hash>` links remain supported.
+- Timeline replies identify the recipient and preview their parent cast. Conversations show up to eight earlier casts in order above the selected reply, with a 20-second context deadline, earlier-context navigation and retry/unavailable states. Parent previews and earlier casts honor local content controls. Nested replies identify their recipient, with casts/replies and like/recast add/remove. Connected-user reaction state uses actual account-scoped protocol receipts after refresh; unknown reaction writes remain blocked in the active session until their intended state is visible. Existing protocol mentions become clickable profile links using validated UTF-8 insertion positions. The composer resolves a username or FID through Hypersnap and inserts an explicitly selected account mention; ordinary unselected `@text` stays literal.
 - Public follower/following lists, following/unfollowing after explicit expanded permission approval, and editing display name, bio, or profile image. Banner writes are excluded because Hypersnap requires Pro status and does not reliably hydrate them in its public user response.
 - Explicit account/destination-scoped draft Save/Restore/Discard in this browser tab (24-hour TTL), inline mention suggestions with keyboard selection, Ctrl/Command+Enter publishing, pasted-image uploads, an accessible image viewer, copy-cast-text tools, and profile sharing/linked-address details. Drafts contain only text, public mention references and uploaded image URLs; they never contain signing keys or auto-submit.
 - Saved channel shortcuts labeled as browser-local, paginated channel participants (accounts that posted), bounded friends-of-friends profile suggestions, and a bounded quote-cast viewer with explicit node-index limits.
@@ -85,7 +129,9 @@ Excluded: creating Farcaster accounts, paid storage/on-chain registration, seed 
 
 See [FEATURE_SUPPORT.md](FEATURE_SUPPORT.md) for the source-backed feature matrix and upstream limitations.
 
-For a Farcaster-style cast link, replace its host with `opencaster.org`, keeping `/<author>/0x<hash>` intact. Hashes may contain 8–40 hexadecimal characters in complete bytes. Full hashes use an exact author/FID lookup. Hypersnap currently has no native short-hash index, so short links search the author's available history in explicit batches of up to four 250-message pages. Matching casts appear with canonical **Open full cast** links as soon as their page and exact author/hash lookup are verified, while remaining pages are checked in the background. Opening a match cancels that background lookup; **Search older casts** checks another bounded batch. A single match is opened automatically only after the returned history is exhausted. Multiple matches remain a choice, and an incomplete search never claims uniqueness or absence. Each batch has a 25-second deadline, at most four simultaneous candidate reads, and bounded cumulative history/candidate limits. History includes cast removals; matched adds are hydrated again to confirm current availability. Deleted/pruned casts or data absent from this node cannot be restored by changing a URL. These are public Hypersnap reads; Farcaster client account status is not queried.
+Timeline cast permalinks use `opencaster.org/<username>/0x<8-hex-prefix>`, matching the author and short hash format in Farcaster links. The share dialog copies the author-scoped full-hash form for exact social previews, including older casts. Known casts open directly within the current tab; newly loaded short links still use the bounded Hypersnap lookup below. Automatically opening a verified short-link match retains that URL, while choosing among multiple returned matches opens an author-scoped full-hash path. If the author has no usable username, the link uses their FID. Legacy `/cast/<full-hash>` URLs remain valid and move to the author-style permalink once the cast is loaded.
+
+For a Farcaster-style cast link, replace its host with `opencaster.org`, keeping `/<author>/0x<hash>` intact. Changing a host cannot restore a cast unavailable from Hypersnap. Hashes may contain 8–40 hexadecimal characters in complete bytes. Full hashes use an exact author/FID lookup. Hypersnap currently has no native short-hash index, so short links search the author's available history in explicit batches of up to four 250-message pages. When a fully checked history page returns one currently available cast verified by its exact author and full hash, the conversation opens immediately and cancels remaining lookup reads. No confirmation click or completed history scan is required. This selects the first available verified match; it does not establish that the prefix is unique throughout the author’s history. If a returned snapshot contains multiple verified matches, choose an exact author/full-hash **Open cast** link. If no match has been found, **Search older casts** checks another bounded batch; an incomplete search never claims absence. Each batch has a 25-second deadline, at most four simultaneous candidate reads, and bounded cumulative history/candidate limits. History includes cast removals; matched adds are hydrated again to confirm current availability. Deleted/pruned casts or data absent from this node cannot be restored by changing a URL. These are public Hypersnap reads; Farcaster client account status is not queried.
 
 Supported HTTPS profile and cast links to `farcaster.xyz` or legacy `warpcast.com` (including their `www` hosts) now open on Opencaster when rendered in cast text, non-image URL attachments or profile bios. Normal clicks use local navigation; modified clicks and copied link targets also point to Opencaster. The original authored text and protocol URLs are preserved. Root profile links, author/hash links and the full-hash `/~/conversations/<hash>` fallback are recognized; tracking query/fragment data is discarded. Other sites and unsupported Farcaster handlers retain their existing external behavior. Recognition uses the original URL token and exact allowed hosts rather than contacting a Farcaster redirect or resolver service.
 

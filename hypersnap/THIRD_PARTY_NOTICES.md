@@ -1,5 +1,15 @@
 # Third-party code
 
+## resvg WebAssembly 2.6.2
+
+The server-side cast and profile preview renderer uses the unmodified
+`@resvg/resvg-wasm` 2.6.2 package under MPL-2.0. Its complete license is retained
+in [licenses/resvg-2.6.2-MPL-2.0.txt](licenses/resvg-2.6.2-MPL-2.0.txt).
+The corresponding source is the
+[resvg-js v2.6.2 release](https://github.com/thx/resvg-js/tree/v2.6.2), including
+the `wasm/` JavaScript bindings and the Rust renderer. The dependency is bundled
+only in the gateway; it adds no browser SDK or external rendering service.
+
 ## WalletConnect SignClient 2.26.0
 
 Portions © 2025 Reown, Inc. All Rights Reserved.

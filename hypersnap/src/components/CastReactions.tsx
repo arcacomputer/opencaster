@@ -97,13 +97,13 @@ export default function CastReactions({ cast, session, onSignIn, notify, onQuote
   }
   return <>
         {onQuote ? <span className="recast-control" ref={menu}>
-      <Button variant="ghost" aria-label={state?.recasted ? 'Undo recast' : 'Recast'} aria-haspopup="menu" aria-expanded={menuOpen} className={`recast-trigger ${state?.recasted ? 'is-recasted' : ''}`} onClick={() => setMenuOpen(open => !open)}><IconRepeat size={18} /><span>{short(counts.recasts)}</span></Button>
+      <Button data-analytics="cast-recast-menu-open" variant="ghost" aria-label={state?.recasted ? 'Undo recast' : 'Recast'} aria-haspopup="menu" aria-expanded={menuOpen} className={`recast-trigger ${state?.recasted ? 'is-recasted' : ''}`} onClick={() => setMenuOpen(open => !open)}><IconRepeat size={18} /><span>{short(counts.recasts)}</span></Button>
       {menuOpen && <span className="recast-menu" role="menu">
-        <Button variant="ghost" role="menuitem" disabled={pending || Boolean(session && !state)} onClick={() => { setMenuOpen(false); void react('recast'); }}><IconRepeat size={17} aria-hidden="true" />{state?.recasted ? 'Undo recast' : 'Recast'}</Button>
-        <Button variant="ghost" role="menuitem" aria-label="Quote cast" onClick={() => { setMenuOpen(false); onQuote(); }}><IconQuote size={17} aria-hidden="true" />Quote</Button>
+        <Button data-analytics={state?.recasted ? 'cast-unrecast' : 'cast-recast'} variant="ghost" role="menuitem" disabled={pending || Boolean(session && !state)} onClick={() => { setMenuOpen(false); void react('recast'); }}><IconRepeat size={17} aria-hidden="true" />{state?.recasted ? 'Undo recast' : 'Recast'}</Button>
+        <Button data-analytics="cast-quote-open" variant="ghost" role="menuitem" aria-label="Quote cast" onClick={() => { setMenuOpen(false); onQuote(); }}><IconQuote size={17} aria-hidden="true" />Quote</Button>
       </span>}
-    </span> : <Button variant="ghost" aria-label={state?.recasted ? 'Undo recast' : 'Recast'} aria-pressed={state?.recasted ?? false} disabled={pending || Boolean(session && !state)} className={state?.recasted ? 'is-recasted' : ''} onClick={() => void react('recast')}><IconRepeat size={18} /><span>{short(counts.recasts)}</span></Button>}
-    <Button variant="ghost" aria-label={state?.liked ? 'Unlike' : 'Like'} aria-pressed={state?.liked ?? false} disabled={pending || Boolean(session && !state)} className={state?.liked ? 'is-liked' : ''} onClick={() => void react('like')}><IconHeart size={18} fill={state?.liked ? 'currentColor' : 'none'} /><span>{short(counts.likes)}</span></Button>
+    </span> : <Button data-analytics={state?.recasted ? 'cast-unrecast' : 'cast-recast'} variant="ghost" aria-label={state?.recasted ? 'Undo recast' : 'Recast'} aria-pressed={state?.recasted ?? false} disabled={pending || Boolean(session && !state)} className={state?.recasted ? 'is-recasted' : ''} onClick={() => void react('recast')}><IconRepeat size={18} /><span>{short(counts.recasts)}</span></Button>}
+    <Button data-analytics={state?.liked ? 'cast-unlike' : 'cast-like'} variant="ghost" aria-label={state?.liked ? 'Unlike' : 'Like'} aria-pressed={state?.liked ?? false} disabled={pending || Boolean(session && !state)} className={state?.liked ? 'is-liked' : ''} onClick={() => void react('like')}><IconHeart size={18} fill={state?.liked ? 'currentColor' : 'none'} /><span>{short(counts.likes)}</span></Button>
     {session && !state && <span className="reaction-status" role="status">{error ? <>{uncertain && 'Waiting for confirmation. '}<Button variant="ghost" onClick={() => setRetry(value => value + 1)}>{uncertain ? 'Check pending reaction' : 'Retry reaction status'}</Button></> : 'Checking reactions…'}</span>}
   </>;
 }

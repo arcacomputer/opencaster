@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { castPath, castAliasPath, parseRoute, profilePath, publicUrl, routePath, searchPath, parseLocalPath, connectReturnPath } from './navigation';
+import { castPath, castAliasPath, castPermalink, matchesCastRoute, parseRoute, profilePath, publicUrl, routePath, searchPath, parseLocalPath, connectReturnPath, feedPath, followingPath } from './navigation';
+import { encodeFeed, type FeedDefinition } from './customFeeds';
 
 const hash = '0x0123456789abcdef0123456789abcdef01234567';
 const route = (pathname: string, search = '') => parseRoute({ pathname, search });
+const feed: FeedDefinition = { version: 1, name: 'Builders', sources: [{ kind: 'user', fid: 42 }], order: 'newest', filters: { includeWords: [], excludeWords: [], hideReplies: false, imagesOnly: false } };
 
 describe('public Hypersnap routes', () => {
   it('distinguishes feed and own-profile routes', () => {
     expect(route('/')).toEqual({ kind: 'discover' });
     expect(route('/following')).toEqual({ kind: 'following' });
+    expect(route('/feeds')).toEqual({ kind: 'feeds' });
     expect(route('/bookmarks')).toEqual({ kind: 'bookmarks' });
     expect(route('/profile')).toEqual({ kind: 'profile' });
     expect(route('/connect')).toEqual({ kind: 'connect' });
@@ -93,6 +96,58 @@ describe('public Hypersnap routes', () => {
   });
 });
 
+describe('public custom feed routes', () => {
+  it('restores shared feed definitions through direct loads, history and sign-in returns', () => {
+    const token = encodeFeed(feed);
+    const path = feedPath(feed);
+    expect(path).toBe(`/feeds/view?feed=${token}`);
+    expect(parseLocalPath(path)).toEqual({ kind: 'feed', token });
+    expect(routePath(parseLocalPath(path))).toBe(path);
+    expect(connectReturnPath(path)).toBe(path);
+    expect(publicUrl(path)).toBe(`https://opencaster.org${path}`);
+    expect(routePath(parseLocalPath('/feeds'))).toBe('/feeds');
+    expect(connectReturnPath('/feeds')).toBe('/feeds');
+    expect(publicUrl('/feeds')).toBe('https://opencaster.org/feeds');
+  });
+
+  it('rejects malformed, ambiguous and unsupported feed definitions', () => {
+    const token = encodeFeed(feed);
+    const unsupported = btoa(JSON.stringify({ ...feed, version: 2 })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    for (const search of ['', '?feed=', '?feed=invalid', `?feed=${unsupported}`, `?feed=${token}&feed=${token}`, `?feed=${token}&unknown=private`, `?feed=${token}&fid=42`, `?feed=${'a'.repeat(6001)}`, `?feed=${'a'.repeat(6500)}`, '?feed=%00', '?feed=%', '?feed=../../settings']) {
+      expect(route('/feeds/view', search), search).toEqual({ kind: 'not-found' });
+    }
+    for (const path of ['/feeds/', '/feeds/view/extra', '/feed', '/feed/0x01234567', '/feeds/0x01234567']) expect(parseLocalPath(path)).toEqual({ kind: 'not-found' });
+    expect(() => publicUrl('/feeds/view?feed=invalid')).toThrow('Invalid public path');
+  });
+
+  it('allows longer validated feed definitions without widening other route query limits', () => {
+    const definition: FeedDefinition = { ...feed, sources: Array.from({ length: 8 }, (_, index) => ({ kind: 'user', fid: index + 42 })), filters: { ...feed.filters,
+      includeWords: Array.from({ length: 10 }, (_, index) => `include-${index}-${'a'.repeat(52)}`),
+      excludeWords: Array.from({ length: 10 }, (_, index) => `exclude-${index}-${'b'.repeat(52)}`),
+    } };
+    const path = feedPath(definition);
+    expect(path.length).toBeGreaterThan(2048);
+    expect(parseLocalPath(path)).toEqual({ kind: 'feed', token: encodeFeed(definition) });
+    expect(routePath(parseLocalPath(path))).toBe(path);
+    for (const pathname of ['/', '/feeds', '/following', '/search']) expect(route(pathname, `?feed=${encodeFeed(definition)}`)).toEqual({ kind: 'not-found' });
+  });
+
+  it('opens another public account’s following feed without account authorization queries', () => {
+    expect(followingPath()).toBe('/following');
+    for (const fid of [42, Number.MAX_SAFE_INTEGER]) {
+      expect(followingPath(fid)).toBe(`/following?fid=${fid}`);
+      expect(parseLocalPath(followingPath(fid))).toEqual({ kind: 'following', fid });
+      expect(routePath(parseLocalPath(followingPath(fid)))).toBe(followingPath(fid));
+      expect(connectReturnPath(followingPath(fid))).toBe(followingPath(fid));
+    }
+    expect(route('/following', '?fid=0042&scopes=11&return=https://example.org')).toEqual({ kind: 'following', fid: 42 });
+    expect(routePath(route('/following', '?fid=0042&scopes=11'))).toBe('/following?fid=42');
+    expect(publicUrl(followingPath(42))).toBe('https://opencaster.org/following?fid=42');
+    for (const search of ['?fid=', '?fid=0', '?fid=000', '?fid=-1', '?fid=1.2', '?fid=+42', '?fid=1e2', '?fid=NaN', '?fid=9007199254740992', '?fid=42&fid=42', '?fid=%00', '?fid=42%20']) expect(route('/following', search)).toEqual({ kind: 'not-found' });
+    for (const fid of [0, -1, 1.2, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) expect(() => followingPath(fid)).toThrow('Invalid following FID');
+  });
+});
+
 describe('sign-in navigation', () => {
   it('keeps sign-in URLs independent of account, permission and redirect query parameters', () => {
     expect(route('/connect', '?fid=1234&scopes=1,2,11&return=https://example.org')).toEqual({ kind: 'connect' });
@@ -133,8 +188,8 @@ describe('adaptive author-scoped routes', () => {
   });
 
   it('preserves all reserved route namespaces and static names rather than treating them as authors', () => {
-    const appNames = ['following', 'bookmarks', 'notifications', 'channels', 'devlog', 'settings', 'connect', 'search', 'profile', 'channel', 'cast'];
-    const staticNames = ['api', 'assets', 'media', 'licenses', '.well-known', 'index.html', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'manifest.json', 'manifest.webmanifest', 'sw.js', 'service-worker.js', 'unknown-dark.png', 'unknown-light.png', 'InterVariable.ttf', 'Sen-VariableFont_wght.ttf', 'quorum-symbol.svg', 'opencaster-symbol.svg', 'THIRD_PARTY_DEPENDENCY_LICENSES.txt'];
+    const appNames = ['following', 'feeds', 'feed', 'bookmarks', 'notifications', 'channels', 'devlog', 'settings', 'connect', 'search', 'profile', 'channel', 'cast'];
+    const staticNames = ['api', 'assets', 'media', 'licenses', '.well-known', 'index.html', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'manifest.json', 'manifest.webmanifest', 'sw.js', 'service-worker.js', 'unknown-dark.png', 'unknown-light.png', 'InterVariable.ttf', 'Sen-VariableFont_wght.ttf', 'quorum-symbol.svg', 'opencaster-symbol.svg', 'opencaster-social-v1.png', 'opencaster-social-v1.svg', 'opencaster-social-v2.png', 'opencaster-social-v2.svg', 'THIRD_PARTY_DEPENDENCY_LICENSES.txt'];
     for (const name of [...appNames, ...staticNames]) {
       expect(route(`/${name.toUpperCase()}`)).toEqual({ kind: 'not-found' });
       expect(route(`/${name.toUpperCase()}/0xcfd6d3c3`)).toEqual({ kind: 'not-found' });
@@ -166,6 +221,37 @@ describe('adaptive author-scoped routes', () => {
 });
 
 describe('share link construction', () => {
+  it('shares known casts with the same author and eight-hex-character path as Farcaster', () => {
+    const cast = { hash: '0x8D336914CDDB739974EB0C2E820FA744054C9439', author: { fid: 20, username: 'YES2CRYPTO.ETH' } };
+    expect(castPermalink(cast)).toBe('/yes2crypto.eth/0x8d336914');
+    expect(publicUrl(castPermalink(cast))).toBe('https://opencaster.org/yes2crypto.eth/0x8d336914');
+    expect(parseLocalPath(castPermalink(cast))).toEqual({ kind: 'cast-alias', authorIdentifier: 'yes2crypto.eth', hashPrefix: '0x8d336914' });
+    expect(castPermalink(cast, { fullHash: true })).toBe(`/yes2crypto.eth/${cast.hash.toLowerCase()}`);
+  });
+
+  it('uses the actual FID when a username cannot safely identify the cast author', () => {
+    for (const username of ['', '1234', 'cast', 'CONNECT', 'alice/bob', '@alice', '.', '..', 'alice%2fbob', 'a'.repeat(129)]) {
+      expect(castPermalink({ hash, author: { fid: 20, username } })).toBe('/20/0x01234567');
+    }
+    expect(() => castPermalink({ hash: '0x01234567', author: { fid: 20, username: 'alice' } })).toThrow('Invalid cast hash');
+    for (const fid of [0, -1, 1.2, Number.NaN, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => castPermalink({ hash, author: { fid, username: 'alice' } })).toThrow('Invalid cast author FID');
+    }
+  });
+
+  it('matches known routes only when their full hash or scoped author and prefix agree', () => {
+    const cast = { hash, author: { fid: 20, username: 'alice' } };
+    expect(matchesCastRoute(route(`/cast/${hash}`), cast)).toBe(true);
+    expect(matchesCastRoute(route('/alice/0x01234567'), cast)).toBe(true);
+    expect(matchesCastRoute(route('/20/0x01234567'), cast)).toBe(true);
+    expect(matchesCastRoute(route(`/alice/${hash}`), cast)).toBe(true);
+    for (const path of ['/bob/0x01234567', '/21/0x01234567', '/alice/0x12345678', `/cast/0x${'a'.repeat(40)}`, '/profile/alice']) {
+      expect(matchesCastRoute(parseLocalPath(path), cast), path).toBe(false);
+    }
+    expect(matchesCastRoute(route('/alice/0x01234567'), { ...cast, hash: '0x01234567' })).toBe(false);
+    expect(matchesCastRoute(route('/alice/0x01234567'), { ...cast, author: { fid: 0, username: 'alice' } })).toBe(false);
+  });
+
   it('produces stable FID and full normalized hash paths at the canonical domain', () => {
     expect(profilePath(1234)).toBe('/profile/1234');
     expect(castPath(hash.slice(2).toUpperCase())).toBe(`/cast/${hash}`);

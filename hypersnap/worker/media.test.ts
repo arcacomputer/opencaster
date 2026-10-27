@@ -5,9 +5,13 @@ import { createMediaUploadGrant, MAX_MEDIA_BYTES, MEDIA_UPLOAD_HEADER, mediaGran
 import { bytesToHex, hexToBytes } from '../src/lib/protocol/signedKeyRequest';
 import { handleMediaRequest, MediaUploadQuota, validateImage, type MediaEnv } from './media';
 import { handleRequest } from './index';
+import { ORIGIN_TOKEN_HEADER } from './upstream';
 
 const BASE = 'https://opencaster.org';
 const LEGACY = 'https://quorum.arca.computer';
+const PRIVATE_ORIGIN = 'https://node.example.test';
+const ORIGIN_TOKEN = 'synthetic-origin-token_0123456789-abcdef';
+const privateConfig = { HYPERSNAP_ORIGIN: PRIVATE_ORIGIN, HYPERSNAP_ORIGIN_TOKEN: ORIGIN_TOKEN, HYPERSNAP_READ_FALLBACK: 'haatz-v1' };
 // Synthetic, unregistered test identity. It never signs a live account action.
 const key = new Uint8Array(32).fill(31);
 const publicKey = bytesToHex(ed25519.getPublicKey(key));
@@ -59,6 +63,138 @@ function upload(grant: MediaUploadGrant, bytes = png, headers: Record<string, st
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('authenticated media uploads', () => {
+  it('authenticates both uncached private-origin signer checks without forwarding browser credentials', async () => {
+    const { env, fetch, put } = environment();
+    const cache = { match: vi.fn(), put: vi.fn() }; vi.stubGlobal('caches', { default: cache });
+    const grant = await grantFor();
+    const result = await handleRequest(upload(grant, png, { [ORIGIN_TOKEN_HEADER]: 'browser-spoof', Authorization: 'browser-secret', Cookie: 'browser-secret' }), { ...env, ...privateConfig, ASSETS: { fetch: vi.fn() } }, { waitUntil: vi.fn() });
+    expect(result.status).toBe(200); expect(await result.text()).not.toContain(ORIGIN_TOKEN);
+    expect(fetch).toHaveBeenCalledTimes(2); expect(put).toHaveBeenCalledOnce();
+    for (const [url, options] of fetch.mock.calls) {
+      expect(url).toBe(`${PRIVATE_ORIGIN}/v1/signersByFid?fid=1234&pageSize=1000&requesterFids%5B0%5D=1234`);
+      expect(options).toMatchObject({ redirect: 'manual', credentials: 'omit', cache: 'no-store' });
+      expect([...options.headers]).toEqual([['accept', 'application/json'], [ORIGIN_TOKEN_HEADER.toLowerCase(), ORIGIN_TOKEN]]);
+    }
+    expect(cache.match).not.toHaveBeenCalled(); expect(cache.put).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { HYPERSNAP_ORIGIN: PRIVATE_ORIGIN }, { HYPERSNAP_ORIGIN_TOKEN: ORIGIN_TOKEN },
+    { ...privateConfig, HYPERSNAP_ORIGIN: `${PRIVATE_ORIGIN}/v1` },
+    { ...privateConfig, HYPERSNAP_ORIGIN_TOKEN: 'short' },
+  ])('fails closed with sanitized 503 on invalid media origin configuration %j', async config => {
+    const { env, fetch, put, storage } = environment();
+    const result = await handleMediaRequest(upload(await grantFor()), { ...env, ...config });
+    expect(result.status).toBe(503); expect(await result.json()).toEqual({ code: 'registry_unavailable', message: 'Signer authorization could not be checked.' });
+    expect(fetch).not.toHaveBeenCalled(); expect(put).not.toHaveBeenCalled(); expect(storage.values.size).toBe(0);
+  });
+
+  it('does not follow private registry redirects, leak their credentials or reserve storage', async () => {
+    const { env, fetch, put, storage } = environment();
+    fetch.mockImplementationOnce(async () => new Response(ORIGIN_TOKEN, { status: 307, headers: { Location: `https://attacker.example/${ORIGIN_TOKEN}`, [ORIGIN_TOKEN_HEADER]: ORIGIN_TOKEN } }));
+    const result = await handleMediaRequest(upload(await grantFor()), { ...env, ...privateConfig });
+    expect(result.status).toBe(503); expect(await result.text()).not.toContain(ORIGIN_TOKEN); expect(result.headers.has('Location')).toBe(false); expect(result.headers.has(ORIGIN_TOKEN_HEADER)).toBe(false);
+    expect(fetch).toHaveBeenCalledOnce(); expect(fetch.mock.calls[0][1].redirect).toBe('manual'); expect(put).not.toHaveBeenCalled(); expect(storage.values.size).toBe(0);
+  });
+
+  it('retains the 10-second private signer deadline without reserving storage', async () => {
+    vi.useFakeTimers(); const { env, fetch, put, storage } = environment();
+    fetch.mockImplementationOnce((_url: string, options: RequestInit) => new Promise<Response>((_resolve, reject) => options.signal!.addEventListener('abort', () => reject(new Error(ORIGIN_TOKEN)))));
+    const pending = handleMediaRequest(upload(await grantFor()), { ...env, ...privateConfig });
+    await vi.advanceTimersByTimeAsync(9_999); expect(fetch).toHaveBeenCalledOnce(); expect(fetch.mock.calls[0][1].signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1); const result = await pending;
+    expect(result.status).toBe(503); expect(await result.text()).not.toContain(ORIGIN_TOKEN); expect(put).not.toHaveBeenCalled(); expect(storage.values.size).toBe(0);
+  });
+
+  it.each(([1, 2] as const).flatMap(check => (['ignored fetch abort', 'stalled success body', 'pending error cancellation', 'rejected error cancellation', 'late fetch rejection'] as const).map(mode => ({ check, mode }))))('hard-bounds signer check $check with $mode and zero storage effects', async ({ check, mode }) => {
+    const grant = await grantFor();
+    vi.useFakeTimers();
+    const { env, fetch, put, storage, quota, images } = environment();
+    const getQuota = vi.spyOn(env.MEDIA_QUOTA!, 'get'); const reserve = vi.spyOn(quota, 'fetch');
+    const storagePut = vi.spyOn(storage, 'put'); const transaction = vi.spyOn(storage, 'transaction'); const alarm = vi.spyOn(storage, 'setAlarm');
+    const validRegistry = fetch.getMockImplementation()!;
+    if (check === 2) fetch.mockImplementationOnce(validRegistry);
+    let resolveLate: ((response: Response) => void) | undefined;
+    let rejectLate: ((reason: Error) => void) | undefined;
+    const cancel = vi.fn(() => mode === 'rejected error cancellation'
+      ? Promise.reject(new Error(ORIGIN_TOKEN)) : new Promise<void>(() => undefined));
+    fetch.mockImplementationOnce(() => {
+      if (mode === 'ignored fetch abort' || mode === 'late fetch rejection') {
+        return new Promise<Response>((resolve, reject) => { resolveLate = resolve; rejectLate = reject; });
+      }
+      return Promise.resolve(new Response(new ReadableStream<Uint8Array>({ cancel }), {
+        status: mode === 'stalled success body' ? 200 : 500,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    });
+    const req = upload(grant); const pending = handleMediaRequest(req, { ...env, ...privateConfig });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(check));
+    await vi.advanceTimersByTimeAsync(10_000);
+    const result = await pending;
+    expect(result.status).toBe(503); expect(await result.text()).not.toContain(ORIGIN_TOKEN);
+    expect(req.bodyUsed).toBe(check === 2);
+    if (mode === 'ignored fetch abort') {
+      resolveLate!(new Response(new ReadableStream<Uint8Array>({ cancel }), { headers: { 'Content-Type': 'application/json' } }));
+      await vi.advanceTimersByTimeAsync(0); expect(cancel).toHaveBeenCalledOnce();
+    } else if (mode === 'late fetch rejection') {
+      rejectLate!(new Error(ORIGIN_TOKEN)); await vi.advanceTimersByTimeAsync(0);
+    } else { expect(cancel).toHaveBeenCalledOnce(); }
+    for (const effect of [getQuota, reserve, storagePut, transaction, alarm, put]) expect(effect).not.toHaveBeenCalled();
+    expect(storage.values.size).toBe(0); expect(images.size).toBe(0); expect(storage.alarm).toBe(0);
+    expect(fetch).toHaveBeenCalledTimes(check); expect(vi.getTimerCount()).toBe(0);
+    for (const [url] of fetch.mock.calls) expect(url).toContain(`${PRIVATE_ORIGIN}/v1/signersByFid?`);
+  });
+
+  it('keeps existing public media and legacy redirects available independently of broken private-node configuration', async () => {
+    const { env, fetch, images } = environment(); const digest = await sha256Hex(png); images.set(digest, { bytes: png, type: 'image/png' });
+    const settings = { ...env, HYPERSNAP_ORIGIN: PRIVATE_ORIGIN, ASSETS: { fetch: vi.fn() } };
+    const moved = await handleRequest(new Request(`${LEGACY}/media/${digest}`), settings);
+    expect(moved.status).toBe(308);
+    const result = await handleRequest(new Request(moved.headers.get('Location')!), settings);
+    expect(result.status).toBe(200); expect(new Uint8Array(await result.arrayBuffer())).toEqual(png); expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(['redirect', 'timeout', 'HTTP error', 'transport error', 'malformed JSON', 'invalid registry'] as const)('fails closed on the SECOND private-origin signer check (%s), with zero quota/storage effects', async outcome => {
+    const grant = await grantFor();
+    vi.useFakeTimers();
+    const { env, fetch, put, storage, quota, images } = environment();
+    const getQuota = vi.spyOn(env.MEDIA_QUOTA!, 'get');
+    const reserve = vi.spyOn(quota, 'fetch');
+    const storagePut = vi.spyOn(storage, 'put'); const transaction = vi.spyOn(storage, 'transaction'); const alarm = vi.spyOn(storage, 'setAlarm');
+    const cache = { match: vi.fn(), put: vi.fn() }; vi.stubGlobal('caches', { default: cache });
+    // The first check succeeds. Only the post-transfer recheck fails.
+    fetch.mockImplementationOnce(fetch.getMockImplementation()!);
+    fetch.mockImplementationOnce((_url: string, options: RequestInit) => {
+      if (outcome === 'timeout') return new Promise<Response>((_resolve, reject) => options.signal!.addEventListener('abort', () => reject(new Error(ORIGIN_TOKEN))));
+      if (outcome === 'transport error') return Promise.reject(new Error(ORIGIN_TOKEN));
+      return Promise.resolve(outcome === 'redirect'
+        ? new Response(ORIGIN_TOKEN, { status: 307, headers: { Location: `https://attacker.example/${ORIGIN_TOKEN}`, [ORIGIN_TOKEN_HEADER]: ORIGIN_TOKEN } })
+        : outcome === 'HTTP error' ? new Response(ORIGIN_TOKEN, { status: 500 })
+          : new Response(outcome === 'malformed JSON' ? '{' : JSON.stringify({ signers: ORIGIN_TOKEN }), { headers: { 'Content-Type': 'application/json' } }));
+    });
+    const req = upload(grant);
+    const pending = handleMediaRequest(req, { ...env, ...privateConfig });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    if (outcome === 'timeout') {
+      expect(fetch.mock.calls[1][1].signal.aborted).toBe(false);
+      expect(getQuota).not.toHaveBeenCalled(); expect(put).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(fetch.mock.calls[1][1].signal.aborted).toBe(true);
+    }
+    const result = await pending;
+    expect(req.bodyUsed).toBe(true); expect(result.status).toBe(503);
+    expect(await result.json()).toEqual({ code: 'registry_unavailable', message: 'Signer authorization could not be checked.' });
+    for (const name of ['Location', ORIGIN_TOKEN_HEADER, 'X-Opencaster-Aggregate-Cache']) expect(result.headers.has(name)).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    for (const [url, options] of fetch.mock.calls) {
+      expect(url).toBe(`${PRIVATE_ORIGIN}/v1/signersByFid?fid=1234&pageSize=1000&requesterFids%5B0%5D=1234`);
+      expect(options).toMatchObject({ redirect: 'manual', credentials: 'omit', cache: 'no-store' });
+      expect(options.headers.get(ORIGIN_TOKEN_HEADER)).toBe(ORIGIN_TOKEN);
+    }
+    for (const effect of [getQuota, reserve, storagePut, transaction, alarm, put, cache.match, cache.put]) expect(effect).not.toHaveBeenCalled();
+    expect(storage.values.size).toBe(0); expect(storage.alarm).toBe(0); expect(images.size).toBe(0); expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('redirects legacy public image URLs to the same bucket without blocking cross-origin images', async () => {
     const { env, images } = environment(); const digest = await sha256Hex(png); images.set(digest, { bytes: png, type: 'image/png' });
     const workerEnv = { ...env, ASSETS: { fetch: vi.fn() } };
