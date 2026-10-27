@@ -19,6 +19,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'edge-cached-global-reads',
+    date: '2026-10-27',
+    title: 'Discover and Channels load faster',
+    summary: 'Node info, trending casts and channel lists are now shared at the edge for up to a minute, so most page loads no longer wait for the Hypersnap node.',
+    changes: [
+      'Serve node info (15 seconds), the trending feed (30 seconds), trending and all-channel lists and channel details (60 seconds) from the gateway edge cache after the first request.',
+      'These lists can be up to that many seconds old. Feeds, notifications, profiles, follows, reactions, searches and signed messages are never cached and still go to the node on every request.',
+      'Only successful node responses are cached, keyed by the validated path and query alone. Browsers still receive no-store responses, and the gateway falls back to the node if the edge cache is unavailable.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/c60e64419618d7e3bb0f73aaeaf60a8be3c95b77',
+    tag: 'Reliability',
+  },
+  {
     id: 'short-cast-links-show-matches-earlier',
     date: '2026-10-22',
     title: 'Short cast links show matches sooner',
