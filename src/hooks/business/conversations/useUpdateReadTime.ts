@@ -51,7 +51,7 @@ export function useUpdateReadTime({
 
       // 3. Invalidate space-level mention counts (updates space-level counts)
       queryClient.invalidateQueries({
-        queryKey: ['mention-counts', 'space'],
+        queryKey: ['mention-counts', 'space', spaceId],
       });
 
       // 4. Invalidate channel-level reply counts (updates channel sidebar reply badges)
@@ -61,7 +61,7 @@ export function useUpdateReadTime({
 
       // 5. Invalidate space-level reply counts (updates space icon reply bubbles)
       queryClient.invalidateQueries({
-        queryKey: ['reply-counts', 'space'],
+        queryKey: ['reply-counts', 'space', spaceId],
       });
 
       // 5b. Invalidate notification inbox lists (per-space + global panels).
