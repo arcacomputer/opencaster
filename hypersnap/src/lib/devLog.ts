@@ -19,6 +19,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'cached-app-bundles',
+    date: '2026-10-27',
+    title: 'Repeat visits load faster',
+    summary: 'Browsers now keep the app’s versioned scripts and styles instead of checking each one with the server on every visit, so reloads and return visits start sooner.',
+    changes: [
+      'Mark the versioned files under /assets/ as cacheable for a year. Each release gives changed files new names, so an update is picked up as soon as the page loads.',
+      'Let browsers keep the Inter and Sen fonts for a day.',
+      'Pages themselves are still never cached, so a new release and sign-in state are always current. Missing or failed files are not cached.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/50ea86e22c56ce559d0d809c227fe3f219b3395a',
+    tag: 'Reliability',
+  },
+  {
     id: 'notifications-time-labels-faster',
     date: '2026-10-27',
     title: 'Notifications render their times faster',
