@@ -114,10 +114,10 @@ export function useChannelMute({
     });
     // Invalidate space-level counts
     queryClient.invalidateQueries({
-      queryKey: ['mention-counts', 'space'],
+      queryKey: ['mention-counts', 'space', spaceId],
     });
     queryClient.invalidateQueries({
-      queryKey: ['reply-counts', 'space'],
+      queryKey: ['reply-counts', 'space', spaceId],
     });
   }, [queryClient, spaceId]);
 

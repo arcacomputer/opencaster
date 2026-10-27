@@ -18,8 +18,9 @@ import type { Space } from '@quilibrium/quorum-shared';
  * The MessageDB here is a counting stub, not a real (or faked) IndexedDB, so
  * the elapsed ms below is meaningless as a browser prediction and is printed as
  * context only — never asserted on. What transfers is the SHAPE of the work:
- * how many round-trips the hook issues per channel, and how that scales. Those
- * counts are deterministic and are the actual mechanism behind the freeze.
+ * how many round-trips the hook issues, and how that scales. Those counts are
+ * deterministic. For the cost INSIDE a round-trip (rows walked), see
+ * spaceBadgeCountsIdb.bench.test.tsx, which runs against fake-indexeddb.
  *
  * NOT part of the unit suite — `vitest.config.ts` excludes `perf/**` because
  * the load this generates makes timing-sensitive tests elsewhere flake. Run it
@@ -29,53 +30,39 @@ import type { Space } from '@quilibrium/quorum-shared';
  * re-implement the loop: a copy would measure the copy and would keep passing
  * if the real hook changed.
  *
- * TWO KNOWN LIMITS OF THIS INSTRUMENT — found in review, read before trusting
- * the numbers as a cost model:
- *
- *  1. It measures the MENTION half only. `useSpaceReplyCounts` is a structural
- *     twin and `invalidateNotificationQueries()` invalidates both space-level
- *     keys, so a real toggle costs roughly DOUBLE what this reports.
- *  2. It treats the three reads as equal cost. They are not: getConversation is
- *     an O(1) store.get and getThreadReadTimesForChannel is a small bounded
- *     index.getAll, but getUnreadMentions (db/messages.ts:2876) is a CURSOR that
- *     only stops early once it has `limit` MATCHES — so with no unread mentions
- *     it walks every message since lastReadTimestamp (the whole channel history
- *     when that is 0). True cost is O(messages scanned), not O(channels).
- *
- * So these counts are a lower bound on the SHAPE of the problem, not a
- * prediction of milliseconds. Converting them to time needs a browser profile.
+ * History: the hook used to issue THREE sequential reads per channel for every
+ * channel of every space (getConversation, getThreadReadTimesForChannel,
+ * getUnreadMentions), and getUnreadMentions walked every unread message. It now
+ * issues ONE batched read per space (getSpaceUnreadCandidates: one readonly
+ * transaction over a sparse mention index), each in its own query so an
+ * invalidation can target a single space. `useSpaceReplyCounts` is a
+ * structural twin.
  */
 
 const USER = 'QmPeerAEgVKpYZKYuFu2J49zHXnA8vZtEqHMtpB4imzzzz';
 
 // Round-trip counters, incremented by the fake MessageDB below.
 const calls = {
-  getConversation: 0,
-  getThreadReadTimesForChannel: 0,
-  getUnreadMentions: 0,
+  getSpaceUnreadCandidates: 0,
+  channelsRead: 0,
 };
 const resetCalls = () => {
-  calls.getConversation = 0;
-  calls.getThreadReadTimesForChannel = 0;
-  calls.getUnreadMentions = 0;
+  calls.getSpaceUnreadCandidates = 0;
+  calls.channelsRead = 0;
 };
 
 // A MessageDB stub that counts round-trips and resolves empty — i.e. the
-// NO-UNREAD-MENTIONS case, which per the early-exit reading is the worst case,
-// because the `spaceTotal >= DISPLAY_THRESHOLD` break can never fire.
+// NO-UNREAD-MENTIONS case, the worst case for the early exit.
 const messageDB = {
   getUserConfig: async () => ({ address: USER, spaceIds: [] }),
-  getConversation: async () => {
-    calls.getConversation++;
-    return { conversation: { lastReadTimestamp: 0 } };
-  },
-  getThreadReadTimesForChannel: async () => {
-    calls.getThreadReadTimesForChannel++;
-    return {};
-  },
-  getUnreadMentions: async () => {
-    calls.getUnreadMentions++;
-    return [];
+  getSpaceUnreadCandidates: async ({ channelIds }: { channelIds: string[] }) => {
+    calls.getSpaceUnreadCandidates++;
+    calls.channelsRead += channelIds.length;
+    return channelIds.map((channelId) => ({
+      channelId,
+      messages: [],
+      threadReadTimes: {},
+    }));
   },
 };
 
@@ -132,7 +119,7 @@ const measure = async (spaces: Space[]) => {
 describe('useSpaceMentionCounts — cost of one recount (perf instrument)', () => {
   beforeEach(() => resetCalls());
 
-  it('issues THREE sequential IndexedDB reads per channel, for every channel of every space', async () => {
+  it('issues ONE batched read per space, covering every channel of that space', async () => {
     const grid = [
       { spaces: 1, channels: 5 },
       { spaces: 5, channels: 10 },
@@ -144,24 +131,17 @@ describe('useSpaceMentionCounts — cost of one recount (perf instrument)', () =
       const list = Array.from({ length: s }, (_, i) => makeSpace(i, c));
       const r = await measure(list);
       const totalChannels = s * c;
-      const roundTrips =
-        r.getConversation +
-        r.getThreadReadTimesForChannel +
-        r.getUnreadMentions;
 
       rows.push(
         `${String(s).padStart(3)} spaces x ${String(c).padStart(3)} ch = ` +
           `${String(totalChannels).padStart(4)} channels -> ` +
-          `${String(roundTrips).padStart(5)} IDB round-trips ` +
+          `${String(r.getSpaceUnreadCandidates).padStart(3)} round-trips ` +
           `(${r.elapsedMs.toFixed(0)}ms with a stub DB, NOT a browser figure)`
       );
 
-      // The mechanism: one read of each kind per channel, no batching.
-      expect(r.getConversation).toBe(totalChannels);
-      expect(r.getThreadReadTimesForChannel).toBe(totalChannels);
-      expect(r.getUnreadMentions).toBe(totalChannels);
-      // Which is 3 round-trips per channel, i.e. linear in TOTAL channels.
-      expect(roundTrips).toBe(totalChannels * 3);
+      // One round-trip per space (was 3 per channel), still covering every channel.
+      expect(r.getSpaceUnreadCandidates).toBe(s);
+      expect(r.channelsRead).toBe(totalChannels);
     }
 
     console.log(
@@ -169,32 +149,25 @@ describe('useSpaceMentionCounts — cost of one recount (perf instrument)', () =
     );
   });
 
-  it('costs the SAME whether spaces are few-and-wide or many-and-narrow (scales with total channels, not space count)', async () => {
-    // A control on the diagnosis: if cost tracked space count rather than total
-    // channel count, these two would differ. They must not.
+  it('scales with space count, not total channel count', async () => {
     const fewWide = Array.from({ length: 2 }, (_, i) => makeSpace(i, 50));
     const manyNarrow = Array.from({ length: 50 }, (_, i) => makeSpace(i, 2));
 
     const a = await measure(fewWide);
     const b = await measure(manyNarrow);
 
-    expect(a.getConversation).toBe(100);
-    expect(b.getConversation).toBe(100);
-    expect(
-      a.getConversation + a.getThreadReadTimesForChannel + a.getUnreadMentions
-    ).toBe(
-      b.getConversation + b.getThreadReadTimesForChannel + b.getUnreadMentions
-    );
+    expect(a.channelsRead).toBe(100);
+    expect(b.channelsRead).toBe(100);
+    expect(a.getSpaceUnreadCandidates).toBe(2);
+    expect(b.getSpaceUnreadCandidates).toBe(50);
   });
 
   it('CONTROL ARM: a muted space is skipped entirely, so it costs zero reads', async () => {
-    // `useSpaceMentionCounts` does `if (settings?.isMuted) continue`. This arm
-    // exists to prove the instrument can register a DIFFERENCE at all — if a
-    // muted space also cost 3 reads/channel, the counters would be measuring
-    // something other than the loop, and every number above would be suspect.
+    // `useSpaceMentionCounts` returns 0 for a muted space before reading. This
+    // arm proves the instrument can register a DIFFERENCE at all.
     const spaces = Array.from({ length: 4 }, (_, i) => makeSpace(i, 10));
     const before = await measure(spaces);
-    expect(before.getConversation).toBe(40);
+    expect(before.getSpaceUnreadCandidates).toBe(4);
 
     messageDB.getUserConfig = async () => ({
       address: USER,
@@ -205,8 +178,7 @@ describe('useSpaceMentionCounts — cost of one recount (perf instrument)', () =
     });
 
     const after = await measure(spaces);
-    expect(after.getConversation).toBe(0);
-    expect(after.getUnreadMentions).toBe(0);
+    expect(after.getSpaceUnreadCandidates).toBe(0);
 
     // restore for any later test in this file
     messageDB.getUserConfig = async () => ({ address: USER, spaceIds: [] });

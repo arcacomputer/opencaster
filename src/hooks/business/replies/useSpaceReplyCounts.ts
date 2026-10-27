@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useCallback } from 'react';
+import { useQueries, type UseQueryResult } from '@tanstack/react-query';
 import { usePasskeysContext } from '@quilibrium/quilibrium-js-sdk-channels';
 import { useMessageDB } from '../../../components/context/useMessageDB';
 import { isNotificationTypeEnabled } from '@quilibrium/quorum-shared';
@@ -18,12 +19,11 @@ const DISPLAY_THRESHOLD = 10;
  * Returns a map of spaceId -> total reply count across all channels in that space.
  * Only spaces with replies > 0 are included in the result.
  *
- * The hook:
- * 1. Checks if reply notifications are enabled for each space
- * 2. For each space, gets all channel IDs
- * 3. For each channel, gets the last read timestamp
- * 4. Queries messages after that timestamp where user received a reply
- * 5. Aggregates total replies per space
+ * One query per space, keyed ['reply-counts', 'space', spaceId, userAddress],
+ * so a reply invalidates only its own space (and, by prefix on the address,
+ * only when it is a reply to this user). Each query reads every channel's
+ * last-read time and its first unread replies to the user (sparse reply index)
+ * in a single IndexedDB transaction.
  *
  * Uses React Query with 90s stale time for performance while maintaining
  * reasonable real-time updates when invalidated.
@@ -35,80 +35,59 @@ export function useSpaceReplyCounts({
   const { messageDB } = useMessageDB();
   const userAddress = user.currentPasskeyInfo?.address;
 
-  const { data } = useQuery({
-    // Query key includes space IDs to invalidate when spaces change
-    // Can be invalidated at space level ['reply-counts', 'space', spaceId] or
-    // more broadly ['reply-counts', 'space'] for all spaces
-    queryKey: [
-      'reply-counts',
-      'space',
-      userAddress,
-      ...spaces.map((s) => s.spaceId).sort(),
-    ],
-    queryFn: async () => {
-      if (!userAddress) return {};
-
+  const combine = useCallback(
+    (results: UseQueryResult<number>[]) => {
       const spaceCounts: Record<string, number> = {};
+      results.forEach((result, i) => {
+        if (result.data && result.data > 0) {
+          spaceCounts[spaces[i].spaceId] = result.data;
+        }
+      });
+      return spaceCounts;
+    },
+    [spaces]
+  );
 
-      try {
-        // Load user's notification settings
-        const config = await messageDB.getUserConfig({ address: userAddress });
+  return useQueries({
+    queries: spaces.map((space) => ({
+      // Invalidate one space with ['reply-counts', 'space', spaceId], or all
+      // spaces with ['reply-counts', 'space'].
+      queryKey: ['reply-counts', 'space', space.spaceId, userAddress],
+      queryFn: async (): Promise<number> => {
+        if (!userAddress) return 0;
 
-        // Process each space
-        for (const space of spaces) {
-          // Check if reply notifications are enabled for this space
+        try {
+          // Load user's notification settings
+          const config = await messageDB.getUserConfig({ address: userAddress });
           const settings = config?.notificationSettings?.[space.spaceId];
 
           // Check if entire space is muted (takes precedence over individual settings)
-          if (settings?.isMuted) {
-            continue; // Space is muted - no notifications
-          }
-
-          if (!isNotificationTypeEnabled(settings, 'reply')) {
-            continue; // Skip this space if reply notifications are disabled
-          }
-
-          let spaceTotal = 0;
+          if (settings?.isMuted) return 0;
+          if (!isNotificationTypeEnabled(settings, 'reply')) return 0;
 
           // Get all channel IDs from all groups in this space
           const channelIds = space.groups.flatMap((group) =>
             group.channels.map((channel) => channel.channelId)
           );
 
-          // Process each channel in the space with early exit
-          for (const channelId of channelIds) {
+          const channels = await messageDB.getSpaceUnreadCandidates({
+            spaceId: space.spaceId,
+            channelIds,
+            kind: 'replies',
+            userAddress,
+            limitPerChannel: DISPLAY_THRESHOLD,
+          });
+
+          let spaceTotal = 0;
+          for (const { messages, threadReadTimes } of channels) {
             // Early exit: no need to count beyond display threshold
-            if (spaceTotal >= DISPLAY_THRESHOLD) {
-              break; // Stop scanning remaining channels
-            }
+            if (spaceTotal >= DISPLAY_THRESHOLD) break;
 
-            const conversationId = `${space.spaceId}/${channelId}`;
-
-            // Get conversation to find last read timestamp
-            const { conversation } = await messageDB.getConversation({
-              conversationId,
-            });
-
-            const lastReadTimestamp = conversation?.lastReadTimestamp || 0;
-
-            // Fetch thread read times for this channel
-            const threadReadTimes = await messageDB.getThreadReadTimesForChannel({
-              spaceId: space.spaceId,
-              channelId,
-            });
-
-            // Use optimized database query to get only unread replies
-            const remainingLimit = DISPLAY_THRESHOLD - spaceTotal;
-            const messages = await messageDB.getUnreadReplies({
-              spaceId: space.spaceId,
-              channelId,
-              userAddress,
-              afterTimestamp: lastReadTimestamp,
-              limit: remainingLimit, // Only fetch what we need
-            });
-
-            // Add to space total, excluding thread replies already read
-            for (const message of messages) {
+            // Only the first `remaining` replies of a channel are considered,
+            // as when each channel was queried with that limit.
+            const remaining = DISPLAY_THRESHOLD - spaceTotal;
+            for (const message of messages.slice(0, remaining)) {
+              // Exclude thread replies already read
               if (message.isThreadReply && message.threadId) {
                 const threadReadTime = threadReadTimes[message.threadId];
                 if (threadReadTime !== undefined && message.createdDate <= threadReadTime) {
@@ -120,23 +99,17 @@ export function useSpaceReplyCounts({
             }
           }
 
-          // Only include spaces with replies
-          if (spaceTotal > 0) {
-            spaceCounts[space.spaceId] = spaceTotal;
-          }
+          return spaceTotal;
+        } catch (error) {
+          console.error('[SpaceReplyCounts] Error calculating reply counts:', error);
+          // Graceful degradation: no badge for this space
+          return 0;
         }
-      } catch (error) {
-        console.error('[SpaceReplyCounts] Error calculating reply counts:', error);
-        // Return empty counts on error - graceful degradation
-        return {};
-      }
-
-      return spaceCounts;
-    },
-    enabled: !!userAddress && spaces.length > 0,
-    staleTime: 90000, // 90 seconds (1.5 minutes) - reduces query frequency while maintaining reasonable UX
-    refetchOnWindowFocus: true, // Immediate updates when user returns to app
+      },
+      enabled: !!userAddress,
+      staleTime: 90000, // 90 seconds (1.5 minutes) - reduces query frequency while maintaining reasonable UX
+      refetchOnWindowFocus: true, // Immediate updates when user returns to app
+    })),
+    combine,
   });
-
-  return data || {};
 }
