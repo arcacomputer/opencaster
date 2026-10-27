@@ -72,6 +72,20 @@ describe('verified connected-user reactions', () => {
     expect(button('Unlike').disabled).toBe(false); expect(session.react).not.toHaveBeenCalled();
   });
 
+  it('keeps verified status when only aggregate counts refresh, and shows the refreshed counts', async () => {
+    vi.mocked(getReactionStatus).mockImplementation(async (_fid, _target, kind) => kind === 'like');
+    const session = makeSession();
+    await act(async () => root.render(<CastReactions cast={cast} session={session} onSignIn={vi.fn()} notify={vi.fn()} />));
+    expect(getReactionStatus).toHaveBeenCalledTimes(2);
+    await click(button('Unlike'));
+    expect(button('Like').textContent).toBe('4');
+    await act(async () => root.render(<CastReactions cast={{ ...cast }} session={session} onSignIn={vi.fn()} notify={vi.fn()} />));
+    expect(button('Like').textContent).toBe('4');
+    await act(async () => root.render(<CastReactions cast={{ ...cast, reactions: { likes_count: 9, recasts_count: 3 } }} session={session} onSignIn={vi.fn()} notify={vi.fn()} />));
+    expect(getReactionStatus).toHaveBeenCalledTimes(2);
+    expect(button('Like').disabled).toBe(false); expect(button('Like').textContent).toBe('9'); expect(button('Recast').textContent).toBe('3');
+  });
+
   it('offers Recast and Quote from one menu when quoting is available, keeping the same reaction write', async () => {
     vi.mocked(getReactionStatus).mockResolvedValue(false);
     const session = makeSession(); const onQuote = vi.fn();

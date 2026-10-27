@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ed25519 } from '@noble/curves/ed25519.js';
-import { ApiError, getCast, getFollowStatus, getReactionStatus, getSigners, getUser, submitMessage, type Cast, type SignersResponse, type User } from './api';
+import { ApiError, clearReactionStatusCache, getCast, getFollowStatus, getReactionStatus, getSigners, getUser, invalidateReactionStatus, primeReactionStatus, submitMessage, type Cast, type SignersResponse, type User } from './api';
 import { deleteSavedSession, getSavedSessionMethod, hasSavedSession, preparePairing, unlockSavedSession, unlockSavedSessionWithPasskey, type PendingPairing, type PendingRevocation } from './auth';
 import { FULL_CLIENT_SCOPES, FULL_SOCIAL_SCOPES, hashPairingRequest, hashRevocationRequest, type PairingApproval, type RevocationApproval } from './pairing';
 import { blake3_20 } from './protocol/messageBuilder';
@@ -10,7 +10,7 @@ import * as vaultModule from './vault';
 import { enrollPasskey, evaluatePasskey, type PasskeyDescriptor } from './passkey';
 import { mediaGrantPayload } from './media';
 
-vi.mock('./api', async importOriginal => ({ ...await importOriginal<typeof import('./api')>(), getCast: vi.fn(), getFollowStatus: vi.fn(), getReactionStatus: vi.fn(), getSigners: vi.fn(), getUser: vi.fn(), submitMessage: vi.fn() }));
+vi.mock('./api', async importOriginal => ({ ...await importOriginal<typeof import('./api')>(), getCast: vi.fn(), getFollowStatus: vi.fn(), getReactionStatus: vi.fn(), getSigners: vi.fn(), getUser: vi.fn(), submitMessage: vi.fn(), clearReactionStatusCache: vi.fn(), invalidateReactionStatus: vi.fn(), primeReactionStatus: vi.fn() }));
 vi.mock('./vault', async importOriginal => ({ ...await importOriginal<typeof import('./vault')>(), compareAndSwapSavedVault: vi.fn(), readSavedVault: vi.fn(), writeSavedVault: vi.fn(), deleteSavedVault: vi.fn() }));
 vi.mock('./passkey', async importOriginal => ({ ...await importOriginal<typeof import('./passkey')>(), enrollPasskey: vi.fn(), evaluatePasskey: vi.fn() }));
 
@@ -800,6 +800,25 @@ describe('offline approved per-device authentication', () => {
     session.dispose();
     await expect(session.reactionStatus(target, 'like')).rejects.toThrow('session has ended');
     expect(getReactionStatus).toHaveBeenCalledOnce();
+  });
+
+  it('primes shared reaction status after an acknowledged write, invalidates attempted failures, and reads fresh while uncertain', async () => {
+    const { session } = await connect();
+    expect(clearReactionStatusCache).toHaveBeenCalled();
+    await session.react(target, 'like');
+    expect(invalidateReactionStatus).toHaveBeenCalledWith(session.fid, target, 'like');
+    expect(primeReactionStatus).toHaveBeenCalledWith(session.fid, target, 'like', true);
+    vi.mocked(submitMessage).mockRejectedValueOnce(new ApiError('Unknown.', 504, 'submission_unknown'));
+    await expect(session.react(target, 'recast', true)).rejects.toMatchObject({ code: 'submission_unknown' });
+    expect(primeReactionStatus).toHaveBeenCalledOnce();
+    expect(invalidateReactionStatus).toHaveBeenLastCalledWith(session.fid, target, 'recast');
+    expect(await session.reactionStatus(target, 'recast')).toBe(false);
+    expect(getReactionStatus).toHaveBeenLastCalledWith(session.fid, target, 'recast', undefined, { fresh: true });
+    await session.reactionStatus(target, 'like');
+    expect(getReactionStatus).toHaveBeenLastCalledWith(session.fid, target, 'like', undefined);
+    vi.mocked(clearReactionStatusCache).mockClear();
+    session.dispose();
+    expect(clearReactionStatusCache).toHaveBeenCalledOnce();
   });
 
   it.each([false, true])('keeps an uncertain reaction remove=%s blocked across new view reads until its actual intent is visible', async remove => {

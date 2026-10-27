@@ -32,6 +32,20 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'reaction-status-reads-cached',
+    date: '2026-10-27',
+    title: 'Like and recast status loads once per cast',
+    summary: 'When you are signed in, whether you liked or recasted a cast is now checked once and reused when the cast appears again, so feeds load fewer requests and reaction buttons are ready sooner.',
+    changes: [
+      'Reuse your like and recast status when you return to a feed, profile or conversation, and share a single check between cards that show the same cast at the same time.',
+      'A feed refresh that only changes like or recast counts shows the new counts without checking your reaction status again.',
+      'Your own likes and recasts update the stored status. A reaction whose outcome is unknown is always checked directly on the node, and its existing safeguards are unchanged.',
+      'Stored statuses are kept in memory only, belong to the signed-in account, are cleared when you sign in, lock or sign out, and expire after five minutes. Changes made from another app may take up to five minutes to show here.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/ffe969fbc385970477abdad9786e27383cd4091b',
+    tag: 'Reliability',
+  },
+  {
     id: 'feed-stays-responsive-while-typing',
     date: '2026-10-27',
     title: 'Long feeds stay responsive while you type a search',
