@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getChannel, getChannels, getConversation, getFeed, getFollows, getFollowStatus, getNotifications, getProfileFeed, getReactionStatus, getReactionStatuses, getSuggestedUsers, getChannelMembers, getCastQuotes, getCastReactionPeople, getSigners, getUser, hasImageEmbed, searchCasts, searchUsers, submitMessage, type Cast, type User, type FeedOptions } from './api';
+import { clearReactionStatusCache, invalidateReactionStatus, primeReactionStatus, getChannel, getChannels, getConversation, getFeed, getFollows, getFollowStatus, getNotifications, getProfileFeed, getReactionStatus, getReactionStatuses, getSuggestedUsers, getChannelMembers, getCastQuotes, getCastReactionPeople, getSigners, getUser, hasImageEmbed, searchCasts, searchUsers, submitMessage, type Cast, type User, type FeedOptions } from './api';
 
 const response = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } });
 const user = (fid: number): User => ({ fid, username: `alice${fid}`, custody_address: '', profile: { bio: { text: '' } }, follower_count: 0, following_count: 0 });
 const cast = (letter: string, extra: Partial<Cast> = {}): Cast => ({ hash: letter.repeat(40), author: user(3), text: 'test', timestamp: '2026-10-19T12:00:00.000Z', embeds: [], reactions: { likes_count: 0, recasts_count: 0 }, replies: { count: 0 }, ...extra });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); clearReactionStatusCache(); });
 
 describe('browser API client', () => {
   it('loads ranked public user search and drops node fid:0 placeholders', async () => {
@@ -504,6 +504,7 @@ describe('authoritative public reaction reads', () => {
     expect(await getReactionStatus(7, { fid: 3, hash: 'a'.repeat(40) }, 'like')).toBe(true);
     expect(await getReactionStatus(7, { fid: 3, hash: 'a'.repeat(40) }, 'recast')).toBe(false);
     expect(fetch.mock.calls[0][0]).toBe(`/api/v1/reactionById?fid=7&reaction_type=Like&target_fid=3&target_hash=${'a'.repeat(40)}`);
+    clearReactionStatusCache();
     for (const [status, code] of [[400, 'reaction_not_found'], [404, 'upstream_error'], [502, 'upstream_error']] as const) {
       fetch.mockResolvedValueOnce(new Response(JSON.stringify({ status, code }), { status }));
       await expect(getReactionStatus(7, { fid: 3, hash: 'a'.repeat(40) }, 'like')).rejects.toThrow();
@@ -538,6 +539,78 @@ describe('authoritative public reaction reads', () => {
     expect(max).toBeLessThanOrEqual(4);
     await expect(getReactionStatuses(7, new Array(26).fill(targets[0]))).rejects.toThrow('25 visible');
     expect(fetch).toHaveBeenCalledTimes(6);
+  });
+
+  it('shares one cached read per viewer, target and kind, and never caches failures', async () => {
+    const target = { fid: 3, hash: 'a'.repeat(40) };
+    const fetch = vi.fn().mockImplementation(async () => response(reaction('a')));
+    vi.stubGlobal('fetch', fetch);
+    expect(await Promise.all([getReactionStatus(7, target, 'like'), getReactionStatus(7, { fid: 3, hash: `0x${'A'.repeat(40)}` }, 'like')])).toEqual([true, true]);
+    expect(await getReactionStatus(7, target, 'like')).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    fetch.mockImplementation(async () => absentReaction());
+    expect(await getReactionStatus(8, target, 'like')).toBe(false);
+    expect(await getReactionStatus(7, target, 'recast')).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(await getReactionStatus(7, target, 'like', undefined, { fresh: true })).toBe(false);
+    expect(await getReactionStatus(7, target, 'like')).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(4);
+    const other = { fid: 3, hash: 'b'.repeat(40) };
+    fetch.mockRejectedValueOnce(new Error('Disconnected')).mockImplementation(async () => response(reaction('b')));
+    await expect(getReactionStatus(7, other, 'like')).rejects.toThrow('Disconnected');
+    expect(await getReactionStatus(7, other, 'like')).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(6);
+  });
+
+  it('invalidates, primes, clears and expires cached reaction status', async () => {
+    vi.useFakeTimers();
+    try {
+      const target = { fid: 3, hash: 'a'.repeat(40) };
+      const fetch = vi.fn().mockImplementation(async () => absentReaction());
+      vi.stubGlobal('fetch', fetch);
+      expect(await getReactionStatus(7, target, 'like')).toBe(false);
+      invalidateReactionStatus(7, { fid: 3, hash: `0x${target.hash}` }, 'like');
+      expect(await getReactionStatus(7, target, 'like')).toBe(false);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      primeReactionStatus(7, target, 'like', true);
+      expect(await getReactionStatus(7, target, 'like')).toBe(true);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      clearReactionStatusCache();
+      expect(await getReactionStatus(7, target, 'like')).toBe(false);
+      expect(fetch).toHaveBeenCalledTimes(3);
+      vi.advanceTimersByTime(5 * 60_000);
+      expect(await getReactionStatus(7, target, 'like')).toBe(false);
+      expect(fetch).toHaveBeenCalledTimes(4);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('keeps a shared read alive for remaining readers and aborts it once every reader leaves', async () => {
+    const target = { fid: 3, hash: 'a'.repeat(40) };
+    const finishes: Array<() => void> = [];
+    const fetch = vi.fn().mockImplementation((_url: string, init: RequestInit) => new Promise((resolve, reject) => {
+      init.signal!.addEventListener('abort', () => reject(init.signal!.reason));
+      finishes.push(() => resolve(response(reaction('a'))));
+    }));
+    vi.stubGlobal('fetch', fetch);
+    const first = new AbortController(), second = new AbortController();
+    const firstRead = getReactionStatus(7, target, 'like', first.signal);
+    const secondRead = getReactionStatus(7, target, 'like', second.signal);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    first.abort();
+    await expect(firstRead).rejects.toMatchObject({ name: 'AbortError' });
+    expect((fetch.mock.calls[0][1] as RequestInit).signal!.aborted).toBe(false);
+    finishes[0]();
+    expect(await secondRead).toBe(true);
+    clearReactionStatusCache();
+    const lone = new AbortController();
+    const loneRead = getReactionStatus(7, target, 'like', lone.signal);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    lone.abort();
+    await expect(loneRead).rejects.toMatchObject({ name: 'AbortError' });
+    expect((fetch.mock.calls[1][1] as RequestInit).signal!.aborted).toBe(true);
+    const next = getReactionStatus(7, target, 'like');
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+    finishes[2](); expect(await next).toBe(true);
   });
 
   it('rejects partial status failures and cancels pending reads on account cancellation', async () => {

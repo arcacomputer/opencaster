@@ -385,9 +385,90 @@ export async function getCastReactionPeople(options: { target: ReactionTarget; t
   }
 }
 
+// Viewer-scoped receipt cache. Only the viewer's own writes change these values;
+// the session invalidates or primes entries around them and clears on account
+// changes. Concurrent readers share one request, which aborts once all leave.
+const REACTION_STATUS_TTL_MS = 5 * 60_000;
+const REACTION_STATUS_CACHE_LIMIT = 2_000;
+interface ReactionStatusEntry { promise: Promise<boolean>; expires: number; controller?: AbortController; waiters: number }
+const reactionStatusCache = new Map<string, ReactionStatusEntry>();
+
+function reactionStatusKey(viewerFid: number, target: ReactionTarget, type: ReactionKind): string {
+  return `${fidValue(viewerFid)}:${fidValue(target.fid)}:${hashValue(target.hash)}:${reactionKind(type)}`;
+}
+
+function storeReactionStatus(key: string, entry: ReactionStatusEntry): void {
+  reactionStatusCache.delete(key);
+  reactionStatusCache.set(key, entry);
+  while (reactionStatusCache.size > REACTION_STATUS_CACHE_LIMIT) reactionStatusCache.delete(reactionStatusCache.keys().next().value!);
+}
+
+function startReactionStatusRead(key: string, viewerFid: number, target: ReactionTarget, type: ReactionKind): ReactionStatusEntry {
+  const controller = new AbortController();
+  const entry: ReactionStatusEntry = { promise: Promise.resolve(false), expires: Infinity, controller, waiters: 0 };
+  entry.promise = fetchReactionStatus(viewerFid, target, type, controller.signal).then(value => {
+    entry.controller = undefined;
+    entry.expires = Date.now() + REACTION_STATUS_TTL_MS;
+    return value;
+  }, (error: unknown) => {
+    entry.controller = undefined;
+    if (reactionStatusCache.get(key) === entry) reactionStatusCache.delete(key);
+    throw error;
+  });
+  entry.promise.catch(() => undefined);
+  storeReactionStatus(key, entry);
+  return entry;
+}
+
+function awaitReactionStatus(key: string, entry: ReactionStatusEntry, signal?: AbortSignal): Promise<boolean> {
+  entry.waiters += 1;
+  return new Promise((resolve, reject) => {
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true; entry.waiters -= 1;
+      signal?.removeEventListener('abort', abort);
+    };
+    const abort = () => {
+      release();
+      if (entry.waiters === 0 && entry.controller) {
+        entry.controller.abort(signal!.reason);
+        if (reactionStatusCache.get(key) === entry) reactionStatusCache.delete(key);
+      }
+      reject(signal!.reason);
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+    entry.promise.then(value => { release(); resolve(value); }, (error: unknown) => { release(); reject(error); });
+  });
+}
+
+export function invalidateReactionStatus(viewerFid: number, target: ReactionTarget, type: ReactionKind): void {
+  reactionStatusCache.delete(reactionStatusKey(viewerFid, target, type));
+}
+
+/** Record the state a successfully submitted write of the viewer's own produced. */
+export function primeReactionStatus(viewerFid: number, target: ReactionTarget, type: ReactionKind, value: boolean): void {
+  storeReactionStatus(reactionStatusKey(viewerFid, target, type), { promise: Promise.resolve(value), expires: Date.now() + REACTION_STATUS_TTL_MS, waiters: 0 });
+}
+
+export function clearReactionStatusCache(): void {
+  reactionStatusCache.clear();
+}
+
 /** Hypersnap does not populate cast.viewer_context. Resolve the actual current
- * add receipt; only the worker's exact source-defined absence code is false. */
-export async function getReactionStatus(viewerFid: number, target: ReactionTarget, type: ReactionKind, signal?: AbortSignal): Promise<boolean> {
+ * add receipt; only the worker's exact source-defined absence code is false.
+ * Results are cached per viewer and target; `fresh` always reads the node. */
+export async function getReactionStatus(viewerFid: number, target: ReactionTarget, type: ReactionKind, signal?: AbortSignal, options?: { fresh?: boolean }): Promise<boolean> {
+  const key = reactionStatusKey(viewerFid, target, type);
+  signal?.throwIfAborted();
+  let entry = options?.fresh ? undefined : reactionStatusCache.get(key);
+  if (entry && entry.expires <= Date.now()) { reactionStatusCache.delete(key); entry = undefined; }
+  if (entry) storeReactionStatus(key, entry);
+  else entry = startReactionStatusRead(key, viewerFid, target, type);
+  return awaitReactionStatus(key, entry, signal);
+}
+
+async function fetchReactionStatus(viewerFid: number, target: ReactionTarget, type: ReactionKind, signal?: AbortSignal): Promise<boolean> {
   const params = new URLSearchParams({ fid: fidValue(viewerFid), reaction_type: reactionKind(type), target_fid: fidValue(target.fid), target_hash: hashValue(target.hash) });
   try {
     const value = await requestJson<unknown>('/v1/reactionById', params, signal);
@@ -401,8 +482,8 @@ export async function getReactionStatus(viewerFid: number, target: ReactionTarge
   }
 }
 
-/** At most 25 visible casts and four requests in flight. Callers must key cached
- * results by viewer FID as well as target and cancel when the account changes. */
+/** At most 25 visible casts and four requests in flight. Reads share the
+ * viewer-scoped getReactionStatus cache; cancel when the account changes. */
 export async function getReactionStatuses(viewerFid: number, targets: ReactionTarget[], signal?: AbortSignal): Promise<ReactionStatus[]> {
   fidValue(viewerFid);
   if (!Array.isArray(targets) || targets.length > 25) throw new Error('Check up to 25 visible casts at a time.');
