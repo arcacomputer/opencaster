@@ -25,7 +25,8 @@ function boundedRead<T>(read: () => Promise<T>, signal: AbortSignal): Promise<T>
     if (active < 4) start(); else queue.push(start);
   });
 }
-const short = (value: number) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(Math.max(0, value));
+const compactNumber = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
+const short = (value: number) => compactNumber.format(Math.max(0, value));
 type State = { liked: boolean; recasted: boolean };
 // Counts adjusted by this viewer's own writes, valid only for the counts they
 // were applied to. A refreshed cast falls back to its own aggregate counts.
