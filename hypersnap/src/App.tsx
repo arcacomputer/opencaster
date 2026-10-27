@@ -862,7 +862,7 @@ export default function App() {
       const saved = bookmarks.filter(item => bookmarkHash(item.hash) !== bookmarkHash(cast.hash)); setBookmarks(saved); if (!saveBookmarks(saved)) notify('The bookmark was removed for this tab. Browser storage is unavailable.');
       for (const [path, cached] of threadCache.current) if (bookmarkHash(cached.hash) === bookmarkHash(cast.hash)) threadCache.current.delete(path);
       if (isConversationRoute(currentRoute.current) && conversationHash === bookmarkHash(cast.hash)) navigate(routePath(currentBase.current), true);
-      setRefresh(value => value + 1); notify('Cast deletion confirmed by Hypersnap.');
+      refreshPage(); notify('Cast deletion confirmed by Hypersnap.');
     }} />}
     {channelPeople && <ChannelPeopleDialog channel={channelPeople} onProfile={openProfile} onClose={() => setChannelPeople(null)} />}
     {castQuotes && <CastQuotesDialog cast={castQuotes} renderCast={card} onClose={() => setCastQuotes(null)} />}

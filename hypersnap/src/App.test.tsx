@@ -826,10 +826,14 @@ describe('isolated App feature integration', () => {
     expect(upgraded.deleteCast).not.toHaveBeenCalled();
     expect(legacy.deleteCast).not.toHaveBeenCalled();
     expect(dialog('Delete cast')).toBeDefined();
+    const feedReads = vi.mocked(getFeed).mock.calls.length;
+    vi.mocked(getFeed).mockResolvedValue({ casts: [otherCast], next: {} });
     await click(dialog('Delete cast').querySelector('.delete-cast-confirm')!);
     expect(upgraded.deleteCast).toHaveBeenCalledOnce();
     expect(upgraded.deleteCast).toHaveBeenCalledWith({ fid: ownCast.author.fid, hash: ownCast.hash });
     expect(dialog('Delete cast')).toBeUndefined();
+    expect(getFeed).toHaveBeenCalledTimes(feedReads + 1);
+    expect(container.querySelector('.feed')?.textContent).not.toContain(ownCast.text);
   });
 
   it('keeps the existing device connected when a deletion permission review is cancelled', async () => {
