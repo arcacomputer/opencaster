@@ -746,3 +746,9 @@ only place the number lives), add the row above, and classify any new store in
 ---
 
 *Last updated: 2026-10-27*
+
+The v17 upgrade fills an omitted or null `mentions.memberIds` with an empty
+array on existing mention-bearing rows before the upgrade commits. Message
+saves, updates, and backup imports apply the same normalization so historical
+`@everyone` and role-only mentions remain in the sparse index. This leaves
+message content, IDs, and signatures unchanged.

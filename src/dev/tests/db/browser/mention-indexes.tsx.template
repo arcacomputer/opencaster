@@ -1,0 +1,281 @@
+import React, { useEffect } from "react";
+import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MessageDB as OldDB } from "./messages16";
+import { MessageDB as NewDB } from "__CURRENT_ROOT__/src/db/messages";
+import { useSpaceMentionCounts as oldMentions } from "./mentions16";
+import { useSpaceReplyCounts as oldReplies } from "./replies16";
+import { useSpaceMentionCounts as newMentions } from "__CURRENT_ROOT__/src/hooks/business/mentions/useSpaceMentionCounts";
+import { useSpaceReplyCounts as newReplies } from "__CURRENT_ROOT__/src/hooks/business/replies/useSpaceReplyCounts";
+import { DbContext } from "./state";
+const me = "synthetic-viewer",
+  other = "synthetic-author";
+const status = document.querySelector("#status")!;
+const renderRoot = createRoot(document.querySelector("#react")!);
+const types = ["mention-you", "mention-everyone", "mention-roles", "reply"];
+const scenarios = [
+  "direct",
+  "everyone",
+  "roles",
+  "mixed-thread-boundaries",
+  "limit-ties",
+  "multi-channel",
+  "muted",
+  "disabled",
+  "historical-everyone",
+  "historical-roles",
+];
+const spaces = scenarios.map((spaceId) => ({
+  spaceId,
+  spaceName: spaceId,
+  roles: [
+    { roleId: "viewer-role", members: [me], permissions: [] },
+    {
+      roleId: "author-role",
+      members: [other],
+      permissions: ["mention:everyone"],
+    },
+  ],
+  groups: [{ channels: [{ channelId: "c1" }, { channelId: "c2" }] }],
+}));
+const message = (
+  spaceId: string,
+  id: string,
+  createdDate: number,
+  extra: any = {},
+) => ({
+  messageId: `${spaceId}/${id}`,
+  spaceId,
+  channelId: "c1",
+  createdDate,
+  modifiedDate: createdDate,
+  digestAlgorithm: "SHA-256",
+  nonce: id,
+  lastModifiedHash: "",
+  content: { type: "post", senderId: other, text: id },
+  reactions: [],
+  ...extra,
+});
+const mention = (ids: string[] = [], extra: any = {}) => ({
+  mentions: { memberIds: ids, roleIds: [], channelIds: [], ...extra },
+});
+const reply = (extra: any = {}) => ({
+  replyMetadata: { parentAuthor: me, parentChannelId: "c1" },
+  ...extra,
+});
+const rows = [
+  message("direct", "direct", 300, mention([me])),
+  message("direct", "not-me", 400, mention([other])),
+  message("everyone", "everyone", 300, mention([], { everyone: true })),
+  message("roles", "role", 300, mention([], { roleIds: ["viewer-role"] })),
+  message("historical-everyone", "legacy", 300, {
+    mentions: { everyone: true },
+  }),
+  message("historical-roles", "legacy", 300, {
+    mentions: { roleIds: ["viewer-role"] },
+  }),
+];
+for (const id of ["muted", "disabled"])
+  rows.push(message(id, "direct", 300, { ...mention([me]), ...reply() }));
+for (const t of [100, 200, 300, 400, 500])
+  rows.push(
+    message("mixed-thread-boundaries", `m${t}`, t, {
+      ...mention([me]),
+      ...reply(),
+      ...(t >= 300 ? { isThreadReply: true, threadId: "thread-read" } : {}),
+    }),
+  );
+rows.push(
+  message("mixed-thread-boundaries", "unread-thread", 600, {
+    ...mention([me]),
+    ...reply(),
+    isThreadReply: true,
+    threadId: "thread-unread",
+  }),
+);
+for (let n = 0; n < 14; n++)
+  rows.push(
+    message("limit-ties", String(n).padStart(2, "0"), 300, {
+      ...mention([me]),
+      ...reply(),
+    }),
+  );
+rows.push(
+  message("multi-channel", "c1-m", 300, { ...mention([me]), ...reply() }),
+  message("multi-channel", "c2-m", 400, {
+    ...mention([me]),
+    ...reply(),
+    channelId: "c2",
+  }),
+);
+const openExisting = () =>
+  new Promise<IDBDatabase>((resolve, reject) => {
+    const r = indexedDB.open("quorum_db");
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+    r.onupgradeneeded = () => {
+      r.transaction?.abort();
+      reject(new Error("Expected existing DB"));
+    };
+  });
+const schema = (db: IDBDatabase) => ({
+  version: db.version,
+  stores: [...db.objectStoreNames],
+  indexes: [...db.transaction("messages").objectStore("messages").indexNames],
+});
+function Old({ client, done }: any) {
+  const mentions = oldMentions({ spaces: spaces as any }),
+    replies = oldReplies({ spaces: spaces as any });
+  useEffect(() => {
+    if (
+      client.getQueryCache().getAll().length === 2 &&
+      client
+        .getQueryCache()
+        .getAll()
+        .every((q: any) => q.state.status === "success")
+    )
+      done({ mentions, replies });
+  }, [mentions, replies]);
+  return <pre>{JSON.stringify({ mentions, replies }, null, 2)}</pre>;
+}
+function New({ client, done }: any) {
+  const mentions = newMentions({ spaces: spaces as any }),
+    replies = newReplies({ spaces: spaces as any });
+  useEffect(() => {
+    if (
+      client.getQueryCache().getAll().length === spaces.length * 2 &&
+      client
+        .getQueryCache()
+        .getAll()
+        .every((q: any) => q.state.status === "success")
+    )
+      done({ mentions, replies });
+  }, [mentions, replies]);
+  return <pre>{JSON.stringify({ mentions, replies }, null, 2)}</pre>;
+}
+async function badges(db: any, version: number) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const result = await new Promise((resolve) =>
+    renderRoot.render(
+      <QueryClientProvider client={client}>
+        <DbContext.Provider value={db}>
+          {version === 16 ? (
+            <Old client={client} done={resolve} />
+          ) : (
+            <New client={client} done={resolve} />
+          )}
+        </DbContext.Provider>
+      </QueryClientProvider>,
+    ),
+  );
+  renderRoot.render(null);
+  client.clear();
+  return result;
+}
+async function seed() {
+  const existing = await indexedDB.databases();
+  if (existing.some((d) => d.name === "quorum_db"))
+    throw new Error(
+      "Test database already exists. Use a new unused origin; this harness never deletes a database.",
+    );
+  const db = new OldDB();
+  await db.init();
+  const idb = (db as any).db as IDBDatabase;
+  await new Promise<void>((resolve, reject) => {
+    const tx = idb.transaction(
+      ["messages", "conversations", "thread_read_times", "user_config"],
+      "readwrite",
+    );
+    for (const row of rows) tx.objectStore("messages").put(row);
+    for (const s of spaces) {
+      for (const channelId of ["c1", "c2"])
+        tx.objectStore("conversations").put({
+          conversationId: `${s.spaceId}/${channelId}`,
+          type: "group",
+          lastReadTimestamp: 200,
+        });
+    }
+    tx.objectStore("thread_read_times").put({
+      threadId: "thread-read",
+      spaceId: "mixed-thread-boundaries",
+      channelId: "c1",
+      lastReadTimestamp: 400,
+    });
+    tx.objectStore("user_config").put({
+      address: me,
+      spaceIds: scenarios,
+      notificationSettings: {
+        muted: {
+          spaceId: "muted",
+          isMuted: true,
+          enabledNotificationTypes: types,
+        },
+        disabled: { spaceId: "disabled", enabledNotificationTypes: [] },
+      },
+    });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  const result = {
+    schema: schema(idb),
+    badges: await badges(db, 16),
+    rows: rows.length,
+  };
+  sessionStorage.setItem("pr14-v16-baseline", JSON.stringify(result));
+  idb.close();
+  status.textContent =
+    "V16 SEEDED AND CLOSED. Reload this page before clicking Upgrade.\n" +
+    JSON.stringify(result, null, 2);
+}
+async function upgrade() {
+  const baseline = JSON.parse(
+    sessionStorage.getItem("pr14-v16-baseline") || "null",
+  );
+  if (!baseline) throw new Error("Seed baseline first");
+  const existing = await openExisting();
+  const before = schema(existing);
+  existing.close();
+  if (before.version !== 16)
+    throw new Error(
+      "Expected persisted v16 before upgrade, got " + before.version,
+    );
+  const db = new NewDB();
+  await db.init();
+  const idb = (db as any).db as IDBDatabase;
+  const after = schema(idb);
+  const current: any = await badges(db, 17);
+  const comparisons = spaces.map((s) => ({
+    case: s.spaceId,
+    oldMentions: baseline.badges.mentions[s.spaceId] || 0,
+    newMentions: current.mentions[s.spaceId] || 0,
+    oldReplies: baseline.badges.replies[s.spaceId] || 0,
+    newReplies: current.replies[s.spaceId] || 0,
+  }));
+  const failures = comparisons.filter(
+    (c) => c.oldMentions !== c.newMentions || c.oldReplies !== c.newReplies,
+  );
+  const output = {
+    result: failures.length ? "PARITY FAILED" : "PARITY PASSED",
+    before,
+    after,
+    baselineRows: baseline.rows,
+    comparisons,
+    failures,
+  };
+  status.textContent = JSON.stringify(output, null, 2);
+  sessionStorage.setItem("pr14-result", JSON.stringify(output));
+  idb.close();
+}
+document
+  .querySelector("#seed")!
+  .addEventListener("click", () =>
+    seed().catch((e) => (status.textContent = "ERROR " + e.stack)),
+  );
+document
+  .querySelector("#upgrade")!
+  .addEventListener("click", () =>
+    upgrade().catch((e) => (status.textContent = "ERROR " + e.stack)),
+  );
+status.textContent = "MODULE READY";

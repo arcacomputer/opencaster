@@ -215,6 +215,21 @@ interface StoredSearchIndex {
 const MENTIONS_INDEX = 'by_conversation_mentions';
 const REPLIES_INDEX = 'by_conversation_reply_author';
 
+/**
+ * Older/synced rows may omit memberIds on everyone/role-only mentions. Those
+ * still count as mention candidates, but a missing compound-index component
+ * would omit them from IndexedDB. An empty member list has the same meaning to
+ * mention filtering and leaves the signed content/fingerprint untouched.
+ * Clone only when needed so callers' message objects are never changed.
+ */
+function withIndexableMentions(message: Message): Message {
+  if (!message.mentions || message.mentions.memberIds != null) return message;
+  return {
+    ...message,
+    mentions: { ...message.mentions, memberIds: [] },
+  };
+}
+
 export type UnreadCandidateKind = 'mentions' | 'replies';
 
 export interface ChannelUnreadCandidates {
@@ -574,6 +589,18 @@ export class MessageDB {
               'replyMetadata.parentAuthor',
               'createdDate',
             ]);
+            // Populate the mention index for historical everyone/role-only
+            // rows too. Run in this versionchange transaction so the repaired
+            // rows and both indexes become visible atomically.
+            const cursorRequest = messageStore.openCursor();
+            cursorRequest.onsuccess = () => {
+              const cursor = cursorRequest.result;
+              if (!cursor) return;
+              const message = cursor.value as Message;
+              const normalized = withIndexableMentions(message);
+              if (normalized !== message) cursor.update(normalized);
+              cursor.continue();
+            };
           }
         }
       };
@@ -660,7 +687,7 @@ export class MessageDB {
         if (msg) {
           const readWatermark = readWatermarks?.get(msg.spaceId) ?? 0;
           const patch = resolveDeliveryAckPatch(msg, { readWatermark, now: deliveredAt });
-          if (patch) store.put({ ...msg, ...patch });
+          if (patch) store.put(withIndexableMentions({ ...msg, ...patch }));
         }
         resolve();
       };
@@ -716,7 +743,7 @@ export class MessageDB {
           const msg = cursor.value;
           if (msg.content?.senderId === ownAddress) {
             const patch = resolveReadAckPatch(msg, ctx);
-            if (patch) cursor.update({ ...msg, ...patch });
+            if (patch) cursor.update(withIndexableMentions({ ...msg, ...patch }));
           }
           cursor.continue();
         } else {
@@ -1649,7 +1676,7 @@ export class MessageDB {
         'readwrite'
       );
       const store = transaction.objectStore('messages');
-      const messageRequest = store.put(message);
+      const messageRequest = store.put(withIndexableMentions(message));
       messageRequest.onerror = () => reject(messageRequest.error);
 
       const conversationStore = transaction.objectStore('conversations');
@@ -2716,7 +2743,7 @@ export class MessageDB {
 
       // Write messages (dedup by messageId via put)
       for (const msg of admissible) {
-        const request = messageStore.put(msg);
+        const request = messageStore.put(withIndexableMentions(msg));
         request.onsuccess = () => { messagesWritten++; };
       }
 
@@ -2910,7 +2937,7 @@ export class MessageDB {
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction('messages', 'readwrite');
       const store = transaction.objectStore('messages');
-      const request = store.put(message);
+      const request = store.put(withIndexableMentions(message));
 
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
@@ -2984,7 +3011,7 @@ export class MessageDB {
           delete message.pinnedBy;
         }
 
-        const putRequest = store.put(message);
+        const putRequest = store.put(withIndexableMentions(message));
         putRequest.onsuccess = () => {
           resolve();
         };
