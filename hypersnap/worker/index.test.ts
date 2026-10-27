@@ -164,6 +164,18 @@ describe('the fixed Hypersnap gateway', () => {
     for (const invalid of [prefix.replace('target_fid=3', 'target_fid=0'), prefix.replace('target_hash=' + 'a'.repeat(40), 'target_hash=bad'), prefix.replace('reaction_type=Like', 'reaction_type=1'), prefix.replace('pageSize=25', 'pageSize=26'), prefix.replace('reverse=true', 'reverse=false'), prefix.replace('&reverse=true', ''), prefix + '&pageToken=a===', prefix + '&pageToken=', prefix + '&target_fid=4', prefix + '&target_url=https://evil.test', prefix + '&upstream=https://evil.test']) expect((await handleRequest(new Request(`${BASE}/api${invalid}`), env)).status).toBe(400);
     expect(fetch).toHaveBeenCalledOnce();
   });
+  it('allows bounded unique bulk profile reads only', async () => {
+    const fetch = vi.fn().mockImplementation(async () => jsonResponse({ users: [] })); vi.stubGlobal('fetch', fetch);
+    const fids = Array.from({ length: 100 }, (_, index) => index + 1).join('%2C');
+    for (const query of ['fids=3', 'fids=3%2C7', `fids=${fids}`]) {
+      expect((await handleRequest(new Request(`${BASE}/api/v2/farcaster/user/bulk?${query}`), env)).status).toBe(200);
+      expect(fetch.mock.lastCall?.[0]).toBe(`https://haatz.quilibrium.com/v2/farcaster/user/bulk?${query}`);
+    }
+    for (const query of ['', 'fids=', 'fids=0', 'fids=3%2C3', 'fids=3%2C', 'fids=-1', 'fids=3%2Cabc', `fids=${fids}%2C101`, 'fids=3&fids=4', 'fids=3&viewer_fid=4']) {
+      expect((await handleRequest(new Request(`${BASE}/api/v2/farcaster/user/bulk?${query}`), env)).status).toBe(400);
+    }
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
   it('permits known trending windows only on the trending feed', async () => {
     const fetch = vi.fn().mockImplementation(async () => jsonResponse({ casts: [], next: {} })); vi.stubGlobal('fetch', fetch);
     for (const timeWindow of ['1h', '6h', '12h', '24h', '7d']) {

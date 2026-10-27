@@ -19,6 +19,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'reaction-lists-load-faster',
+    date: '2026-10-27',
+    title: 'Like and recast lists load faster',
+    summary: 'The people who liked or recast a cast now load in one profile request per page, and recently opened profiles and casts are reused for a minute instead of being downloaded again.',
+    changes: [
+      'Load the profiles on a Likes or Recasts sheet with one bulk Hypersnap read per page of up to 100 people, instead of one request per person.',
+      'Reuse profiles and target casts shown in the last minute when switching between Likes and Recasts, paging back or reopening a sheet. Matching reads that start at the same time share a single request.',
+      'A failed or cancelled load is never remembered, and a missing profile still shows an error rather than a shorter list. Profile and cast details in these lists can be up to one minute old.',
+      'Only public profile and cast details are reused this way, and nothing is stored beyond the open tab.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/32bddf87f21f5fdd2b821141744c015019df4ed2',
+    tag: 'Reliability',
+  },
+  {
     id: 'faster-content-control-checks',
     date: '2026-10-27',
     title: 'Content controls check casts faster',

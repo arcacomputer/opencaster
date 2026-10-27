@@ -50,6 +50,7 @@ type Rule = (value: string) => boolean;
 type QueryRules = Record<string, Rule>;
 const integer = (max: number, min = 1): Rule => value => /^\d{1,16}$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) >= min && Number(value) <= max;
 const fid = integer(Number.MAX_SAFE_INTEGER);
+const fidList = (max: number): Rule => value => { const fids = value.split(','); return fids.length <= max && new Set(fids).size === fids.length && fids.every(fid); };
 const address: Rule = value => /^0x[a-fA-F0-9]{40}$/.test(value);
 const hash: Rule = value => /^(?:0x)?[a-fA-F0-9]{40}$/.test(value);
 const username: Rule = value => /^[a-zA-Z0-9_.-]{1,128}$/.test(value);
@@ -76,6 +77,7 @@ const READ_ENDPOINTS: Record<string, Endpoint> = {
   '/v1/reactionsByFid': { required: ['fid', 'reaction_type', 'pageSize', 'reverse'], query: { fid, reaction_type: reactionType, pageSize: integer(100), pageToken: reactionPageToken, reverse: value => value === 'true' || value === 'false' } },
   '/v1/reactionsByCast': { required: ['target_fid', 'target_hash', 'reaction_type', 'pageSize', 'reverse'], query: { target_fid: fid, target_hash: hash, reaction_type: reactionType, pageSize: integer(25), pageToken: reactionPageToken, reverse: value => value === 'true' } },
   '/v2/farcaster/user': { required: ['fid'], query: { fid } },
+  '/v2/farcaster/user/bulk': { required: ['fids'], query: { fids: fidList(100) } },
   '/v2/farcaster/user/by-username': { required: ['username'], query: { username } },
   '/v2/farcaster/user/search': { required: ['q'], query: { q: searchQuery, limit: integer(100) } },
   '/v2/farcaster/user/custody-address': { required: ['custody_address'], query: { custody_address: address } },
