@@ -30,7 +30,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'Respect the selected node’s cache restrictions. The current private origin only approves trending casts and channel lists for this cache; its no-store info and channel-detail responses remain uncached. A backup is still consulted only after an eligible primary failure.',
       'Forward validated node JSON bytes without rebuilding responses and let browsers retain versioned app bundles for a year. The existing private-node validation, media limits, wallet permissions and signing safeguards remain in place.',
     ],
-    commit: 'https://github.com/arcacomputer/opencaster/commit/0ce6efc404c6ca7a5e848f3914640a044c8d3963',
+    commit: 'https://github.com/arcacomputer/opencaster/commit/0bcfb58e8185cef3a4bbbf803673bce6098408dc',
     tag: 'Reliability',
   },
   {
