@@ -23,13 +23,10 @@ function makeReply() {
 
 function makeDB(over: any = {}) {
   return {
-    getUnreadNotificationCandidates: vi.fn(async ({ channelIds }: { channelIds: string[] }) =>
-      new Map(
-        channelIds.map((id) => [
-          id,
-          { lastReadTimestamp: 0, threadReadTimes: {}, mentions: [], replies: [makeReply()] },
-        ]),
-      ),
+    getSpaceUnreadCandidates: vi.fn(async ({ channelIds }: { channelIds: string[] }) =>
+      channelIds.map((channelId) => ({
+        channelId, lastReadTimestamp: 0, threadReadTimes: {}, messages: [makeReply()],
+      })),
     ),
     ...over,
   } as any;

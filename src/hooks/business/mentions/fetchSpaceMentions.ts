@@ -51,17 +51,14 @@ export async function fetchSpaceMentions(
     .filter((channelId) => !mutedChannelIds.includes(channelId));
   const out: MentionNotification[] = [];
 
-  const candidates = await messageDB.getUnreadNotificationCandidates({
+  const candidates = await messageDB.getSpaceUnreadCandidates({
     spaceId: space.spaceId,
     channelIds,
-    mentionLimit: perChannelLimit,
+    kind: 'mentions',
+    limitPerChannel: perChannelLimit,
   });
 
-  for (const channelId of channelIds) {
-    const entry = candidates.get(channelId);
-    if (!entry) continue;
-    const { lastReadTimestamp, threadReadTimes, mentions: messages } = entry;
-
+  for (const { channelId, lastReadTimestamp, threadReadTimes, messages } of candidates) {
     const unread = messages.filter((message: Message) => {
       if (message.isThreadReply && message.threadId) {
         const trt = threadReadTimes[message.threadId];

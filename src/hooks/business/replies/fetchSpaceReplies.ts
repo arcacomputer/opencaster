@@ -32,18 +32,15 @@ export async function fetchSpaceReplies(
     .filter((channelId) => !mutedChannelIds.includes(channelId));
   const out: (ReplyNotification & { spaceId: string; spaceName: string })[] = [];
 
-  const candidates = await messageDB.getUnreadNotificationCandidates({
+  const candidates = await messageDB.getSpaceUnreadCandidates({
     spaceId: space.spaceId,
     channelIds,
     userAddress,
-    replyLimit: perChannelLimit,
+    kind: 'replies',
+    limitPerChannel: perChannelLimit,
   });
 
-  for (const channelId of channelIds) {
-    const entry = candidates.get(channelId);
-    if (!entry) continue;
-    const { threadReadTimes, replies: messages } = entry;
-
+  for (const { channelId, threadReadTimes, messages } of candidates) {
     for (const message of messages) {
       if (message.isThreadReply && message.threadId) {
         const trt = threadReadTimes[message.threadId];

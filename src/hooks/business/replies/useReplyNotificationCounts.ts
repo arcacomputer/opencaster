@@ -75,18 +75,15 @@ export function useReplyNotificationCounts({
 
         // One readonly transaction for every channel's read state and unread
         // replies (capped at what we need for display)
-        const candidates = await messageDB.getUnreadNotificationCandidates({
+        const candidates = await messageDB.getSpaceUnreadCandidates({
           spaceId,
           channelIds: unmutedChannelIds,
           userAddress,
-          replyLimit: DISPLAY_THRESHOLD,
+          kind: 'replies',
+          limitPerChannel: DISPLAY_THRESHOLD,
         });
 
-        for (const channelId of unmutedChannelIds) {
-          const entry = candidates.get(channelId);
-          if (!entry) continue;
-          const { threadReadTimes, replies: messages } = entry;
-
+        for (const { channelId, threadReadTimes, messages } of candidates) {
           // Count replies, excluding those already read in threads
           let channelReplyCount = 0;
           for (const message of messages) {

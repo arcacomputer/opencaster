@@ -29,13 +29,10 @@ function makeMessage(overrides: any = {}) {
 
 function makeDB(over: any = {}) {
   return {
-    getUnreadNotificationCandidates: vi.fn(async ({ channelIds }: { channelIds: string[] }) =>
-      new Map(
-        channelIds.map((id) => [
-          id,
-          { lastReadTimestamp: 0, threadReadTimes: {}, mentions: [makeMessage()], replies: [] },
-        ]),
-      ),
+    getSpaceUnreadCandidates: vi.fn(async ({ channelIds }: { channelIds: string[] }) =>
+      channelIds.map((channelId) => ({
+        channelId, lastReadTimestamp: 0, threadReadTimes: {}, messages: [makeMessage()],
+      })),
     ),
     ...over,
   } as any;

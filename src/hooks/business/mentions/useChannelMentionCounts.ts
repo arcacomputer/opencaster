@@ -88,17 +88,14 @@ export function useChannelMentionCounts({
 
         // One readonly transaction for every channel's read state and unread
         // mention candidates (capped at what we need for display)
-        const candidates = await messageDB.getUnreadNotificationCandidates({
+        const candidates = await messageDB.getSpaceUnreadCandidates({
           spaceId,
           channelIds: unmutedChannelIds,
-          mentionLimit: DISPLAY_THRESHOLD,
+          kind: 'mentions',
+          limitPerChannel: DISPLAY_THRESHOLD,
         });
 
-        for (const channelId of unmutedChannelIds) {
-          const entry = candidates.get(channelId);
-          if (!entry) continue;
-          const { threadReadTimes, mentions: messages } = entry;
-
+        for (const { channelId, threadReadTimes, messages } of candidates) {
           // Count mentions with per-message early exit
           let channelMentionCount = 0;
           for (const message of messages) {

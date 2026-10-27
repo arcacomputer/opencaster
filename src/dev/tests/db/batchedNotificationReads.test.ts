@@ -70,53 +70,44 @@ describe('MessageDB batched notification reads', () => {
     ]);
   });
 
-  async function expected(channelId: string, mentionLimit: number, replyLimit: number) {
+  async function expected(channelId: string, kind: 'mentions' | 'replies', limit: number) {
     const { conversation } = await db.getConversation({ conversationId: `${SPACE}/${channelId}` });
     const lastReadTimestamp = conversation?.lastReadTimestamp || 0;
+    const messages = kind === 'mentions'
+      ? await db.getUnreadMentions({ spaceId: SPACE, channelId, afterTimestamp: lastReadTimestamp, limit })
+      : await db.getUnreadReplies({ spaceId: SPACE, channelId, userAddress: ME, afterTimestamp: lastReadTimestamp, limit });
     return {
+      channelId,
       lastReadTimestamp,
-      threadReadTimes: await db.getThreadReadTimesForChannel({ spaceId: SPACE, channelId }),
-      mentions:
-        mentionLimit > 0
-          ? await db.getUnreadMentions({ spaceId: SPACE, channelId, afterTimestamp: lastReadTimestamp, limit: mentionLimit })
-          : [],
-      replies:
-        replyLimit > 0
-          ? await db.getUnreadReplies({
-              spaceId: SPACE,
-              channelId,
-              userAddress: ME,
-              afterTimestamp: lastReadTimestamp,
-              limit: replyLimit,
-            })
-          : [],
+      threadReadTimes: messages.some((m) => m.isThreadReply && m.threadId)
+        ? await db.getThreadReadTimesForChannel({ spaceId: SPACE, channelId })
+        : {},
+      messages,
     };
   }
 
   it.each([
-    [10, 0],
-    [0, 10],
-    [10, 10],
-    [3, 1000],
-    [1000, 1000],
-    [0, 0],
-  ])('matches per-channel reads (mentionLimit=%i, replyLimit=%i)', async (mentionLimit, replyLimit) => {
-    const result = await db.getUnreadNotificationCandidates({
+    ['mentions', 0], ['mentions', 3], ['mentions', 10], ['mentions', 1000],
+    ['replies', 0], ['replies', 3], ['replies', 10], ['replies', 1000],
+  ] as const)('matches per-channel reads (kind=%s, limit=%i)', async (kind, limitPerChannel) => {
+    const result = await db.getSpaceUnreadCandidates({
       spaceId: SPACE,
       channelIds: CHANNELS,
       userAddress: ME,
-      mentionLimit,
-      replyLimit,
+      kind,
+      limitPerChannel,
     });
-    expect([...result.keys()]).toEqual(CHANNELS);
-    for (const channelId of CHANNELS) {
-      expect(result.get(channelId)).toEqual(await expected(channelId, mentionLimit, replyLimit));
+    expect(result.map((entry) => entry.channelId)).toEqual(CHANNELS);
+    for (const [index, channelId] of CHANNELS.entries()) {
+      expect(result[index]).toEqual(await expected(channelId, kind, limitPerChannel));
     }
   });
 
-  it('returns an empty map for no channels', async () => {
-    const result = await db.getUnreadNotificationCandidates({ spaceId: SPACE, channelIds: [], mentionLimit: 10 });
-    expect(result.size).toBe(0);
+  it('returns an empty result for no channels', async () => {
+    const result = await db.getSpaceUnreadCandidates({
+      spaceId: SPACE, channelIds: [], kind: 'mentions', limitPerChannel: 10,
+    });
+    expect(result).toEqual([]);
   });
 
   it('getConversationsByIds matches getConversation and omits missing ids', async () => {
