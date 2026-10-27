@@ -112,7 +112,7 @@ function validQuery(params: URLSearchParams, endpoint: Endpoint): boolean {
 
 class SizeLimitError extends Error {}
 
-async function readLimited(body: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array> {
+async function readLimited(body: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array<ArrayBuffer>> {
   if (!body) return new Uint8Array();
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
@@ -267,7 +267,8 @@ async function proxy(request: Request, url: URL): Promise<Response> {
     const bytes = await readLimited(upstream.body, MAX_RESPONSE_BYTES);
     const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return failure(502, isWrite ? 'submission_unknown' : 'invalid_response', isWrite ? SUBMISSION_UNKNOWN : 'The node returned an invalid response.');
-    return json(value);
+    // The validated bytes are forwarded as-is; re-serializing them only costs CPU.
+    return secure(new Response(bytes, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } }));
   } catch (error) {
     if (isWrite) return failure(controller.signal.aborted ? 504 : 502, 'submission_unknown', SUBMISSION_UNKNOWN);
     if (controller.signal.aborted) return failure(504, 'timeout', 'The Hypersnap node took too long to respond. Try again.');
@@ -298,7 +299,16 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
   if (url.pathname === '/media' || url.pathname.startsWith('/media/')) return handleMediaRequest(request, env);
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return proxy(request, url);
   if (request.method !== 'GET' && request.method !== 'HEAD') return failure(405, 'method_not_allowed', 'This method is unavailable.');
-  return secure(await env.ASSETS.fetch(request));
+  return cacheStaticAsset(url, secure(await env.ASSETS.fetch(request)));
+}
+
+// Vite content-hashes everything under /assets/, so a changed file gets a new
+// URL. Root fonts keep fixed names and get a shorter lifetime.
+function cacheStaticAsset(url: URL, response: Response): Response {
+  if ((response.status !== 200 && response.status !== 304) || response.headers.get('Content-Type')?.includes('text/html')) return response;
+  if (url.pathname.startsWith('/assets/')) response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  else if (/^\/[^/]+\.ttf$/.test(url.pathname)) response.headers.set('Cache-Control', 'public, max-age=86400');
+  return response;
 }
 
 export default { fetch: handleRequest };
