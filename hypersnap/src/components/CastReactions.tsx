@@ -25,7 +25,8 @@ function boundedRead<T>(read: () => Promise<T>, signal: AbortSignal): Promise<T>
     if (active < 4) start(); else queue.push(start);
   });
 }
-const short = (value: number) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(Math.max(0, value));
+const compactNumber = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
+const short = (value: number) => compactNumber.format(Math.max(0, value));
 type State = { liked: boolean; recasted: boolean; likes: number; recasts: number };
 
 export default function CastReactions({ cast, session, onSignIn, notify, onQuote }: { cast: Cast; session: WalletSession | null; onSignIn(): void; notify(text: string): void; onQuote?(): void }) {
