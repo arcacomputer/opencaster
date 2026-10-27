@@ -161,10 +161,11 @@ export function SearchView({ query, kind, onSearch, onProfile, renderCast, focus
 }
 
 function timestamp(value: string): number { const parsed = Date.parse(value); return Number.isFinite(parsed) ? parsed : 0; }
+const activityTimeFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 function timeLabel(value: string): string {
   const parsed = timestamp(value);
   if (!parsed) return 'Recently';
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(parsed);
+  return activityTimeFormat.format(parsed);
 }
 function readTimestamp(fid?: number): number {
   if (!fid) return 0;
