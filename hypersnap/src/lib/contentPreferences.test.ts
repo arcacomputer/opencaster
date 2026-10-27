@@ -82,4 +82,15 @@ describe('browser content preferences', () => {
     expect(getContentFilterReason(quote, addMutedWord(emptyContentPreferences(), 'unknown quoted text'))).toBeUndefined();
     expect(getContentFilterReason(cast({ text: 'A mention @bob', mentioned_profiles: [cast({ author: { ...cast().author, fid: 8 } }).author] }), muteAccount(emptyContentPreferences(), { fid: 8 }))).toBeUndefined();
   });
+  it('reuses compiled preferences per object and still sees list replacements or in-place additions', () => {
+    const prefs = emptyContentPreferences();
+    expect(getContentFilterReason(cast(), prefs)).toBeUndefined();
+    prefs.mutedWords.push('coffee');
+    expect(getContentFilterReason(cast(), prefs)).toContain('word or phrase');
+    prefs.hiddenCasts = ['a'.repeat(40)];
+    expect(getContentFilterReason(cast(), prefs)).toContain('Hidden');
+    prefs.hiddenCasts = []; prefs.mutedAccounts.push({ fid: 3 });
+    expect(getContentFilterReason(cast(), prefs)).toContain('Muted account');
+    expect(getContentFilterReason(cast({ author: { ...cast().author, fid: 4 }, text: 'tea' }), prefs)).toBeUndefined();
+  });
 });

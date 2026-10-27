@@ -140,19 +140,47 @@ export function unhideCast(preferences: ContentPreferences, input: string): Cont
   return { ...next, hiddenCasts: next.hiddenCasts.filter(value => value !== hash) };
 }
 
+interface CompiledPreferences {
+  readonly source: Pick<ContentPreferences, 'mutedAccounts' | 'mutedWords' | 'hiddenCasts'>;
+  readonly lengths: readonly [number, number, number];
+  readonly hidden: ReadonlySet<string>;
+  readonly mutedFids: ReadonlySet<unknown>;
+  foldedWords?: readonly string[];
+}
+// Filtering runs per cast on every feed render, so lookups and folded words are
+// built once per preferences object. Preference updates return new objects; the
+// identity/length check rebuilds after any in-place list replacement or growth.
+const compiledPreferences = new WeakMap<ContentPreferences, CompiledPreferences>();
+function compile(preferences: ContentPreferences): CompiledPreferences {
+  const { mutedAccounts, mutedWords, hiddenCasts } = preferences;
+  const cached = compiledPreferences.get(preferences);
+  if (cached && cached.source.mutedAccounts === mutedAccounts && cached.source.mutedWords === mutedWords && cached.source.hiddenCasts === hiddenCasts
+    && cached.lengths[0] === mutedAccounts.length && cached.lengths[1] === mutedWords.length && cached.lengths[2] === hiddenCasts.length) return cached;
+  // Array#includes matches like Set#has; `some(===)` never matches NaN, so NaN FIDs are left out.
+  const compiled: CompiledPreferences = {
+    source: { mutedAccounts, mutedWords, hiddenCasts },
+    lengths: [mutedAccounts.length, mutedWords.length, hiddenCasts.length],
+    hidden: new Set(hiddenCasts),
+    mutedFids: new Set(mutedAccounts.map(value => value.fid).filter(value => !Number.isNaN(value))),
+  };
+  compiledPreferences.set(preferences, compiled);
+  return compiled;
+}
+
 /** Only public cast text is matched. Opaque quoted text is never inferred.
  * Cast-ID quote references can still honor hidden hashes and muted author FIDs. */
 export function getContentFilterReason(cast: Cast, preferences: ContentPreferences): string | undefined {
+  const compiled = compile(preferences);
   const hash = castHash(cast.hash);
-  if (hash && preferences.hiddenCasts.includes(hash)) return 'Hidden on this browser';
-  if (preferences.mutedAccounts.some(value => value.fid === cast.author?.fid)) return 'Muted account on this browser';
+  if (hash && compiled.hidden.has(hash)) return 'Hidden on this browser';
+  if (compiled.mutedFids.has(cast.author?.fid)) return 'Muted account on this browser';
   for (const embed of cast.embeds ?? []) {
     if (!('cast_id' in embed)) continue;
     const target = castHash(embed.cast_id.hash);
-    if (target && preferences.hiddenCasts.includes(target)) return 'Quotes a cast hidden on this browser';
-    if (preferences.mutedAccounts.some(value => value.fid === embed.cast_id.fid)) return 'Quotes an account muted on this browser';
+    if (target && compiled.hidden.has(target)) return 'Quotes a cast hidden on this browser';
+    if (compiled.mutedFids.has(embed.cast_id.fid)) return 'Quotes an account muted on this browser';
   }
   const text = fold(cast.text);
-  const word = preferences.mutedWords.find(value => text.includes(fold(value)));
-  return word ? 'Contains a word or phrase muted on this browser' : undefined;
+  compiled.foldedWords ??= preferences.mutedWords.map(fold);
+  return compiled.foldedWords.some(word => text.includes(word)) ? 'Contains a word or phrase muted on this browser' : undefined;
 }

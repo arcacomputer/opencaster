@@ -35,6 +35,7 @@ import './cast-features.scss';
 
 const ContentSettings = lazy(() => import('./components/ContentSettings'));
 const CastReactionPeople = lazy(() => import('./components/CastReactionPeople'));
+const noRevealedCasts: ReadonlySet<string> = new Set();
 const ContentControls = createContext<{ preferences: ContentPreferences; revealed: ReadonlySet<string>; reveal(hash: string): void }>({ preferences: emptyContentPreferences(), revealed: new Set(), reveal() {} });
 const DevLog = lazy(() => import('./components/DevLog'));
 const ConnectAccount = lazy(() => import('./components/ConnectAccount'));
@@ -241,7 +242,7 @@ export default function App() {
   const [preferenceCache, setPreferenceCache] = useState(() => new Map([[contentPreferencesKey(), readContentPreferences()]]));
   const preferences = preferenceCache.get(preferenceScope) ?? storedPreferences;
   const [revealState, setRevealState] = useState(() => ({ scope: contentPreferencesKey(), hashes: new Set<string>() }));
-  const revealed = revealState.scope === preferenceScope ? revealState.hashes : new Set<string>();
+  const revealed: ReadonlySet<string> = revealState.scope === preferenceScope ? revealState.hashes : noRevealedCasts;
   const controls = { preferences, revealed, reveal(hash: string) { const normalized = bookmarkHash(hash); if (normalized) setRevealState(current => ({ scope: preferenceScope, hashes: new Set([...(current.scope === preferenceScope ? current.hashes : []), normalized]) })); } };
   useEffect(() => {
     setPreferenceCache(current => current.has(preferenceScope) ? current : new Map([...current, [preferenceScope, storedPreferences]]));
@@ -527,6 +528,16 @@ export default function App() {
   }
   useNavigationShortcuts({ onSearch() { if (!signIn) { navigate('/search'); setSearchFocus(value => value + 1); } }, onHelp() { if (!signIn) setShortcutHelp(true); } });
   const connectVersion = connectGeneration.current;
+  const feedCandidates = useMemo(() => view === 'bookmarks' ? filterBookmarks(bookmarks, bookmarkQuery, bookmarkSort) : casts, [view, bookmarks, bookmarkQuery, bookmarkSort, casts]);
+  const [visibleCasts, feedFilterReasons] = useMemo(() => {
+    const reasons = new Map<Cast, string | false | undefined>();
+    const visible = feedCandidates.filter(cast => {
+      const reason = !revealed.has(bookmarkHash(cast.hash)!) && getContentFilterReason(cast, preferences);
+      reasons.set(cast, reason);
+      return !reason;
+    });
+    return [visible, reasons] as const;
+  }, [feedCandidates, revealed, preferences]);
   if (signIn) return <Suspense fallback={<main className="onboarding-loading"><p role="status">Loading device sign-in…</p><Button variant="ghost" onClick={returnFromConnect}>Cancel</Button></main>}>
     {connectError && <p className="error" role="alert">{connectError}</p>}
     <ConnectAccount key={connectVersion} presentation="page" requestedScopes={connectFlow.current?.scopes} initialFid={connectFlow.current?.initialFid} onClose={returnFromConnect} onConnect={value => {
@@ -545,13 +556,11 @@ export default function App() {
   const activeConversation = route.kind === 'cast' && activeThread && conversation && bookmarkHash(conversation.cast.hash) === route.hash && conversation.cast.author.fid === activeThread.author.fid ? conversation : null;
   const activeThreadError = route.kind === 'cast' && threadErrorKey === castPath(route.hash) ? threadError : '';
   const card = (cast: Cast) => {
-    const reason = !revealed.has(bookmarkHash(cast.hash)!) && getContentFilterReason(cast, preferences);
+    const reason = feedFilterReasons.has(cast) ? feedFilterReasons.get(cast) : !revealed.has(bookmarkHash(cast.hash)!) && getContentFilterReason(cast, preferences);
     if (reason) return <div className="filtered-cast" key={cast.hash}><p>Cast filtered: {reason}</p><Button variant="secondary" onClick={() => controls.reveal(cast.hash)}>Show this cast for this view</Button><Button variant="ghost" onClick={() => navigate('/settings')}>Manage content controls</Button></div>;
     return <CastCard key={`${session?.publicKey ?? 'guest'}:${cast.hash}`} cast={cast} reactionActor={view === 'profile' && profile && profile.fid === cast.reaction_context?.fid ? profile : undefined} session={session} onSignIn={() => requestSignIn()} onProfile={openProfile} onNavigate={navigateSocialLink} onThread={openThread} onShare={setSharedCast} onCastHash={hash => navigate(castPath(hash))} onImages={(images, initialIndex) => setImageViewer({ images, initialIndex })} onOptions={setCastOptions} onQuote={cast => { quoteGeneration.current += 1; setQuotedCast(cast); }} onDelete={setDeletedCast} saved={bookmarks.some(item => bookmarkHash(item.hash) === bookmarkHash(cast.hash))} onSave={save} notify={notify} />;
   };
   const composeParentUrl = view === 'channel' && channelInfo && safeUrl(channelInfo.parent_url || channelInfo.url) ? channelInfo.parent_url || channelInfo.url : undefined;
-  const feedCandidates = view === 'bookmarks' ? filterBookmarks(bookmarks, bookmarkQuery, bookmarkSort) : casts;
-  const visibleCasts = feedCandidates.filter(cast => revealed.has(bookmarkHash(cast.hash)!) || !getContentFilterReason(cast, preferences));
   const filteredCount = feedCandidates.length - visibleCasts.length;
   if (!session && !exploring && route.kind === 'discover') return <Landing onSignIn={() => requestSignIn()} onExplore={() => { try { localStorage.setItem(exploreKey, '1'); } catch { /* Exploring still works for this tab. */ } setExploring(true); }} onNavigate={path => navigate(path)} />;
   return <ContentControls.Provider value={controls}><div className="app">
