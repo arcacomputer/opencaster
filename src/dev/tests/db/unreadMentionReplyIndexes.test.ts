@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MessageDB } from '../../../db/messages';
+import { buildMessageFingerprint, computeMessageIdHex } from '@quilibrium/quorum-shared';
 import type { Message } from '@quilibrium/quorum-shared';
 
 const ME = 'QmMe';
@@ -102,6 +103,40 @@ describe('MessageDB - sparse unread mention / reply indexes', () => {
     expect(ids(result)).toEqual(['r-1', 'r-thread']);
   });
 
+  it.each(['save', 'update', 'import'] as const)(
+    '%s keeps everyone/role-only legacy mentions in the sparse index without mutating input',
+    async (method) => {
+      const legacy = msg(`legacy-${method}`, 'legacy', 1000, {
+        mentions: { everyone: true, roleIds: ['role-1'] },
+      } as unknown as Partial<Message>);
+      const original = structuredClone(legacy);
+      const fingerprint = (message: Message) => buildMessageFingerprint({
+        nonce: message.nonce,
+        content: message.content as Parameters<typeof buildMessageFingerprint>[0]['content'],
+        senderId: message.content.senderId,
+        spaceId: message.spaceId,
+        channelId: message.channelId,
+      });
+      if (method === 'save') {
+        await db.saveMessage(legacy, 1000, SPACE, 'group', '', '');
+      } else if (method === 'update') {
+        await db.updateMessage(legacy);
+      } else {
+        await db.importDMData({ messages: [legacy], conversations: [] });
+      }
+      const candidates = await db.getUnreadMentions({
+        spaceId: SPACE, channelId: 'legacy', afterTimestamp: 0,
+      });
+      expect(ids(candidates)).toEqual([legacy.messageId]);
+      expect(candidates[0].mentions).toEqual({ ...original.mentions, memberIds: [] });
+      expect(candidates[0].content).toEqual(original.content);
+      expect(computeMessageIdHex(fingerprint(candidates[0]))).toBe(
+        computeMessageIdHex(fingerprint(original))
+      );
+      expect(legacy).toEqual(original);
+    }
+  );
+
   it('getSpaceUnreadCandidates reads every channel in one call, from each channel last-read time', async () => {
     await db.saveConversation({
       conversationId: `${SPACE}/c1`,
@@ -172,6 +207,12 @@ describe('MessageDB - v17 upgrade indexes existing messages', () => {
       msg('m-1', 'c1', 300, mention([ME])),
       msg('r-1', 'c1', 400, replyTo(ME)),
       msg('plain', 'c1', 500),
+      msg('legacy-everyone', 'c1', 600, {
+        mentions: { everyone: true },
+      } as unknown as Partial<Message>),
+      msg('legacy-role', 'c1', 700, {
+        mentions: { roleIds: ['role-1'] },
+      } as unknown as Partial<Message>),
     ]);
     v16.close();
 
@@ -188,7 +229,7 @@ describe('MessageDB - v17 upgrade indexes existing messages', () => {
       userAddress: ME,
       afterTimestamp: 0,
     });
-    expect(ids(mentions)).toEqual(['m-1']);
+    expect(ids(mentions)).toEqual(['m-1', 'legacy-everyone', 'legacy-role']);
     expect(ids(replies)).toEqual(['r-1']);
   });
 });
