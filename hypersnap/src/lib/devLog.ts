@@ -19,6 +19,45 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'reaction-lists-load-faster',
+    date: '2026-10-27',
+    title: 'Like and recast lists load faster',
+    summary: 'The people who liked or recast a cast now load in one profile request per page, and recently opened profiles and casts are reused for a minute instead of being downloaded again.',
+    changes: [
+      'Load the profiles on a Likes or Recasts sheet with one bulk Hypersnap read per page of up to 100 people, instead of one request per person.',
+      'Reuse profiles and target casts shown in the last minute when switching between Likes and Recasts, paging back or reopening a sheet. Matching reads that start at the same time share a single request.',
+      'A failed or cancelled load is never remembered, and a missing profile still shows an error rather than a shorter list. Profile and cast details in these lists can be up to one minute old.',
+      'Only public profile and cast details are reused this way, and nothing is stored beyond the open tab.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/32bddf87f21f5fdd2b821141744c015019df4ed2',
+    tag: 'Reliability',
+  },
+  {
+    id: 'faster-content-control-checks',
+    date: '2026-10-27',
+    title: 'Content controls check casts faster',
+    summary: 'Checking a cast against your muted accounts, muted words and hidden casts no longer rescans every list entry, so long feeds with many content controls filter faster.',
+    changes: [
+      'Look up muted accounts and hidden casts directly instead of scanning up to 100 accounts and 500 hidden casts for each cast and quoted cast.',
+      'Prepare muted words once per content settings change instead of once per cast.',
+      'Filtering results are unchanged: the same casts are hidden, with the same reasons, using the same Unicode matching. Preferences still stay on this browser.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/827b73cfb9afde67424db18fb80c7205ba970d59',
+    tag: 'Reliability',
+  },
+  {
+    id: 'gateway-forwards-validated-json',
+    date: '2026-10-27',
+    title: 'Feeds and profiles load with less gateway work',
+    summary: 'The gateway now forwards each successful Hypersnap read exactly as the node sent it after checking it, instead of rebuilding the JSON first.',
+    changes: [
+      'Check that every successful read is a JSON object within the existing 4 MiB limit, then return the node’s original bytes rather than re-encoding them. In a local test with a 585 KiB feed page this took about 40% less gateway processing time.',
+      'Keep the same safeguards: invalid, non-object or oversized responses are still rejected, upstream headers are not forwarded, and API responses are never cached. The account, cast and feed data shown in the app is unchanged.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/139c79b8145fbe05cc81a921c10b562f2dcc486a',
+    tag: 'Reliability',
+  },
+  {
     id: 'edge-cached-global-reads',
     date: '2026-10-27',
     title: 'Discover and Channels load faster',
@@ -29,6 +68,19 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'Only successful node responses are cached, keyed by the validated path and query alone. Browsers still receive no-store responses, and the gateway falls back to the node if the edge cache is unavailable.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/c60e64419618d7e3bb0f73aaeaf60a8be3c95b77',
+    tag: 'Reliability',
+  },
+  {
+    id: 'cached-app-bundles',
+    date: '2026-10-27',
+    title: 'Repeat visits load faster',
+    summary: 'Browsers now keep the app’s versioned scripts and styles instead of checking each one with the server on every visit, so reloads and return visits start sooner.',
+    changes: [
+      'Mark the versioned files under /assets/ as cacheable for a year. Each release gives changed files new names, so an update is picked up as soon as the page loads.',
+      'Let browsers keep the Inter and Sen fonts for a day.',
+      'Pages themselves are still never cached, so a new release and sign-in state are always current. Missing or failed files are not cached.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/50ea86e22c56ce559d0d809c227fe3f219b3395a',
     tag: 'Reliability',
   },
   {

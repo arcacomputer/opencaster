@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { clearReactionStatusCache, invalidateReactionStatus, primeReactionStatus, getChannel, getChannels, getConversation, getFeed, getFollows, getFollowStatus, getNotifications, getProfileFeed, getReactionStatus, getReactionStatuses, getSuggestedUsers, getChannelMembers, getCastQuotes, getCastReactionPeople, getSigners, getUser, hasImageEmbed, searchCasts, searchUsers, submitMessage, type Cast, type User, type FeedOptions } from './api';
+import { clearPublicReadCache, clearReactionStatusCache, invalidateReactionStatus, primeReactionStatus, getChannel, getChannels, getConversation, getFeed, getFollows, getFollowStatus, getNotifications, getProfileFeed, getReactionStatus, getReactionStatuses, getSuggestedUsers, getChannelMembers, getCastQuotes, getCastReactionPeople, getSigners, getUser, hasImageEmbed, searchCasts, searchUsers, submitMessage, type Cast, type User, type FeedOptions } from './api';
 
 const response = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } });
 const user = (fid: number): User => ({ fid, username: `alice${fid}`, custody_address: '', profile: { bio: { text: '' } }, follower_count: 0, following_count: 0 });
 const cast = (letter: string, extra: Partial<Cast> = {}): Cast => ({ hash: letter.repeat(40), author: user(3), text: 'test', timestamp: '2026-10-19T12:00:00.000Z', embeds: [], reactions: { likes_count: 0, recasts_count: 0 }, replies: { count: 0 }, ...extra });
-afterEach(() => { vi.unstubAllGlobals(); clearReactionStatusCache(); });
+afterEach(() => { vi.unstubAllGlobals(); clearPublicReadCache(); clearReactionStatusCache(); });
 
 describe('browser API client', () => {
   it('loads ranked public user search and drops node fid:0 placeholders', async () => {
@@ -411,14 +411,16 @@ describe('paginated cast reaction people', () => {
   const target = { fid: 3, hash: `0x${'a'.repeat(40)}` };
   it('keeps complete per-shard pages, deduplicates actors and preserves a base64 continuation', async () => {
     const fetch = vi.fn().mockResolvedValueOnce(response({ messages: [reaction('a', 'Like', 3, 7), reaction('a', 'Like', 3, 8), reaction('a', 'Like', 3, 7)], nextPageToken: 'dG9rZW4=' }))
-      .mockResolvedValueOnce(response({ user: user(7) })).mockResolvedValueOnce(response({ user: user(8) }));
+      .mockResolvedValueOnce(response({ users: [user(8), user(7)] }));
     vi.stubGlobal('fetch', fetch);
     expect(await getCastReactionPeople({ target, type: 'likes', limit: 1 })).toEqual({ users: [user(7), user(8)], next: { cursor: 'dG9rZW4=' } });
     expect(fetch.mock.calls[0][0]).toBe(`/api/v1/reactionsByCast?target_fid=3&target_hash=${'a'.repeat(40)}&reaction_type=Like&pageSize=1&reverse=true`);
-    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch.mock.calls[1][0]).toBe('/api/v2/farcaster/user/bulk?fids=7%2C8');
+    expect(fetch).toHaveBeenCalledTimes(2);
     fetch.mockResolvedValueOnce(response({ messages: [], nextPageToken: '' }));
     expect(await getCastReactionPeople({ target, type: 'recasts', cursor: 'dG9rZW4=' })).toEqual({ users: [], next: { cursor: null } });
-    expect(fetch.mock.calls[3][0]).toContain('reaction_type=Recast&pageSize=25&reverse=true&pageToken=dG9rZW4%3D');
+    expect(fetch.mock.calls[2][0]).toContain('reaction_type=Recast&pageSize=25&reverse=true&pageToken=dG9rZW4%3D');
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
   it('rejects unrelated or malformed receipts before hydrating any profiles', async () => {
     const valid = reaction('a');
@@ -448,25 +450,85 @@ describe('paginated cast reaction people', () => {
     expect(fetch).toHaveBeenCalledTimes(count);
   });
   it('keeps hydration outages and mismatched profiles distinct from an empty list', async () => {
-    const fetch = vi.fn().mockResolvedValueOnce(response({ messages: [reaction('a')] })).mockResolvedValueOnce(response({ user: user(8) }))
-      .mockResolvedValueOnce(response({ messages: [reaction('a')] })).mockResolvedValueOnce(new Response(JSON.stringify({ code: 'upstream_error', message: 'Unavailable' }), { status: 502 }));
+    const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
-    await expect(getCastReactionPeople({ target, type: 'likes' })).rejects.toMatchObject({ code: 'invalid_response' });
+    for (const users of [[user(8)], [], [{ fid: 7 }], [user(7), user(7)], [user(7), user(8)]]) {
+      fetch.mockResolvedValueOnce(response({ messages: [reaction('a')] })).mockResolvedValueOnce(response({ users }));
+      await expect(getCastReactionPeople({ target, type: 'likes' })).rejects.toMatchObject({ code: 'invalid_response' });
+    }
+    fetch.mockResolvedValueOnce(response({ messages: [reaction('a')] })).mockResolvedValueOnce(new Response(JSON.stringify({ code: 'upstream_error', message: 'Unavailable' }), { status: 502 }));
     await expect(getCastReactionPeople({ target, type: 'likes' })).rejects.toMatchObject({ code: 'upstream_error' });
+    fetch.mockResolvedValueOnce(response({ messages: [reaction('a')] })).mockResolvedValueOnce(response({ users: [user(7)] }));
+    expect((await getCastReactionPeople({ target, type: 'likes' })).users).toEqual([user(7)]);
   });
-  it('hydrates with at most four concurrent reads and cancels all remaining work', async () => {
-    let active = 0, maximum = 0;
+  it('hydrates a page with one bulk profile read and cancels it with the caller', async () => {
+    let active = 0;
     const fetch = vi.fn().mockImplementation(async (url: string, options: RequestInit) => {
       if (url.includes('/reactionsByCast?')) return response({ messages: Array.from({ length: 8 }, (_, index) => reaction('a', 'Like', 3, index + 7)) });
-      active++; maximum = Math.max(maximum, active);
+      active++;
       return new Promise((_resolve, reject) => options.signal?.addEventListener('abort', () => { active--; reject(options.signal?.reason); }, { once: true }));
     });
     vi.stubGlobal('fetch', fetch);
     const controller = new AbortController();
     const pending = expect(getCastReactionPeople({ target, type: 'likes', signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(5));
-    expect(maximum).toBe(4); controller.abort(); await pending;
-    expect(active).toBe(0); expect(fetch).toHaveBeenCalledTimes(5);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(fetch.mock.calls[1][0]).toBe('/api/v2/farcaster/user/bulk?fids=7%2C8%2C9%2C10%2C11%2C12%2C13%2C14');
+    expect(active).toBe(1); controller.abort(); await pending;
+    expect(active).toBe(0); expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it('splits more than 100 unique actors into bounded bulk reads', async () => {
+    const actors = Array.from({ length: 101 }, (_, index) => index + 1);
+    const fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes('/reactionsByCast?')) return response({ messages: actors.map(fid => reaction('a', 'Like', 3, fid)) });
+      return response({ users: new URL(url, 'https://local').searchParams.get('fids')!.split(',').map(fid => user(Number(fid))) });
+    });
+    vi.stubGlobal('fetch', fetch);
+    expect((await getCastReactionPeople({ target, type: 'likes' })).users.map(value => value.fid)).toEqual(actors);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(new URL(fetch.mock.calls[1][0], 'https://local').searchParams.get('fids')!.split(',')).toHaveLength(100);
+    expect(new URL(fetch.mock.calls[2][0], 'https://local').searchParams.get('fids')).toBe('101');
+  });
+  it('reuses fresh profiles across lists, dedupes concurrent reads and refetches after the TTL', async () => {
+    vi.useFakeTimers();
+    try {
+      const other = { fid: 3, hash: `0x${'b'.repeat(40)}` };
+      const fetch = vi.fn().mockImplementation(async (url: string) => {
+        if (url.includes('/reactionsByCast?')) {
+          const letter = new URL(url, 'https://local').searchParams.get('target_hash')![0];
+          return response({ messages: [reaction(letter, 'Like', 3, 7), reaction(letter, 'Like', 3, 8)] });
+        }
+        return response({ users: new URL(url, 'https://local').searchParams.get('fids')!.split(',').map(fid => user(Number(fid))) });
+      });
+      vi.stubGlobal('fetch', fetch);
+      const [first, second] = await Promise.all([getCastReactionPeople({ target, type: 'likes' }), getCastReactionPeople({ target: other, type: 'likes' })]);
+      expect(first.users).toEqual([user(7), user(8)]); expect(second.users).toEqual([user(7), user(8)]);
+      expect(fetch.mock.calls.filter(([url]) => url.includes('/user/bulk'))).toHaveLength(1);
+      first.users[0].username = 'edited';
+      expect((await getCastReactionPeople({ target, type: 'likes' })).users).toEqual([user(7), user(8)]);
+      expect(fetch.mock.calls.filter(([url]) => url.includes('/user/bulk'))).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(60_001);
+      await getCastReactionPeople({ target, type: 'likes' });
+      expect(fetch.mock.calls.filter(([url]) => url.includes('/user/bulk'))).toHaveLength(2);
+    } finally { vi.useRealTimers(); }
+  });
+  it('keeps a shared profile read alive for the remaining caller when another cancels', async () => {
+    let resolveProfiles!: (value: Response) => void;
+    const fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes('/reactionsByCast?')) return response({ messages: [reaction('a', 'Like', 3, 7)] });
+      return new Promise<Response>(resolve => { resolveProfiles = resolve; });
+    });
+    vi.stubGlobal('fetch', fetch);
+    const controller = new AbortController();
+    const cancelled = expect(getCastReactionPeople({ target, type: 'likes', signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    const remaining = getCastReactionPeople({ target, type: 'likes' });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+    await new Promise(resolve => setTimeout(resolve, 10));
+    controller.abort(); await cancelled;
+    expect((fetch.mock.calls[1][1] as RequestInit).signal?.aborted).toBe(false);
+    resolveProfiles(response({ users: [user(7)] }));
+    expect((await remaining).users).toEqual([user(7)]);
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
   it('uses one 25-second deadline across receipt loading and profile hydration', async () => {
     vi.useFakeTimers();
@@ -646,6 +708,22 @@ describe('profile likes and recasts', () => {
     expect(page.next.cursor).toBeNull();
     expect(fetch.mock.calls[2][0]).toContain('pageToken=dG9rZW4%3D');
     expect(fetch.mock.calls[2][0]).toContain('pageSize=1');
+  });
+
+  it('reuses hydrated target casts across tabs without caching deletions', async () => {
+    const fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes('/reactionsByFid?')) return response({ messages: [reaction('a', url.includes('reaction_type=Like') ? 'Like' : 'Recast'), reaction('b', url.includes('reaction_type=Like') ? 'Like' : 'Recast')] });
+      if (url.includes(`identifier=${'b'.repeat(40)}`)) return new Response(JSON.stringify({ code: 'cast_not_found' }), { status: 404 });
+      return response({ cast: cast('a') });
+    });
+    vi.stubGlobal('fetch', fetch);
+    const likes = await getProfileFeed({ fid: 7, tab: 'likes', limit: 2 });
+    const recasts = await getProfileFeed({ fid: 7, tab: 'recasts', limit: 2 });
+    expect(likes.casts.map(value => [value.hash, value.reaction_context?.type])).toEqual([['a'.repeat(40), 'like']]);
+    expect(recasts.casts.map(value => [value.hash, value.reaction_context?.type])).toEqual([['a'.repeat(40), 'recast']]);
+    const castReads = fetch.mock.calls.map(([url]) => url as string).filter(url => url.includes('/v2/farcaster/cast?'));
+    expect(castReads.filter(url => url.includes('a'.repeat(40)))).toHaveLength(1);
+    expect(castReads.filter(url => url.includes('b'.repeat(40)))).toHaveLength(2);
   });
 
   it('retains a continuation after the bounded scan of sparse URL-only reactions', async () => {

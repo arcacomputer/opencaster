@@ -51,6 +51,7 @@ type Rule = (value: string) => boolean;
 type QueryRules = Record<string, Rule>;
 const integer = (max: number, min = 1): Rule => value => /^\d{1,16}$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) >= min && Number(value) <= max;
 const fid = integer(Number.MAX_SAFE_INTEGER);
+const fidList = (max: number): Rule => value => { const fids = value.split(','); return fids.length <= max && new Set(fids).size === fids.length && fids.every(fid); };
 const address: Rule = value => /^0x[a-fA-F0-9]{40}$/.test(value);
 const hash: Rule = value => /^(?:0x)?[a-fA-F0-9]{40}$/.test(value);
 const username: Rule = value => /^[a-zA-Z0-9_.-]{1,128}$/.test(value);
@@ -77,6 +78,7 @@ const READ_ENDPOINTS: Record<string, Endpoint> = {
   '/v1/reactionsByFid': { required: ['fid', 'reaction_type', 'pageSize', 'reverse'], query: { fid, reaction_type: reactionType, pageSize: integer(100), pageToken: reactionPageToken, reverse: value => value === 'true' || value === 'false' } },
   '/v1/reactionsByCast': { required: ['target_fid', 'target_hash', 'reaction_type', 'pageSize', 'reverse'], query: { target_fid: fid, target_hash: hash, reaction_type: reactionType, pageSize: integer(25), pageToken: reactionPageToken, reverse: value => value === 'true' } },
   '/v2/farcaster/user': { required: ['fid'], query: { fid } },
+  '/v2/farcaster/user/bulk': { required: ['fids'], query: { fids: fidList(100) } },
   '/v2/farcaster/user/by-username': { required: ['username'], query: { username } },
   '/v2/farcaster/user/search': { required: ['q'], query: { q: searchQuery, limit: integer(100) } },
   '/v2/farcaster/user/custody-address': { required: ['custody_address'], query: { custody_address: address } },
@@ -125,7 +127,7 @@ function validQuery(params: URLSearchParams, endpoint: Endpoint): boolean {
 
 class SizeLimitError extends Error {}
 
-async function readLimited(body: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array> {
+async function readLimited(body: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array<ArrayBuffer>> {
   if (!body) return new Uint8Array();
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
@@ -293,12 +295,11 @@ async function proxy(request: Request, url: URL, ctx?: WorkerContext): Promise<R
     const bytes = await readLimited(upstream.body, MAX_RESPONSE_BYTES);
     const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return failure(502, isWrite ? 'submission_unknown' : 'invalid_response', isWrite ? SUBMISSION_UNKNOWN : 'The node returned an invalid response.');
-    const response = json(value);
+    const response = secure(new Response(bytes, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } }));
     if (cache && cacheKey && ctx) {
       const stored = response.clone();
-      const headers = new Headers(stored.headers);
-      headers.set('Cache-Control', `public, s-maxage=${ttl}`);
-      ctx.waitUntil(cache.put(cacheKey, new Response(stored.body, { status: 200, headers })).catch(() => undefined));
+      stored.headers.set('Cache-Control', `public, s-maxage=${ttl}`);
+      ctx.waitUntil(cache.put(cacheKey, stored).catch(() => undefined));
     }
     return response;
   } catch (error) {
@@ -331,7 +332,16 @@ export async function handleRequest(request: Request, env: Env, ctx?: WorkerCont
   if (url.pathname === '/media' || url.pathname.startsWith('/media/')) return handleMediaRequest(request, env);
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return proxy(request, url, ctx);
   if (request.method !== 'GET' && request.method !== 'HEAD') return failure(405, 'method_not_allowed', 'This method is unavailable.');
-  return secure(await env.ASSETS.fetch(request));
+  return cacheStaticAsset(url, secure(await env.ASSETS.fetch(request)));
+}
+
+// Vite content-hashes everything under /assets/, so a changed file gets a new
+// URL. Root fonts keep fixed names and get a shorter lifetime.
+function cacheStaticAsset(url: URL, response: Response): Response {
+  if ((response.status !== 200 && response.status !== 304) || response.headers.get('Content-Type')?.includes('text/html')) return response;
+  if (url.pathname.startsWith('/assets/')) response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  else if (/^\/[^/]+\.ttf$/.test(url.pathname)) response.headers.set('Cache-Control', 'public, max-age=86400');
+  return response;
 }
 
 export default { fetch: handleRequest };

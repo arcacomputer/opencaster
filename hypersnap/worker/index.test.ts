@@ -164,6 +164,18 @@ describe('the fixed Hypersnap gateway', () => {
     for (const invalid of [prefix.replace('target_fid=3', 'target_fid=0'), prefix.replace('target_hash=' + 'a'.repeat(40), 'target_hash=bad'), prefix.replace('reaction_type=Like', 'reaction_type=1'), prefix.replace('pageSize=25', 'pageSize=26'), prefix.replace('reverse=true', 'reverse=false'), prefix.replace('&reverse=true', ''), prefix + '&pageToken=a===', prefix + '&pageToken=', prefix + '&target_fid=4', prefix + '&target_url=https://evil.test', prefix + '&upstream=https://evil.test']) expect((await handleRequest(new Request(`${BASE}/api${invalid}`), env)).status).toBe(400);
     expect(fetch).toHaveBeenCalledOnce();
   });
+  it('allows bounded unique bulk profile reads only', async () => {
+    const fetch = vi.fn().mockImplementation(async () => jsonResponse({ users: [] })); vi.stubGlobal('fetch', fetch);
+    const fids = Array.from({ length: 100 }, (_, index) => index + 1).join('%2C');
+    for (const query of ['fids=3', 'fids=3%2C7', `fids=${fids}`]) {
+      expect((await handleRequest(new Request(`${BASE}/api/v2/farcaster/user/bulk?${query}`), env)).status).toBe(200);
+      expect(fetch.mock.lastCall?.[0]).toBe(`https://haatz.quilibrium.com/v2/farcaster/user/bulk?${query}`);
+    }
+    for (const query of ['', 'fids=', 'fids=0', 'fids=3%2C3', 'fids=3%2C', 'fids=-1', 'fids=3%2Cabc', `fids=${fids}%2C101`, 'fids=3&fids=4', 'fids=3&viewer_fid=4']) {
+      expect((await handleRequest(new Request(`${BASE}/api/v2/farcaster/user/bulk?${query}`), env)).status).toBe(400);
+    }
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
   it('permits known trending windows only on the trending feed', async () => {
     const fetch = vi.fn().mockImplementation(async () => jsonResponse({ casts: [], next: {} })); vi.stubGlobal('fetch', fetch);
     for (const timeWindow of ['1h', '6h', '12h', '24h', '7d']) {
@@ -434,6 +446,25 @@ describe('the fixed Hypersnap gateway', () => {
     expect((await response.json() as { code: string }).code).toBe('response_too_large');
   });
 
+  it('forwards a validated JSON object byte-for-byte with JSON and security headers', async () => {
+    const body = '{ "fid": 12345678901234567890, "text": "caf\\u00e9 \u2603",\n"nested": {"a": [1, 2.50]} }';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { headers: { 'Content-Type': 'application/json', 'Set-Cookie': 'upstream=1' } })));
+    const response = await handleRequest(new Request(`${BASE}/api/v1/info`), env);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(body);
+    expect(response.headers.get('Content-Type')).toBe('application/json; charset=utf-8');
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    expect(response.headers.get('Set-Cookie')).toBeNull();
+  });
+
+  it.each(['[1, 2]', 'null', '"text"', '{"truncated": '])('still rejects a successful upstream body that is not a JSON object: %s', async body => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { headers: { 'Content-Type': 'application/json' } })));
+    const response = await handleRequest(new Request(`${BASE}/api/v1/info`), env);
+    expect(response.status).toBe(502);
+    expect(await response.text()).not.toContain('truncated');
+  });
+
   it('aborts a slow node and returns a controlled timeout', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn((_url: string, options: RequestInit) => new Promise((_resolve, reject) => {
@@ -536,7 +567,6 @@ describe('supported community queries', () => {
     }
   });
 });
-
 describe('edge caching of global reads', () => {
   function edge() {
     const store = new Map<string, Response>();
@@ -601,5 +631,33 @@ describe('edge caching of global reads', () => {
     await settle();
     expect((await handleRequest(new Request(`${BASE}/api/v1/info`), env)).status).toBe(200);
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});
+describe('static asset caching', () => {
+  const asset = (body: string, type: string, status = 200) => ({ fetch: vi.fn().mockResolvedValue(new Response(status === 304 ? null : body, { status, headers: { 'Content-Type': type, 'Cache-Control': 'public, max-age=0, must-revalidate' } })) });
+
+  it.each([['GET', 200], ['HEAD', 200], ['GET', 304]] as const)('lets browsers keep content-hashed bundles (%s %i)', async (method, status) => {
+    const response = await handleRequest(new Request(`${BASE}/assets/index-B1x9QzPa.js`, { method }), { ...env, ASSETS: asset('export {}', 'text/javascript', status) });
+    expect(response.status).toBe(status); expect(response.headers.get('Cache-Control')).toBe('public, max-age=31536000, immutable');
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+  });
+
+  it('caches fixed-name root fonts for a day only', async () => {
+    const response = await handleRequest(new Request(`${BASE}/InterVariable.ttf`), { ...env, ASSETS: asset('font', 'font/ttf') });
+    expect(response.headers.get('Cache-Control')).toBe('public, max-age=86400');
+  });
+
+  it('never caches HTML, including the SPA fallback for a missing bundle', async () => {
+    for (const path of ['/', '/profile/alice', '/assets/missing-chunk.js']) {
+      const response = await handleRequest(new Request(`${BASE}${path}`), env);
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+    }
+  });
+
+  it('leaves failed and unhashed asset responses on their default policy', async () => {
+    const missing = await handleRequest(new Request(`${BASE}/assets/gone.js`), { ...env, ASSETS: asset('', 'text/plain', 404) });
+    expect(missing.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
+    const image = await handleRequest(new Request(`${BASE}/unknown-dark.png`), { ...env, ASSETS: asset('png', 'image/png') });
+    expect(image.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
   });
 });
