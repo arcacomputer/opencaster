@@ -1,1 +1,0 @@
-export { MentionHighlights as default, MentionHighlights } from './MentionHighlights';

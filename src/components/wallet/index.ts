@@ -1,1 +1,0 @@
-export { WalletPage } from './WalletPage';

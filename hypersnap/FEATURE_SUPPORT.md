@@ -1,4 +1,4 @@
-# Familiar client features on Hypersnap
+# Opencaster feature support on Hypersnap
 
 > **⚠️ AI-Generated**: May contain errors. Verify before use.
 
@@ -33,9 +33,11 @@ This matrix records the implementation reviewed against [Hypersnap source](https
 
 Unsupported hosted features are not presented as working controls: Farcaster DMs, managed account registration, push delivery, miniapp execution/catalogs, trading, video processing, paid storage, protocol pins, channel subscription management or a personalized recommendation model. Some require new first-party infrastructure; others require missing Hypersnap protocol/index support. Following suggestions, quotes and channel participation reads, when shown, are bounded views of the current node's indexes rather than promises of a complete archive.
 
-Reusable validation, route and local-storage helpers in `hypersnap/src/lib/` are candidates for a future shared Hypersnap mobile package. They do not participate in the retained Quorum messenger's cross-client synchronization protocol.
+Reusable validation, route and local-storage helpers in `hypersnap/src/lib/` are candidates for a future shared Hypersnap mobile package. Opencaster's helpers and protocol code remain local to this client, with no Quorum messenger runtime dependency.
 
 The reviewed Hypersnap `api/http.rs::resolve_cast` and `network/server.rs::find_cast_fid_by_hash` use exact 20-byte hashes; the latter rejects shorter input. `network/http_server.rs` serves `/v1/castsByFid` from the author's retained cast-add and cast-remove history. The gateway permits only fixed 250-message reverse pages with canonical base64 cursors. Each lookup batch checks at most four pages under one 25-second deadline and hydrates matching full hashes against the resolved author FID with at most four concurrent reads. The lookup publishes verified candidates after each fully validated matching page. When a snapshot contains one available match, the client opens it and cancels the remaining lookup; opening the first available match makes no claim about collisions in unsearched history. Multiple returned matches remain an explicit choice. Within one batch, progress and final results reuse their exact author/hash reads; choosing a full cast also cancels the remaining lookup. Explicit continuation retains only public lookup metadata in tab memory, rechecks the author mapping, validates the native FID/store/timestamp/hash cursor against descending receipts, detects cursor cycles, and stops at 100,000 history messages or 400 cursors and 25 candidates. Those bounds are not a claim of a complete network archive or a new node prefix index.
+
+The dated walkthroughs below use Quorum, the earlier name of the Opencaster client. They preserve the terminology recorded at the time.
 
 ## Live Farcaster walkthrough · 2026-10-21
 

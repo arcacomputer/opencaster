@@ -1,80 +1,48 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-
-# dependencies
-.vite/
-/node_modules
+# Dependencies and build outputs
 **/node_modules/
 **/dist/
 **/dist-signer/
 **/release/
 **/.wrangler/
-/.pnp
+**/.vite/
+**/coverage/
+.pnp
 .pnp.js
-.vite
 
-# CRITICAL: Prevent npm/yarn conflicts
+# Use Yarn exclusively.
 package-lock.json
 
-# testing
-/coverage
-
-# production
-/build
-/dist
-
-# misc
-.DS_Store
+# Local configuration and credentials
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Local development configs
+.env.*.local
 *.local.js
 *.local.ts
 *.local.json
-
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-vite-dev.log
-
-# VS Code workspace settings
-.vscode/settings.json
-
-# backup files
-*.bak
-
-# DM harness — real private keys / ratchet key material, keep local
-src/dev/tests/harness/.state/
-src/dev/tests/harness/logs/
-
-# custom
-.claude/settings.local.json
 .mcp.json
-.claude/skills/changelog-generator/changelogs/*.md
-.claude/skills/changelog-generator/changelogs/*.txt
+.vscode/settings.json
+.DS_Store
+
+# Generated output and local workspaces
+/output/
+/.verify-receipt*.json
 .temp/
 .worktrees/
+*.bak
+*.log
+yarn-error.log*
+yarn-debug.log*
+npm-debug.log*
 
-# Security-sensitive issue reports. This repo is PUBLIC, so any write-up that
-# describes a working attack against shipped code is held here and never
-# tracked. See .agents/AGENTS.md -> "Security-sensitive issues (.secret/)".
+# Preserve private records and caches left by the earlier messenger locally.
+# Reports remain private after a fix is merged and until it reaches users.
 .agents/issues/.secret/
-
-# Logs and captures. Regenerated every run; carry account/machine names and,
-# in transport traces, real key material.
 .agents/**/*.log
 .agents/**/*-log.txt
 .agents/**/logs/
 .agents/**/captures/
-
-# Local verify receipts. Machine-specific, regenerated every run.
-/.verify-receipt.json
-
-
-
-
-# Pinned source dependencies restored by yarn setup:verify
+.claude/settings.local.json
+.claude/skills/changelog-generator/changelogs/*.md
+.claude/skills/changelog-generator/changelogs/*.txt
 /.quorum-deps/
+src/dev/tests/harness/.state/
+src/dev/tests/harness/logs/

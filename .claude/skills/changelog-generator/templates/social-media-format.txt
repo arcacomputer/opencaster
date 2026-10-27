@@ -1,5 +1,0 @@
-🚀 QUORUM UPDATE - {{DATE_RANGE}}
-
-New features you can test at https://test.quorummessenger.com/
-
-{{CONTENT}}
