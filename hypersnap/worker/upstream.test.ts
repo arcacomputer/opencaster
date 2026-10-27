@@ -113,7 +113,7 @@ describe('server-only origin configuration', () => {
   });
 
   it('rejects invalid UTF-8 JSON bytes before forwarding or caching', async () => {
-    const bytes = new Uint8Array([...new TextEncoder().encode('{\"value\":\"'), 0xff, ...new TextEncoder().encode('\"}')]);
+    const bytes = new Uint8Array([...new TextEncoder().encode('{"value":"'), 0xff, ...new TextEncoder().encode('"}')]);
     const fetch = vi.fn().mockResolvedValue(new Response(bytes, { headers: { 'Content-Type': 'application/json' } })); vi.stubGlobal('fetch', fetch);
     const cache = { match: vi.fn(), put: vi.fn() }; vi.stubGlobal('caches', { default: cache });
     const result = await handleRequest(new Request(`${BASE}/api/v1/info`), { ...env, ...privateEnv }, { waitUntil: vi.fn() });

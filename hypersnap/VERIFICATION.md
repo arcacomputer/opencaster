@@ -1,3 +1,124 @@
+# Immediate casting feedback merged and deployed · 2026-10-26
+
+Release `92c05e4f8c55f255886ddd0867c6d1038bd1d346` is live at 100% traffic as
+Worker **`a7167a33-6098-4e8b-bc8d-167a9a4a30aa`**, deployment
+`46437390-2fd8-41d1-bf79-82ef2d581141`. The casting milestone links integrated
+implementation `a8bde42399774899be4758f1ec99fbb084e333b4`, authored
+`2026-10-26T18:55:29-03:00`; its original isolated implementation was
+`ef9ac9334e2c511c7d8b2de03719dab83728b044`. The improvements were merged into
+the existing `codex/farcaster-conversation-links` application branch and pushed
+before deployment. Newer committed identity, public feeds and channel/feed
+sharing changes were retained. Unrelated root guidance edits and output remain
+outside the release.
+
+The actual pre-release source was
+`3f154f01ca809b0513a0cfd1377019016fcd8959`, Worker
+`39a9160c-e691-431f-a380-944845bb096b`, deployment
+`4493d665-7f91-4056-b5fb-c44db413bafe`. Authenticated deployment metadata was
+recorded and confirmed unchanged immediately before upload. The dev-log guard
+passed against that exact deployed source for the casting and newly included
+channel/feed-preview milestones.
+
+From the clean external worktree, complete `yarn verify` passed **1,810 tests
+across 72 files**, browser/Worker/dashboard typechecks, production build and
+offline signer typecheck/build. The merged frozen Yarn dependency installation
+matches the committed package manifest and lockfile. An earlier combined run
+exposed a test that asserted a lazy-loaded public Following picker after a fixed
+delay; it now waits for the actual control. The final gate passed after all
+merges and that test correction. Existing WalletConnect annotation and large
+bundle advisories remain. Retained Quorum was neither changed nor verified.
+
+Fresh production assets were built at
+`/tmp/opencaster-casting-production-20261026-0ZdNmZ`. All 230 release inputs
+matched their committed blobs; all 33 asset files were inspected with the
+existing public WalletConnect project identifier preserved. There are no
+fixture wrappers, source maps, symlinks or browser-bundled Worker renderer in
+the production asset directory. Wrangler's dry run confirmed the renderer Wasm
+is included in the Worker bundle. That exact inspected directory was deployed,
+and its hashes remained unchanged. All 32 non-HTML live asset hashes match.
+Deployed runtime and all bindings match the pre-release version, including the
+origin settings and secret binding, media bucket/quota and analytics bindings.
+
+Regression checks cover immediate local publishing cards, explicit submitted,
+uncertain and rejected outcomes, retained drafts, author/full-hash reconciliation,
+receipt/read ordering, closing an in-flight composer, lock/account isolation,
+reply and quote destinations, and token/FID changes between custom/public
+Following feeds. Same-feed refresh and failed refresh retain existing casts.
+Profile Casts/Replies/Photos return one complete filtered underlying page and
+preserve continuation for scrolling. No authorization check or permission was
+removed, and no write is automatically replayed.
+
+Production public reads passed 42 checks covering the new compiled dev log,
+page references, every non-HTML asset, API info, public feed routes, legacy
+redirect and actual profile/cast 1200×630 PNGs. Additional channel and shared
+feed PNG reads also passed at 1200×630. Live browser navigation shows the casting
+milestone first among 47 updates, with its implementation link and current
+identity. Screenshot: `/tmp/opencaster-casting-live-devlog.png`. All production
+checks were public reads/navigation; no real account action, wallet approval,
+upload or cast was performed. Pending/write behavior was tested synthetically.
+
+Receipts: `/tmp/opencaster-casting-release-receipt.json`,
+`/tmp/opencaster-casting-release-base.json`,
+`/tmp/opencaster-casting-release-assets-manifest.json`,
+`/tmp/opencaster-casting-release-verify.log`,
+`/tmp/opencaster-casting-release-devlog.log`,
+`/tmp/opencaster-casting-live-verification.json` and
+`/tmp/opencaster-casting-sharing-live-verification.json`.
+
+# Channel and custom-feed previews deployed · 2026-10-26
+
+Implementation `0c749778f220643a0e2dd3186baee6fd87b895c6`, authored
+`2026-10-26T18:57:38-03:00`, and its new milestone are deployed in the combined
+release `92c05e4f8c55f255886ddd0867c6d1038bd1d346`. Worker
+**`a7167a33-6098-4e8b-bc8d-167a9a4a30aa`**, deployment
+`46437390-2fd8-41d1-bf79-82ef2d581141`, serves 100% of traffic. That release
+preserves the concurrently completed branding and casting improvements. The
+preview implementation files match the separately verified source byte for byte.
+
+The actual preceding production source was
+`3f154f01ca809b0513a0cfd1377019016fcd8959`, Worker
+`39a9160c-e691-431f-a380-944845bb096b`. The dev-log guard passed against that
+source. From the clean external preview checkout, complete `yarn verify` passed
+**1,772 tests across 69 files**, browser/Worker/dashboard typechecks, production
+build and offline signer typecheck/build. The combined release subsequently
+passed **1,810 tests across 72 files** and both builds. Existing WalletConnect
+annotation and bundle-size advisories remain.
+
+Inspected all 33 files in the combined release's fresh external asset directory,
+`/tmp/opencaster-casting-production-20261026-0ZdNmZ`. All 32 non-HTML live hashes
+match its manifest. The existing public WalletConnect configuration, gateway
+settings, server-only secret binding, media storage/quota and analytics bindings
+are preserved. No preview wrapper, test fixture, source map, symlink or browser
+image-renderer bundle was deployed.
+
+Real local Worker and production public reads verified `/channel/art` and two
+distinct shared custom-feed recipes, plus existing profile and full-hash cast
+links. Initial HTML for Telegram and X user agents contains the channel or feed
+identity, description and individual image URL. Generated PNGs are 1200×630;
+the live channel and feed samples measured 158,292 and 141,697 bytes. Distinct
+recipes produce distinct images. HEAD, invalid image queries, malformed feed
+fallback, the homepage and API info read passed. The browser live dev log shows
+the channel/feed milestone second among 47 updates, with its implementation link.
+Synthetic render inspection covers channel descriptions/images and long feed
+rules; a real local 5,612-character recipe with 20 phrases also renders safely.
+
+The live art channel currently supplies a name and participant count but no
+description or image, so its card uses the documented fallback. Feed cards
+describe the shared public recipe, without reading saved browser state or
+claiming current results. Images shorten long lists and phrases; metadata and
+the link preserve the validated recipe. Generated cards expire at our edge after
+five minutes. Third-party app display/caches were not tested by posting links;
+font and remote-image limits remain as documented below. All production actions
+were public reads and navigation, with no account mutation or upload. Retained
+Quorum was neither changed nor verified; unrelated root guidance was preserved.
+
+Receipts: `/tmp/opencaster-channel-feed-release-receipt.json`,
+`/tmp/opencaster-channel-feed-live-verification.json`,
+`/tmp/opencaster-channel-feed-local-verification.json`,
+`/tmp/opencaster-channel-feed-max-token-verification.json`,
+`/tmp/opencaster-channel-feed-verify.log` and the combined asset manifest
+`/tmp/opencaster-casting-release-assets-manifest.json`.
+
 # Open Door identity deployed · 2026-10-26
 
 Release `3f154f01ca809b0513a0cfd1377019016fcd8959` is live at 100% traffic as

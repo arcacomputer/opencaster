@@ -339,6 +339,24 @@ describe('reply context in the timeline and conversation', () => {
     expect(bodyText().textContent).toBe(conversationCast.text);
   });
 
+  it('reloads a cached parent preview when the feed is explicitly refreshed', async () => {
+    const parent = cast('b', 7, 'The original parent text.');
+    const child = replyTo(conversationCast, parent);
+    makeAvailable(parent);
+    await startFeed([child]);
+    await until(() => container.querySelector('.feed .cast-reply-context__preview')?.textContent?.includes(parent.text) === true);
+    expect(getCast).toHaveBeenCalledTimes(1);
+
+    const updatedParent = { ...parent, text: 'The refreshed parent text.' };
+    makeAvailable(updatedParent);
+    await click(container.querySelector('[aria-label="Refresh feed"]')!);
+    await until(() => container.querySelector('.feed .cast-reply-context__preview')?.textContent?.includes(updatedParent.text) === true);
+
+    expect(getCast).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('.feed')?.textContent).toContain(child.text);
+    expect(container.querySelector('.feed .cast-reply-context__preview')?.textContent).not.toContain(parent.text);
+  });
+
   it('clears a cached parent with the wrong author and loads corrected context after retry', async () => {
     const parent = cast('b', 7, 'The corrected parent from the expected author.');
     const wrongAuthor = { ...parent, author: person(99), text: 'A cached response from the wrong author.' };

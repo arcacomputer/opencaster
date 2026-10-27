@@ -13,10 +13,17 @@ const STORAGE_BYTE_LIMIT = 256 * 1024;
 const encoder = new TextEncoder();
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const validFid = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) > 0;
-const control = /[\u0000-\u001f\u007f]/;
 const normalizedText = (value: string) => value.normalize('NFKC').toLowerCase();
 type Reader = Pick<Storage, 'getItem'>;
 type Writer = Pick<Storage, 'setItem'>;
+
+function hasAsciiControlCharacters(value: string): boolean {
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
 
 export type FeedSource = { kind: 'trending'; timeWindow: TrendingTimeWindow } | { kind: 'following' | 'user'; fid: number } | { kind: 'channel'; channel: string };
 export interface FeedDefinition {
@@ -46,7 +53,7 @@ function phrases(value: unknown): string[] | undefined {
   const result: string[] = [];
   const seen = new Set<string>();
   for (const phrase of value) {
-    if (typeof phrase !== 'string' || control.test(phrase)) return;
+    if (typeof phrase !== 'string' || hasAsciiControlCharacters(phrase)) return;
     const trimmed = phrase.trim();
     if (!trimmed || trimmed.length > CUSTOM_FEED_PHRASE_LENGTH_LIMIT) return;
     const key = normalizedText(trimmed);
@@ -57,7 +64,7 @@ function phrases(value: unknown): string[] | undefined {
 
 /** Rebuild the public schema, never retaining unknown metadata or credentials. */
 export function normalizeFeedDefinition(value: unknown): FeedDefinition | undefined {
-  if (!object(value) || value.version !== 1 || typeof value.name !== 'string' || control.test(value.name)) return;
+  if (!object(value) || value.version !== 1 || typeof value.name !== 'string' || hasAsciiControlCharacters(value.name)) return;
   const name = value.name.trim();
   if (!name || name.length > CUSTOM_FEED_NAME_LIMIT || !Array.isArray(value.sources) || value.sources.length < 1 || value.sources.length > CUSTOM_FEED_SOURCE_LIMIT) return;
   if ((value.order !== 'source' && value.order !== 'newest') || !object(value.filters)) return;

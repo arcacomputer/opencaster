@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { IconArrowDown, IconArrowUp, IconCopy, IconEdit, IconPin, IconPinnedOff, IconPlus, IconRss, IconTrash, IconX } from '@tabler/icons-react';
 import { getUser, type User } from '../lib/api';
 import { parseAccountLookup } from '../lib/accountLookup';
@@ -23,7 +23,7 @@ function usePublicAccount() {
   const controller = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  function cancel() { controller.current?.abort(); controller.current = null; setBusy(false); setError(''); }
+  const cancel = useCallback(() => { controller.current?.abort(); controller.current = null; setBusy(false); setError(''); }, []);
   useEffect(() => () => controller.current?.abort(), []);
   async function resolve(value: string): Promise<User | null> {
     controller.current?.abort(); const request = new AbortController(); controller.current = request;
@@ -44,7 +44,8 @@ function usePublicAccount() {
 
 export function PublicFollowingPicker({ fid, onOpen }: { fid?: number; onOpen(fid: number): void }) {
   const id = useId(); const [query, setQuery] = useState(''); const lookup = usePublicAccount();
-  useEffect(() => { lookup.cancel(); setQuery(''); }, [fid]);
+  const { cancel } = lookup;
+  useEffect(() => { cancel(); setQuery(''); }, [cancel, fid]);
   return <section className="public-following-picker" aria-label="Browse public following feeds">
     <div><strong>Browse anyone’s following feed.</strong><p>Browse an account’s public following feed without connecting a wallet. This uses their public follows, not their personal recommendations.</p></div>
     {fid ? <p className="feeds-note">Viewing the public following feed for FID {fid}.</p> : null}

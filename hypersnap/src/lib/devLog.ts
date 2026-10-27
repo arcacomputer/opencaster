@@ -34,6 +34,20 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'public-browsing-maintenance-checks',
+    date: '2026-10-27',
+    title: 'Keeping public browsing predictable',
+    summary: 'A maintenance pass keeps feed refreshes and public-account lookups predictable, with stronger automated checks for feed rules and shared previews.',
+    changes: [
+      'Refresh parent-cast context through the same action for manual refresh, retries and confirmed cast deletion, cancelling reads from the previous refresh.',
+      'Preserve pending public-account lookups during ordinary rerenders; cancel them when their input or destination changes, or their view closes.',
+      'Continue rejecting ASCII control characters in shared-feed names and filters while preserving supported Unicode text, with checks for every prohibited character and nearby valid characters.',
+      'Clear client and gateway lint findings, preserve escaped public-preview text and safe upstream error responses, and add regression checks for refresh and lookup cancellation. Hypersnap’s existing indexing and availability limits still apply.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/4e0e8180e20b12d71f8e7a5b97f220453a6c98e7',
+    tag: 'Reliability',
+  },
+  {
     id: 'reaction-lists-load-faster',
     date: '2026-10-27',
     title: 'Like and recast lists load faster',

@@ -106,8 +106,8 @@ describe('channel and feed initial sharing documents', () => {
   });
 
   it('escapes hostile channel names, feed names and phrase text inside single metadata tags', async () => {
-    const name = '\"><img src=x> $&';
-    const topic = '\" onload=\"danger <script>bad()</script> & $`';
+    const name = '"><img src=x> $&';
+    const topic = '" onload="danger <script>bad()</script> & $`';
     const { env, network } = fixture({ channel: { ...channel, name, description: topic } });
     const feed: FeedDefinition = { ...definition, name, filters: { ...definition.filters, includeWords: [topic] } };
     for (const path of ['/channel/art', feedPath(feed)]) {

@@ -345,14 +345,13 @@ describe('author-scoped compatible cast URLs', () => {
     const background = '/search?q=cosmos';
     vi.mocked(searchCasts).mockResolvedValue({ casts: [source], next: {} });
     vi.mocked(resolveCastAlias).mockReturnValue(pending.promise);
-    let lookupSignal: AbortSignal | undefined;
     vi.mocked(getConversation).mockImplementation(async () => {
       expect(lookupSignal?.aborted).toBe(true);
       return { cast: otherCast, replies: [{ cast: reply, replies: [] }] };
     });
     await start(background);
     await click(container.querySelector(`main .cast__text a[href="${alias}"]`)!);
-    const request = vi.mocked(resolveCastAlias).mock.calls[0][0]; lookupSignal = request.signal;
+    const request = vi.mocked(resolveCastAlias).mock.calls[0][0]; const lookupSignal = request.signal;
     expect(location.pathname).toBe(alias); expect(thread().textContent).toContain('Loading cast');
     expect(getConversation).not.toHaveBeenCalled();
     await act(async () => request.onProgress?.(result({ complete: false, scanned: 250 })));
@@ -827,10 +826,14 @@ describe('isolated App feature integration', () => {
     expect(upgraded.deleteCast).not.toHaveBeenCalled();
     expect(legacy.deleteCast).not.toHaveBeenCalled();
     expect(dialog('Delete cast')).toBeDefined();
+    const feedReads = vi.mocked(getFeed).mock.calls.length;
+    vi.mocked(getFeed).mockResolvedValue({ casts: [otherCast], next: {} });
     await click(dialog('Delete cast').querySelector('.delete-cast-confirm')!);
     expect(upgraded.deleteCast).toHaveBeenCalledOnce();
     expect(upgraded.deleteCast).toHaveBeenCalledWith({ fid: ownCast.author.fid, hash: ownCast.hash });
     expect(dialog('Delete cast')).toBeUndefined();
+    expect(getFeed).toHaveBeenCalledTimes(feedReads + 1);
+    expect(container.querySelector('.feed')?.textContent).not.toContain(ownCast.text);
   });
 
   it('keeps the existing device connected when a deletion permission review is cancelled', async () => {

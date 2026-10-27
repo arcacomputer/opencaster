@@ -451,7 +451,7 @@ async function proxy(request: Request, url: URL, env: Env, ctx?: WorkerExecution
     catch (error) {
       if (retryAllowed && !controller.signal.aborted
         && (attemptController.signal.aborted || error instanceof RetryableReadError)) throw new RetryableReadError();
-      if (error instanceof RetryableReadError) throw new Error('Node transport unavailable');
+      if (error instanceof RetryableReadError) throw new Error('Node transport unavailable', { cause: error });
       throw error;
     } finally {
       clearTimeout(primaryTimeout);

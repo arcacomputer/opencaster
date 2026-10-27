@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
-import { ApiError, getCast, getChannel, getChannels, getConversation, getFeed, getFollowStatus, getInfo, getProfileFeed, getReactionStatus, getSuggestedUsers, getChannelMembers, getCastQuotes, getUser, resolveCastAlias, searchCasts, searchUsers, type Cast, type FeedResponse, type User } from './lib/api';
+import { ApiError, getCast, getChannels, getConversation, getFeed, getFollowStatus, getInfo, getProfileFeed, getReactionStatus, getSuggestedUsers, getChannelMembers, getCastQuotes, getUser, resolveCastAlias, searchCasts, searchUsers, type Cast, type FeedResponse, type User } from './lib/api';
 import type { WalletSession } from './lib/auth';
 import { FULL_CLIENT_SCOPES } from './lib/pairing';
 import { encodeFeed, type FeedDefinition } from './lib/customFeeds';
