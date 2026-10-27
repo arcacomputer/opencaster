@@ -434,6 +434,25 @@ describe('the fixed Hypersnap gateway', () => {
     expect((await response.json() as { code: string }).code).toBe('response_too_large');
   });
 
+  it('forwards a validated JSON object byte-for-byte with JSON and security headers', async () => {
+    const body = '{ "fid": 12345678901234567890, "text": "caf\\u00e9 \u2603",\n"nested": {"a": [1, 2.50]} }';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { headers: { 'Content-Type': 'application/json', 'Set-Cookie': 'upstream=1' } })));
+    const response = await handleRequest(new Request(`${BASE}/api/v1/info`), env);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(body);
+    expect(response.headers.get('Content-Type')).toBe('application/json; charset=utf-8');
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    expect(response.headers.get('Set-Cookie')).toBeNull();
+  });
+
+  it.each(['[1, 2]', 'null', '"text"', '{"truncated": '])('still rejects a successful upstream body that is not a JSON object: %s', async body => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { headers: { 'Content-Type': 'application/json' } })));
+    const response = await handleRequest(new Request(`${BASE}/api/v1/info`), env);
+    expect(response.status).toBe(502);
+    expect(await response.text()).not.toContain('truncated');
+  });
+
   it('aborts a slow node and returns a controlled timeout', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn((_url: string, options: RequestInit) => new Promise((_resolve, reject) => {

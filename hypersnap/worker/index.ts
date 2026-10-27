@@ -110,7 +110,7 @@ function validQuery(params: URLSearchParams, endpoint: Endpoint): boolean {
 
 class SizeLimitError extends Error {}
 
-async function readLimited(body: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array> {
+async function readLimited(body: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array<ArrayBuffer>> {
   if (!body) return new Uint8Array();
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
@@ -265,7 +265,8 @@ async function proxy(request: Request, url: URL): Promise<Response> {
     const bytes = await readLimited(upstream.body, MAX_RESPONSE_BYTES);
     const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return failure(502, isWrite ? 'submission_unknown' : 'invalid_response', isWrite ? SUBMISSION_UNKNOWN : 'The node returned an invalid response.');
-    return json(value);
+    // The validated bytes are forwarded as-is; re-serializing them only costs CPU.
+    return secure(new Response(bytes, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } }));
   } catch (error) {
     if (isWrite) return failure(controller.signal.aborted ? 504 : 502, 'submission_unknown', SUBMISSION_UNKNOWN);
     if (controller.signal.aborted) return failure(504, 'timeout', 'The Hypersnap node took too long to respond. Try again.');

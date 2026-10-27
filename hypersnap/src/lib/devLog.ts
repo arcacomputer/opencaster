@@ -19,6 +19,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'gateway-forwards-validated-json',
+    date: '2026-10-27',
+    title: 'Feeds and profiles load with less gateway work',
+    summary: 'The gateway now forwards each successful Hypersnap read exactly as the node sent it after checking it, instead of rebuilding the JSON first.',
+    changes: [
+      'Check that every successful read is a JSON object within the existing 4 MiB limit, then return the node’s original bytes rather than re-encoding them. In a local test with a 585 KiB feed page this took about 40% less gateway processing time.',
+      'Keep the same safeguards: invalid, non-object or oversized responses are still rejected, upstream headers are not forwarded, and API responses are never cached. The account, cast and feed data shown in the app is unchanged.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/139c79b8145fbe05cc81a921c10b562f2dcc486a',
+    tag: 'Reliability',
+  },
+  {
     id: 'cached-app-bundles',
     date: '2026-10-27',
     title: 'Repeat visits load faster',
