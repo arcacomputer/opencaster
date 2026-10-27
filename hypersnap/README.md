@@ -1,12 +1,14 @@
-# Opencaster — powered by Arca Computer
+# Opencaster
 
-An open source client for everyone. Powered by Arca Computer. Runs on Hypersnap. This standalone browser entry offers public browsing and wallet-approved device signing without requiring Quorum messenger registration. Quorum's original messenger source, license, fonts, symbol, and theme tokens are preserved in the parent fork. The new web primitives and shell use its semantic tokens; Farcaster wire signing modules are adapted from the MIT-licensed `quorum-shared` source.
+Opencaster is an independent open-source social client for Hypersnap, developed by Arca Computer. Its standalone browser application offers public browsing and wallet-approved device signing, with its own package, build, verification and release process.
+
+Website: [opencaster.org](https://opencaster.org) · [Source](https://github.com/arcacomputer/opencaster) · [Dev log](https://opencaster.org/devlog)
 
 ## Run
 
-Use Node 22 and Yarn 1.22. `yarn install --frozen-lockfile`, then `yarn dev`. Vite prints the local URL and proxies `/api` to the public development default; the production Worker can use the optional [private origin](PRIVATE_ORIGIN.md). `yarn verify` runs the protocol/API/Worker tests and typechecks both browser and Worker code before the production build.
+Use Node 22 and Yarn 1.22. From `hypersnap/`, run `yarn install --frozen-lockfile`, then `yarn dev`. Vite prints the local URL and proxies `/api` to the public development default; the production Worker can use the optional [private origin](PRIVATE_ORIGIN.md). `yarn verify` runs the protocol/API/Worker tests and typechecks both browser and Worker code before the production build.
 
-`yarn verify` also typechecks and bundles the offline companion. The parent repository's separate verification belongs to the retained Quorum messenger and needs its linked sibling repositories and dependencies. Never bypass its bot mint guard.
+`yarn verify` also typechecks and bundles the offline companion. The repository-root `yarn dev`, `yarn build` and `yarn verify` commands forward to this application. The repository contains Opencaster and its supporting gateway, signing and operational tooling.
 
 ## Deploy
 
@@ -38,9 +40,17 @@ The composer uses one expanding text box with compact photo/GIF-file, mention, e
 
 Image uploads use a constrained, short-lived authorization signed by the existing device key, not another wallet approval. The current client allows up to two embeds: images and quoted cast references share that limit. Uploaded images are public and persistent, and their original photo metadata, including EXIF, is retained. A short notice stays visible before upload; Media info explains formats, limits and persistence. Removing an image from a draft does not delete its upload; no end-user media deletion flow is included. See [MEDIA.md](MEDIA.md).
 
-## Component licenses
+## Origins and attribution
 
-The retained Quorum app and this fork's own application code remain under the repository's AGPL license. Bundled third-party components keep their own licenses. The optional wallet connection uses `@walletconnect/sign-client` 2.26.0 under the **WalletConnect Community License**, not Apache/MIT or an OSI open-source license. Its conditions include connection to Reown's gateway, redistribution notices, and commercial-use thresholds; the included text states 500 monthly active users or 2,500,000 monthly RPCs before a commercial license is required. Review current terms when operating a fork or scaling. The project owner approved this SDK and its external relay for this integration. See [third-party notices](THIRD_PARTY_NOTICES.md) and the [complete bundled license](licenses/walletconnect-2.26.0-LICENSE.md).
+Opencaster originated as a fork of [Quorum Desktop](https://github.com/QuilibriumNetwork/quorum-desktop). Its original messenger source and development records remain available in this repository's Git history and the upstream project. The current tree contains Opencaster and its supporting tools; the AGPL license and upstream attribution remain preserved. Opencaster's local UI primitives and shell retain the inherited semantic tokens, fonts and symbol used by the client and offline companion. The standalone client does not require Quorum messenger registration or its runtime dependencies.
+
+Farcaster wire-signing modules are adapted from the MIT-licensed [Quorum Shared](https://github.com/QuilibriumNetwork/quorum-shared) source, with their attribution and license notice retained in [third-party notices](THIRD_PARTY_NOTICES.md).
+
+The [MIT-licensed Farcaster client snapshot](https://github.com/farcasterxyz/client) informed familiar sharing, profile, and conversation UX. These features are independently implemented against Hypersnap; no Farcaster-hosted API client, account service, websocket, or source dependency was imported. Opencaster is an independent project, not an official Quorum or Farcaster release.
+
+### Component licenses
+
+Opencaster's application code remains under the repository's [AGPL-3.0 license](../LICENSE), including its Quorum-derived portions. Bundled third-party components keep their own licenses and notices. The optional wallet connection uses `@walletconnect/sign-client` 2.26.0 under the **WalletConnect Community License**, not Apache/MIT or an OSI open-source license. Its conditions include connection to Reown's gateway, redistribution notices, and commercial-use thresholds; the included text states 500 monthly active users or 2,500,000 monthly RPCs before a commercial license is required. Review current terms when operating a fork or scaling. The project owner approved this SDK and its external relay for this integration. See [third-party notices](THIRD_PARTY_NOTICES.md) and the [complete bundled license](licenses/walletconnect-2.26.0-LICENSE.md).
 
 ## Scope and verification
 
@@ -134,7 +144,5 @@ Timeline cast permalinks use `opencaster.org/<username>/0x<8-hex-prefix>`, match
 For a Farcaster-style cast link, replace its host with `opencaster.org`, keeping `/<author>/0x<hash>` intact. Changing a host cannot restore a cast unavailable from Hypersnap. Hashes may contain 8–40 hexadecimal characters in complete bytes. Full hashes use an exact author/FID lookup. Hypersnap currently has no native short-hash index, so short links search the author's available history in explicit batches of up to four 250-message pages. When a fully checked history page returns one currently available cast verified by its exact author and full hash, the conversation opens immediately and cancels remaining lookup reads. No confirmation click or completed history scan is required. This selects the first available verified match; it does not establish that the prefix is unique throughout the author’s history. If a returned snapshot contains multiple verified matches, choose an exact author/full-hash **Open cast** link. If no match has been found, **Search older casts** checks another bounded batch; an incomplete search never claims absence. Each batch has a 25-second deadline, at most four simultaneous candidate reads, and bounded cumulative history/candidate limits. History includes cast removals; matched adds are hydrated again to confirm current availability. Deleted/pruned casts or data absent from this node cannot be restored by changing a URL. These are public Hypersnap reads; Farcaster client account status is not queried.
 
 Supported HTTPS profile and cast links to `farcaster.xyz` or legacy `warpcast.com` (including their `www` hosts) now open on Opencaster when rendered in cast text, non-image URL attachments or profile bios. Normal clicks use local navigation; modified clicks and copied link targets also point to Opencaster. The original authored text and protocol URLs are preserved. Root profile links, author/hash links and the full-hash `/~/conversations/<hash>` fallback are recognized; tracking query/fragment data is discarded. Other sites and unsupported Farcaster handlers retain their existing external behavior. Recognition uses the original URL token and exact allowed hosts rather than contacting a Farcaster redirect or resolver service.
-
-The [MIT-licensed Farcaster client snapshot](https://github.com/farcasterxyz/client) informed familiar sharing, profile, and conversation UX. These features are independently implemented against Hypersnap; no Farcaster-hosted API client, account service, websocket, or source dependency was imported.
 
 Automated checks use synthetic keys, mocked HTTP responses, and an independent Rust protocol golden vector. The project owner reported a successful real Rainbow browser-extension sign-in. Agent-run production checks perform public reads and navigation only; they do not sign real account actions or publish user media. Follow/profile writes and image-backed casts have not been exercised against a real production account by this development session. See [VERIFICATION.md](VERIFICATION.md) for the current checks and limitations. This is a beta, and no independent security audit is claimed.

@@ -1,292 +1,97 @@
 # AGENTS.md
 
-This is the **Quorum Desktop** repository - the web and Electron desktop app for Quorum messenger.
-
----
-
-## 🌐 Multi-Repository Ecosystem
-
-Quorum is built as a **multi-repo ecosystem**. This repo is one of three:
-
-| Repository | Purpose |
-|------------|---------|
-| **[quorum-desktop](https://github.com/QuilibriumNetwork/quorum-desktop)** | Web + Electron desktop app (this repo) |
-| **[quorum-mobile](https://github.com/QuilibriumNetwork/quorum-mobile)** | React Native + Expo mobile app |
-| **[quorum-shared](https://github.com/QuilibriumNetwork/quorum-shared)** | Shared types, UI primitives, hooks, sync protocol |
-
-All clients sync data via `@quilibrium/quorum-shared`. When implementing features, check if mobile has it and use shared types for sync compatibility.
-
-**Full Guide**: [Quorum Ecosystem Architecture](.agents/docs/quorum-shared-architecture.md)
-
----
-
-## 🚀 Quick Start for AI Development
-
-**IMPORTANT**: Before starting ANY task, read these files:
-
-1. **[AGENTS.md](.agents/AGENTS.md)** - Fast lookup for file paths, patterns, and common tasks
-2. **[agents-workflow.md](.agents/agents-workflow.md)** - How to effectively use documentation
-3. **[INDEX.md](.agents/INDEX.md)** - Find specific documentation for your task
-
----
-
-## Repository Structure
-
-```
-quorum-desktop/
-├── src/                          # Application source code
-│   ├── components/              # React components
-│   │   ├── primitives/         # SCSS styles + barrel re-exports from @quilibrium/quorum-shared
-│   │   └── Router/             # Routing components
-│   ├── hooks/                  # Custom React hooks
-│   ├── api/                    # API layer
-│   ├── services/               # Business logic services
-│   ├── types/                  # TypeScript types (local, extends quorum-shared)
-│   ├── utils/                  # Utility functions
-│   └── adapters/               # Storage adapters (IndexedDBAdapter)
-│
-├── web/                        # Web/Electron entry points
-│   ├── index.html             # Web HTML entry
-│   ├── main.tsx               # React entry point
-│   ├── vite.config.ts         # Vite bundler config
-│   └── electron/              # Electron desktop wrapper
-│
-└── .agents/                    # Development documentation
-    ├── docs/                   # Architecture & feature guides
-    ├── issues/           # Bugs AND tasks being worked on right now
-    └── reports/                # Analysis & audits
-```
-
----
-
-## CRITICAL: Package Management
-
-- **NEVER use npm commands** - this project uses Yarn exclusively
-- **Always use `yarn` commands** - npm creates package-lock.json which conflicts with yarn.lock
-- **If package-lock.json appears, DELETE it immediately**
-
----
-
-## @quilibrium/quorum-shared
-
-Import shared types, hooks, and utilities from the shared package:
-
-```typescript
-// Types
-import type { Space, Message, Channel, UserConfig } from '@quilibrium/quorum-shared';
-
-// Utilities (most common - used in 45+ files)
-import { logger } from '@quilibrium/quorum-shared';
-
-// Sync utilities
-import { SyncService, createMemberDigest } from '@quilibrium/quorum-shared';
-
-// Hooks
-import { useSpaces, useMessages } from '@quilibrium/quorum-shared';
-```
-
-**Full Reference**: [Quorum Ecosystem Architecture](.agents/docs/quorum-shared-architecture.md)
-
----
-
-## React Hooks Rules - IMPORTANT
-
-**NEVER violate React's Rules of Hooks:**
-
-```tsx
-// ❌ BAD - Conditional return before hooks
-if (someCondition) return <SomeComponent />;
-useEffect(() => {...}, []);  // This hook is called conditionally!
-
-// ✅ GOOD - All hooks before conditionals
-useEffect(() => {...}, []);
-if (someCondition) return <SomeComponent />;
-```
-
-**Rules:**
-- Call all hooks at the top level (not inside functions, conditionals, or loops)
-- Call hooks in the same order on every render
-- NEVER put conditional returns before hooks
-
-**Reference**: [React Hooks Violation Bug](.agents/issues/.done/2025-01-20-react-hooks-violation-conditional-return.md)
-
----
-
-## UI Primitives
-
-Use primitives for interactive elements:
-
-```tsx
-import { Button, Input, Modal } from 'src/components/primitives';
-
-<Button onClick={save}>Save</Button>
-<Input value={name} onChange={setName} />
-<Modal isOpen={open} onClose={close}>...</Modal>
-```
-
-**When to use primitives**: Always for interactive elements (Button, Input, Modal, Select, Switch). For layout, use Flex (not Container — removed). For text on web, use plain HTML (`<span>`, `<p>`) with CSS typography classes (`.text-label`, `.text-strong`, `.text-subtle`). The Text primitive is **native-only** — not used in web production code.
-
-**Source**: All primitives live in `@quilibrium/quorum-shared` and are re-exported from `src/components/primitives/` (SCSS-only shim). Do not add primitive source files to quorum-desktop.
-
-**Reference**: [Primitives Guide](.agents/docs/features/primitives/INDEX.md)
-
----
-
-## Documentation Structure
-
-The `.agents/` folder contains all development context:
-
-- **[AGENTS.md](.agents/AGENTS.md)** - ⭐ START HERE - Fast lookup for everything
-- **[agents-workflow.md](.agents/agents-workflow.md)** - ⭐ READ THIS - How to work effectively
-- **[INDEX.md](.agents/INDEX.md)** - Complete documentation index
-
-**Topics covered**:
-- Architecture & Components
-- Features (Modals, Search, Theming, etc.)
-- Active Bugs & Tasks
-- Reports & Audits
-
-**🔒 `.agents/issues/.secret/` — gitignored, never committed.** This repository is
-public, so issue write-ups that describe an attack working against code users are
-running today (mechanism, `file:line` pointers, vulnerable code, repro steps) are
-created in `.secret/` from the start and kept out of `INDEX.md`. Ordinary
-reliability, data-loss and correctness bugs are filed normally, however serious.
-Full rule and the release procedure: [.agents/AGENTS.md](.agents/AGENTS.md) →
-"Security-sensitive issues".
-
----
-
-## quorum-shared Migration — Active & Ongoing
-
-**Status (as of 2026-04-09):** Types ✅ | Primitives ✅ | Utils ✅ | Hooks ⏳ (blocked)
-
-quorum-shared is not just a dependency — it's the migration destination for this repo's code. PRs 1–3 are complete. PR 4 (hooks) is next but requires access to the latest quorum-mobile codebase first.
-
-**Rules to follow while this migration is ongoing:**
-
-- **New utility functions**: If a new util is platform-agnostic (no DOM APIs, no desktop-specific imports), it should either go directly into quorum-shared or be flagged as a migration candidate. Ask: "Would mobile need this?"
-- **New hooks**: Classify immediately (Pure / Context-dependent / Platform-specific — see `quorum-shared-migration/2026-03-19-hooks-migration-design.md`). Pure business hooks belong in shared eventually.
-- **New types**: Add to quorum-shared directly (`src/types/`), not just locally.
-- **Import pattern**: Always import migrated utils and primitives from `@quilibrium/quorum-shared`, not from local paths.
-
-**Key reference docs:**
-- [Migration status overview](.agents/issues/quorum-shared-migration/reference/stacked-prs-workflow.md)
-- [Hooks migration design + hook classification](.agents/tasks/quorum-shared-migration/2026-03-19-hooks-migration-design.md)
-- [quorum-shared architecture](.agents/docs/quorum-shared-architecture.md)
-
----
-
-## Verifying a change
-
-Before reporting any code change complete, run `yarn verify` and paste the
-verdict block **verbatim**.
-
-**Full guide: [The verify gate](.agents/docs/verify-gate.md)** — what each
-verdict means, what it costs, what it does not cover, and where the pieces live.
-
-- Do not summarise it, and do not report a subset of the rows.
-- Do not report `PASS` when the block says `PASS (PARTIAL)` or `FLAKY`. Those
-  are distinct verdicts: `PASS (PARTIAL)` means **this run proved less than a
-  full run would** — read the `⚠` lines and say whether the gap matters for
-  this change. `FLAKY` means a step went green only on a retry.
-- A `KNOWN-RED` row does **not** make a run partial. It is a step that ran and
-  failed exactly as already recorded on main, so it proved nothing less; the
-  verdict line names those steps separately. If one gets WORSE than its
-  recorded baseline the run FAILs — the baseline is a ceiling, never a budget.
-- A `ℹ` line is advisory and costs the verdict nothing (a stale exemption, a
-  debt count that improved). Only `⚠` lines are the ones that made a run
-  PARTIAL. Do not report an `ℹ` line as a problem.
-- `yarn verify --show-receipt` prints the last run's record, including the
-  commit it ran against.
-
-### The live tier will not run on a machine with no bot identities
-
-The live arms drive real bots against the **production relay**, and accounts and
-Spaces there are **permanent — there is no delete endpoint**. On a machine whose
-`src/dev/tests/harness/.state/` is empty (a fresh clone, or CI), running them
-would register 6 accounts and a Space that can never be removed.
-
-So the gate checks first (`scripts/verify/mintGuard.mjs`) and skips any arm that
-would mint, printing a `MINT-GUARD` line and reporting `PASS (PARTIAL)`. **That
-is correct behaviour, not a failure — do not work around it, and do not pass
-`--live-allow-minting` to make it go away.** The fast tier still ran in full
-(typecheck, lint, 1808 + 766 + 1222 tests, build), which is what a PASS on that
-run means.
-
-If you add a new live arm, add its identities to `STATE_BY_ARM` in that file. An
-unlisted arm is assumed to mint and will not run; the fast tier fails if you
-forget, so this cannot rot silently.
-
-### What it costs, so you can predict before you run it
-
-The gate routes itself from the diff (`scripts/verify/routing.mjs`), so the
-cost depends on what changed. "What changed" means **this branch's own commits
-plus any uncommitted work** — so committing before you verify is fine, and
-running it on a clean branch still checks that branch. **`yarn verify --explain`
-prints the plan and the arms it would run, in milliseconds, without running any
-of them** — ask it rather than guessing from the list below:
-
-```
-  ROUTED     mobile
-  TIER       fast + live
-  LIVE ARMS  cross-dm, config-cross
-             (only quorum-mobile changed — running the cross-client arms; the
-              four same-client arms load no mobile code and cannot observe it)
-```
-
-- **Docs, styles, images, translation catalogues, or a components-only
-  change**: the fast tier only, about **3 minutes** (desktop's fast tier:
-  typecheck, lint, unit tests, build; measured 2026-08-23). The live tier does
-  not run. Changing the colour of a button falls here, as does editing
-  `src/i18n/<locale>/messages.po` — but not `src/i18n/i18n.ts`, which is code.
-- **A quorum-mobile-only change**: the fast tier plus **only the cross-client
-  arms**, `cross-dm` and `config-cross`. The four same-client arms are desktop
-  vitest scenarios that never load mobile code, so they cannot observe the
-  change; running them would be six minutes of real-relay traffic that could
-  not have gone red.
-- **Services, sync, storage, crypto, or any path nobody has classified**: the
-  fast tier plus the live tier, about **6.5 minutes measured**. Real bots send
-  real messages over a real relay.
-- **A change under `src/dev/tests/harness/`**: the fast tier plus the full live
-  tier, deliberately. The harness IS the live tier's measuring equipment, so a
-  change to it is exactly the change a live run has to check. Every other
-  directory under `src/dev/tests/` stays on the fast tier, which already runs
-  those tests.
-- **One arm is HELD BACK from every per-change run.** `yarn verify --all` runs
-  it, and every run that leaves it out says so on its own `HELD BACK` line,
-  quoting why — so this can never quietly become "nobody ran it".
-  - **`space-basic`** creates a permanent, undeletable Space each time it runs,
-    and unlike `space-delivery` it cannot reuse one, because creating a space
-    is its subject.
-  - **`cross-dm` was released on 2026-08-24** and now runs on every change that
-    routes to the live tier. It was held back while it reported a reproducible
-    cross-client message loss; that loss is now measured, fixed on both sides,
-    and the arm is green in five consecutive runs. It is the only cross-client
-    DM coverage there is, and the bug it found survived for months precisely
-    because nothing measured that cell.
-- `yarn verify --fast` skips the live tier on request, for a quick check
-  mid-work; it is not a substitute for the full run before reporting done.
-- `space-delivery` is retried once if it fails, because it is load-sensitive
-  under the live tier's back-to-back real-relay traffic. A retry-pass reports
-  `FLAKY`, never `PASS`: that distinction is the point, not a bug.
-
-An unclassified path defaults to the live tier on purpose: the routing is an
-allowlist of provably safe paths, not a denylist of risky ones, so it rots
-loudly (an occasional unnecessary few minutes) rather than silently (a real
-risk shipping with no coverage). That is the trade this rule makes on your
-behalf.
-
----
-
-## Development Checklist
-
-- ✅ Read AGENTS.md for relevant patterns
-- ✅ Check if feature exists in quorum-mobile (use shared types for sync)
-- ✅ Use primitives for interactive elements
-- ✅ Follow React Hooks rules
-- ✅ Use Yarn (never npm)
-- ✅ New utils/hooks: consider if they belong in quorum-shared
-
----
-
-_Last updated: 2026-08-24_
+This repository is **Opencaster**, an independent open-source social client for
+Hypersnap developed by Arca Computer and deployed at **opencaster.org**. Its
+application and supporting services live in [`hypersnap/`](hypersnap/).
+
+Opencaster originated as a fork of Quorum Desktop. The earlier messenger source
+and development records remain in Git history and the upstream repository; the
+current tree contains Opencaster. Preserve upstream attribution, applicable
+licenses, and earlier names in historical records. Do not restore the old
+messenger or its tooling as a dependency of this client.
+
+## Start here
+
+Read [README.md](README.md), [hypersnap/AGENTS.md](hypersnap/AGENTS.md), and
+[hypersnap/README.md](hypersnap/README.md). Consult the standalone
+[feature matrix](hypersnap/FEATURE_SUPPORT.md),
+[verification records](hypersnap/VERIFICATION.md), [media guide](hypersnap/MEDIA.md),
+and [signing guide](hypersnap/SIGNER.md) as relevant. Historical records describe
+their recorded runs; verify the current change separately.
+
+## Application boundaries
+
+| Area | Purpose |
+| --- | --- |
+| `hypersnap/src/` | React browser client, local UI primitives, styles, and protocol/API code. |
+| `hypersnap/worker/` | Cloudflare gateway, media storage, link previews, and request measurements. |
+| `hypersnap/analytics/` | Operator analytics dashboard. |
+| `hypersnap/signer/` | Optional offline signing companion offered by the web client. |
+| `hypersnap/scripts/`, `hypersnap/public/`, and local configs | Client tooling, assets, dependencies, builds, and release configuration. |
+| Root `package.json` | Command forwarding to the standalone application. |
+
+Keep the `hypersnap/` layout unless deliberately migrating its release checks,
+source links, signer license inputs, and CI paths. Historical Worker and storage
+names, legacy domain redirects, and browser storage identifiers support existing
+users; do not rename them as cosmetic cleanup.
+
+## Development and verification
+
+- Use **Yarn exclusively**, Node 22 and Yarn 1.22. Do not run npm commands or
+  introduce `package-lock.json`; remove any generated by your work.
+- Install from `hypersnap/` with `yarn install --frozen-lockfile`. Use its
+  `package.json` for standalone scripts. Root `yarn dev`, `yarn build`,
+  `yarn test`, and `yarn verify` forward to the same application.
+- Keep types, hooks, utilities, and components with the existing local code.
+  Use `hypersnap/src/components/ui.tsx` for Button, Input, and Modal primitives
+  and local SCSS semantic tokens. No Quorum sibling checkout or linked
+  `@quilibrium/quorum-shared` package is required.
+- Follow React's Rules of Hooks: top level, same order on every render, before
+  conditional returns.
+- Run **`yarn verify` from `hypersnap/`** before reporting completion. It runs
+  standalone tests, browser/Worker/dashboard typechecks, production build, and
+  offline signer typecheck/build. For root command or CI changes, also exercise
+  the root forwarding entry point. Report failures and coverage limits.
+- Browser and real-network behavior beyond the gate require separate relevant
+  verification. All write tests use synthetic isolated identities. Production
+  checks are public reads/navigation unless the user explicitly authorizes a
+  real account action. No independent security audit is claimed.
+
+## Releases
+
+Follow [hypersnap/AGENTS.md](hypersnap/AGENTS.md) and the
+[release checklist](hypersnap/README.md#release-notes). Features, fixes, security
+or dependency updates, UI changes, and gateway changes require a new dev-log
+milestone. Docs-only and test-only changes need no announcement. Keep existing
+milestones and recorded implementation commit links.
+
+Check the dev log against the **actual pre-release deployed commit**, then
+verify from `hypersnap/`. Build production assets in a fresh external directory,
+inspect them, deploy that exact directory, and confirm the live dev log. Preserve
+Hypersnap and infrastructure limits in product copy; do not infer Farcaster
+service compatibility from similar UX.
+
+## Secrets and private security records
+
+- Never widen where private keys, keysets, recovery phrases, or ratchet state
+  can be observed. No globals, unencrypted persistence, logs, telemetry, or
+  crash payloads. Debug diagnostics must be build-gated; inspect built output.
+- Keep credentials out of source and browser environment variables. Follow the
+  standalone distinction between public build identifiers and secrets.
+- `.agents/issues/.secret/` remains gitignored for any locally retained private
+  reports, even though the inherited public documentation has been removed.
+  Preserve ignored local files during cleanup. Never publish report details or
+  titles in tracked files, indexes, commits, or PR descriptions.
+- A write-up describing an attack against shipped code, or materially helping
+  build one, belongs in that private directory **from the start**. Ordinary
+  reliability, data-loss, and correctness issues can be documented publicly
+  when they disclose no attack.
+- Merging and releasing are separate: completed private reports may move to
+  `.agents/issues/.secret/.done/` after merging, still ignored. Only after the
+  fix actually reaches users may a deliberate publication move the write-up
+  into public documentation. A merged fix alone never authorizes publication.
+
+`CLAUDE.md` imports this file. Keep shared rules here and directory-specific
+rules in their scoped `AGENTS.md` files.
+
+_Last updated: 2026-10-27_

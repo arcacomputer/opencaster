@@ -1,7 +1,8 @@
-# Hypersnap client release rules
+# Opencaster release rules
 
-These rules apply to the standalone client in this directory. Continue to follow
-the parent repository's Yarn and verification rules.
+These rules apply to Opencaster, the independent Hypersnap client in this
+directory. Continue to follow the parent repository's Yarn and verification
+rules.
 
 - Every release containing a feature, fix, security/dependency update, UI change
   or gateway change must add a **new milestone** to `src/lib/devLog.ts` in the

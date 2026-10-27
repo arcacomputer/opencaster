@@ -1,4 +1,4 @@
-name: Hypersnap client
+name: Opencaster
 # Always report the check, including docs-only PRs. The dev log guard decides
 # whether a changed path ships; top-level path filters can omit large diffs.
 on: [push, pull_request]
@@ -45,37 +45,4 @@ jobs:
         with:
           name: arca-signer-reviewed-payload
           path: hypersnap/dist-signer/
-          retention-days: 30
-
-  retained-verification:
-    if: github.event.deleted != true
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: yarn
-          cache-dependency-path: |
-            yarn.lock
-            hypersnap/yarn.lock
-      - name: Restore pinned verification dependencies
-        run: yarn setup:verify
-      - name: Verify both applications with the production mint guard enabled
-        env:
-          # Compare the actual event boundary on every pushed branch. Checkout
-          # has already advanced origin/main, so it cannot identify this push.
-          VERIFY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: yarn verify --base="$VERIFY_BASE"
-      - name: Save the full verification receipt
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: full-verification-receipt
-          path: .verify-receipt.json
-          include-hidden-files: true
-          if-no-files-found: warn
           retention-days: 30
