@@ -19,9 +19,9 @@ interface UseSpaceUnreadCountsProps {
  * This is O(1) per channel instead of O(n) cursor iteration.
  *
  * The hook:
- * 1. For each space, gets all channel IDs from all groups
+ * 1. Reads every channel conversation of every space in one transaction
  * 2. For each channel, compares lastReadTimestamp < timestamp
- * 3. Returns binary indicator with early exit (stops at first unread)
+ * 3. Returns binary indicator (stops checking a space at its first unread)
  *
  * Uses React Query with 90s stale time for performance while maintaining
  * reasonable real-time updates when invalidated.
@@ -51,29 +51,24 @@ export function useSpaceUnreadCounts({
       const spaceCounts: Record<string, number> = {};
 
       try {
-        // Process each space
-        for (const space of spaces) {
+        const conversationIdsBySpace = spaces.map((space) =>
+          space.groups.flatMap((group) =>
+            group.channels.map(
+              (channel) => `${space.spaceId}/${channel.channelId}`
+            )
+          )
+        );
+
+        // One readonly transaction for every channel of every space
+        const conversations = await messageDB.getConversationsByIds(
+          conversationIdsBySpace.flat()
+        );
+
+        spaces.forEach((space, spaceIndex) => {
           let spaceHasUnreads = false;
 
-          // Get all channel IDs from all groups in this space
-          const channelIds = space.groups.flatMap((group) =>
-            group.channels.map((channel) => channel.channelId)
-          );
-
-          // Process each channel in the space with early exit
-          for (const channelId of channelIds) {
-            // Early exit: stop as soon as we find first unread channel
-            if (spaceHasUnreads) {
-              break; // Stop scanning remaining channels
-            }
-
-            const conversationId = `${space.spaceId}/${channelId}`;
-
-            // Get conversation record (single O(1) lookup)
-            const { conversation } = await messageDB.getConversation({
-              conversationId,
-            });
-
+          for (const conversationId of conversationIdsBySpace[spaceIndex]) {
+            const conversation = conversations.get(conversationId);
             if (!conversation) continue;
 
             // Simple timestamp comparison (DM approach)
@@ -94,7 +89,7 @@ export function useSpaceUnreadCounts({
           if (spaceHasUnreads) {
             spaceCounts[space.spaceId] = 1; // Binary: 1 = has unreads, 0 = no unreads
           }
-        }
+        });
       } catch (error) {
         console.error(
           '[SpaceUnreadCounts] Error calculating unread counts:',

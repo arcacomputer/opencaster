@@ -19,7 +19,7 @@ interface UseChannelUnreadCountsProps {
  * This is O(1) per channel instead of O(n) cursor iteration.
  *
  * The hook:
- * 1. Gets conversation record for each channel
+ * 1. Gets every channel's conversation record in one transaction
  * 2. Compares lastReadTimestamp < timestamp
  * 3. Returns binary indicator (1 for has unreads, 0 for no unreads)
  *
@@ -53,15 +53,13 @@ export function useChannelUnreadCounts({
       const counts: Record<string, number> = {};
 
       try {
-        // Process each channel
+        // One readonly transaction for every channel's conversation record
+        const conversations = await messageDB.getConversationsByIds(
+          channelIds.map((channelId) => `${spaceId}/${channelId}`)
+        );
+
         for (const channelId of channelIds) {
-          const conversationId = `${spaceId}/${channelId}`;
-
-          // Get conversation record (single O(1) lookup)
-          const { conversation } = await messageDB.getConversation({
-            conversationId,
-          });
-
+          const conversation = conversations.get(`${spaceId}/${channelId}`);
           if (!conversation) continue;
 
           // Simple timestamp comparison (DM approach)
