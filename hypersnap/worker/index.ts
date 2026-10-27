@@ -7,6 +7,7 @@ export { MediaUploadQuota } from './media';
 export interface Env extends MediaEnv {
   ASSETS: { fetch(request: Request): Promise<Response> };
 }
+export interface WorkerContext { waitUntil(promise: Promise<unknown>): void }
 
 const UPSTREAM = 'https://haatz.quilibrium.com';
 const CANONICAL_ORIGIN = 'https://opencaster.org';
@@ -50,6 +51,7 @@ type Rule = (value: string) => boolean;
 type QueryRules = Record<string, Rule>;
 const integer = (max: number, min = 1): Rule => value => /^\d{1,16}$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) >= min && Number(value) <= max;
 const fid = integer(Number.MAX_SAFE_INTEGER);
+const fidList = (max: number): Rule => value => { const fids = value.split(','); return fids.length <= max && new Set(fids).size === fids.length && fids.every(fid); };
 const address: Rule = value => /^0x[a-fA-F0-9]{40}$/.test(value);
 const hash: Rule = value => /^(?:0x)?[a-fA-F0-9]{40}$/.test(value);
 const username: Rule = value => /^[a-zA-Z0-9_.-]{1,128}$/.test(value);
@@ -76,6 +78,7 @@ const READ_ENDPOINTS: Record<string, Endpoint> = {
   '/v1/reactionsByFid': { required: ['fid', 'reaction_type', 'pageSize', 'reverse'], query: { fid, reaction_type: reactionType, pageSize: integer(100), pageToken: reactionPageToken, reverse: value => value === 'true' || value === 'false' } },
   '/v1/reactionsByCast': { required: ['target_fid', 'target_hash', 'reaction_type', 'pageSize', 'reverse'], query: { target_fid: fid, target_hash: hash, reaction_type: reactionType, pageSize: integer(25), pageToken: reactionPageToken, reverse: value => value === 'true' } },
   '/v2/farcaster/user': { required: ['fid'], query: { fid } },
+  '/v2/farcaster/user/bulk': { required: ['fids'], query: { fids: fidList(100) } },
   '/v2/farcaster/user/by-username': { required: ['username'], query: { username } },
   '/v2/farcaster/user/search': { required: ['q'], query: { q: searchQuery, limit: integer(100) } },
   '/v2/farcaster/user/custody-address': { required: ['custody_address'], query: { custody_address: address } },
@@ -98,6 +101,20 @@ const READ_ENDPOINTS: Record<string, Endpoint> = {
   '/v2/farcaster/cast/quotes': { required: ['identifier', 'type', 'limit'], query: { identifier: hash, type: value => value === 'hash', limit: integer(25) } },
 };
 
+// Global reads whose responses never depend on the viewer. They are shared at
+// the edge for a short TTL; every other read and the write path stay uncached.
+const EDGE_CACHE_TTL_SECONDS: Record<string, number> = {
+  '/v1/info': 15,
+  '/v2/farcaster/feed/trending': 30,
+  '/v2/farcaster/channel/trending': 60,
+  '/v2/farcaster/channel/all': 60,
+  '/v2/farcaster/channel': 60,
+};
+
+function edgeCache(): Cache | undefined {
+  return (globalThis as { caches?: { default?: Cache } }).caches?.default;
+}
+
 function validQuery(params: URLSearchParams, endpoint: Endpoint): boolean {
   const seen = new Set<string>();
   for (const [name, value] of params) {
@@ -110,7 +127,7 @@ function validQuery(params: URLSearchParams, endpoint: Endpoint): boolean {
 
 class SizeLimitError extends Error {}
 
-async function readLimited(body: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array> {
+async function readLimited(body: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array<ArrayBuffer>> {
   if (!body) return new Uint8Array();
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
@@ -138,7 +155,7 @@ async function readLimited(body: ReadableStream<Uint8Array> | null, limit: numbe
   return bytes;
 }
 
-async function proxy(request: Request, url: URL): Promise<Response> {
+async function proxy(request: Request, url: URL, ctx?: WorkerContext): Promise<Response> {
   // The path never controls the destination host. Encoded path separators,
   // alternate authorities, duplicate query keys and unknown fields are rejected.
   if (url.pathname.includes('%') || url.pathname.includes('\\')) return failure(400, 'invalid_path', 'Invalid API path.');
@@ -150,6 +167,19 @@ async function proxy(request: Request, url: URL): Promise<Response> {
   const origin = request.headers.get('Origin');
   if ((origin && origin !== url.origin) || request.headers.get('Sec-Fetch-Site') === 'cross-site') return failure(403, 'origin_denied', 'Cross-site API requests are unavailable.');
   if (isWrite ? url.search !== '' : !validQuery(url.searchParams, endpoint)) return failure(400, 'invalid_query', 'Invalid API query.');
+
+  const ttl = isWrite ? undefined : EDGE_CACHE_TTL_SECONDS[path];
+  const cache = ttl && ctx ? edgeCache() : undefined;
+  // Key on the validated path and query only, never the caller's headers.
+  const cacheKey = cache ? new Request(`${url.origin}${url.pathname}${url.search}`) : undefined;
+  if (cache && cacheKey) {
+    const hit = await cache.match(cacheKey).catch(() => undefined);
+    if (hit) {
+      const headers = new Headers(hit.headers);
+      headers.set('Cache-Control', 'no-store');
+      return secure(new Response(hit.body, { status: hit.status, headers }));
+    }
+  }
 
   let body: Uint8Array | undefined;
   if (isWrite) {
@@ -265,7 +295,13 @@ async function proxy(request: Request, url: URL): Promise<Response> {
     const bytes = await readLimited(upstream.body, MAX_RESPONSE_BYTES);
     const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return failure(502, isWrite ? 'submission_unknown' : 'invalid_response', isWrite ? SUBMISSION_UNKNOWN : 'The node returned an invalid response.');
-    return json(value);
+    const response = secure(new Response(bytes, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } }));
+    if (cache && cacheKey && ctx) {
+      const stored = response.clone();
+      stored.headers.set('Cache-Control', `public, s-maxage=${ttl}`);
+      ctx.waitUntil(cache.put(cacheKey, stored).catch(() => undefined));
+    }
+    return response;
   } catch (error) {
     if (isWrite) return failure(controller.signal.aborted ? 504 : 502, 'submission_unknown', SUBMISSION_UNKNOWN);
     if (controller.signal.aborted) return failure(504, 'timeout', 'The Hypersnap node took too long to respond. Try again.');
@@ -276,7 +312,7 @@ async function proxy(request: Request, url: URL): Promise<Response> {
   }
 }
 
-export async function handleRequest(request: Request, env: Env): Promise<Response> {
+export async function handleRequest(request: Request, env: Env, ctx?: WorkerContext): Promise<Response> {
   const url = new URL(request.url);
   if (url.host === LEGACY_HOST) {
     const destination = new URL(CANONICAL_ORIGIN);
@@ -294,9 +330,18 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     return new Response(null, { status: 308, headers });
   }
   if (url.pathname === '/media' || url.pathname.startsWith('/media/')) return handleMediaRequest(request, env);
-  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return proxy(request, url);
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return proxy(request, url, ctx);
   if (request.method !== 'GET' && request.method !== 'HEAD') return failure(405, 'method_not_allowed', 'This method is unavailable.');
-  return secure(await env.ASSETS.fetch(request));
+  return cacheStaticAsset(url, secure(await env.ASSETS.fetch(request)));
+}
+
+// Vite content-hashes everything under /assets/, so a changed file gets a new
+// URL. Root fonts keep fixed names and get a shorter lifetime.
+function cacheStaticAsset(url: URL, response: Response): Response {
+  if ((response.status !== 200 && response.status !== 304) || response.headers.get('Content-Type')?.includes('text/html')) return response;
+  if (url.pathname.startsWith('/assets/')) response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  else if (/^\/[^/]+\.ttf$/.test(url.pathname)) response.headers.set('Cache-Control', 'public, max-age=86400');
+  return response;
 }
 
 export default { fetch: handleRequest };

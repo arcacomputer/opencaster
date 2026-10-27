@@ -314,6 +314,120 @@ async function mapPublicReads<T, R>(items: T[], read: (item: T, signal: AbortSig
   } finally { signal?.removeEventListener('abort', abort); }
 }
 
+/** Session memo for public profile/cast hydration in reaction lists. Values are
+ * at most PUBLIC_READ_TTL_MS old; failures are never kept. Concurrent callers
+ * share one request, which is cancelled only once every caller has left. */
+const PUBLIC_READ_TTL_MS = 60_000;
+const PUBLIC_READ_MAX_ENTRIES = 500;
+const BULK_USER_LIMIT = 100;
+interface PublicReadFlight { readonly controller: AbortController; waiters: number; settled: boolean }
+interface PublicReadEntry<V> { readonly value: Promise<V>; readonly flight: PublicReadFlight; expires: number }
+
+class PublicReadCache<V> {
+  private readonly entries = new Map<string, PublicReadEntry<V>>();
+  get(key: string): PublicReadEntry<V> | undefined {
+    const entry = this.entries.get(key);
+    if (!entry) return undefined;
+    this.entries.delete(key);
+    if (entry.expires <= Date.now() || entry.flight.controller.signal.aborted) return undefined;
+    this.entries.set(key, entry);
+    return entry;
+  }
+  set(key: string, value: Promise<V>, flight: PublicReadFlight): PublicReadEntry<V> {
+    const entry: PublicReadEntry<V> = { value, flight, expires: Number.POSITIVE_INFINITY };
+    this.entries.delete(key);
+    this.entries.set(key, entry);
+    while (this.entries.size > PUBLIC_READ_MAX_ENTRIES) this.entries.delete(this.entries.keys().next().value!);
+    value.then(() => { entry.expires = Date.now() + PUBLIC_READ_TTL_MS; }, () => { if (this.entries.get(key) === entry) this.entries.delete(key); });
+    return entry;
+  }
+  clear(): void { this.entries.clear(); }
+}
+
+const publicUsers = new PublicReadCache<User>();
+const publicCasts = new PublicReadCache<Cast>();
+
+/** Test hook: forget memoized public profile and cast hydrations. */
+export function clearPublicReadCache(): void {
+  publicUsers.clear();
+  publicCasts.clear();
+}
+
+function startFlight<T>(load: (signal: AbortSignal) => Promise<T>): { flight: PublicReadFlight; request: Promise<T> } {
+  const flight: PublicReadFlight = { controller: new AbortController(), waiters: 0, settled: false };
+  const request = load(flight.controller.signal).finally(() => { flight.settled = true; });
+  return { flight, request };
+}
+
+/** Each caller gets its own copy, so later edits cannot alter the memo. */
+async function awaitShared<V>(entry: PublicReadEntry<V>, signal?: AbortSignal): Promise<V> {
+  signal?.throwIfAborted();
+  const { flight } = entry;
+  flight.waiters++;
+  let onAbort: (() => void) | undefined;
+  try {
+    const value = await new Promise<V>((resolve, reject) => {
+      if (signal) {
+        onAbort = () => reject(signal.reason);
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+      entry.value.then(resolve, reject);
+    });
+    return structuredClone(value);
+  } finally {
+    if (onAbort) signal?.removeEventListener('abort', onAbort);
+    if (--flight.waiters === 0 && !flight.settled) flight.controller.abort(signal?.reason);
+  }
+}
+
+function invalidReactionProfile(): ApiError {
+  return new ApiError('The node returned an invalid reaction profile.', 502, 'invalid_response');
+}
+
+/** One /v2/farcaster/user/bulk request per 100 uncached FIDs. Every requested
+ * profile must be returned and valid: absence is an error, never a gap. */
+async function getPublicUsers(fids: number[], signal?: AbortSignal): Promise<User[]> {
+  const entries = new Map<number, PublicReadEntry<User>>();
+  const missing: number[] = [];
+  for (const fid of fids) {
+    if (entries.has(fid)) continue;
+    const entry = publicUsers.get(String(fid));
+    if (entry) entries.set(fid, entry);
+    else if (!missing.includes(fid)) missing.push(fid);
+  }
+  for (let start = 0; start < missing.length; start += BULK_USER_LIMIT) {
+    const chunk = missing.slice(start, start + BULK_USER_LIMIT);
+    const { flight, request } = startFlight(async flightSignal => {
+      const response = await requestJson<{ users: unknown }>('/v2/farcaster/user/bulk', new URLSearchParams({ fids: chunk.map(fidValue).join(',') }), flightSignal);
+      if (!Array.isArray(response.users) || response.users.length > chunk.length) throw invalidReactionProfile();
+      const byFid = new Map<number, User>();
+      for (const value of response.users) {
+        if (!publicUser(value) || !chunk.includes(value.fid) || byFid.has(value.fid)) throw invalidReactionProfile();
+        byFid.set(value.fid, value);
+      }
+      return byFid;
+    });
+    for (const fid of chunk) {
+      entries.set(fid, publicUsers.set(String(fid), request.then(byFid => {
+        const user = byFid.get(fid);
+        if (!user) throw invalidReactionProfile();
+        return user;
+      }), flight));
+    }
+  }
+  return Promise.all(fids.map(fid => awaitShared(entries.get(fid)!, signal)));
+}
+
+function getPublicCast(hash: string, signal?: AbortSignal): Promise<Cast> {
+  const key = hashValue(hash);
+  let entry = publicCasts.get(key);
+  if (!entry) {
+    const { flight, request } = startFlight(flightSignal => getCast(key, flightSignal));
+    entry = publicCasts.set(key, request, flight);
+  }
+  return awaitShared(entry, signal);
+}
+
 interface ReactionMessage {
   hash: string;
   data: { type: string; fid: number; timestamp: number; network: string; reactionBody: { type: string; targetCastId?: ReactionTarget; targetUrl?: string } };
@@ -367,11 +481,7 @@ export async function getCastReactionPeople(options: { target: ReactionTarget; t
       actorFids.add(message.data.fid);
     }
     const cursor = reactionCursor(response.nextPageToken, options.cursor);
-    const users = await mapPublicReads([...actorFids], async (fid, signal) => {
-      const user = await getUser({ fid }, signal);
-      if (!publicUser(user) || user.fid !== fid) throw new ApiError('The node returned an invalid reaction profile.', 502, 'invalid_response');
-      return user;
-    }, controller.signal);
+    const users = await getPublicUsers([...actorFids], controller.signal);
     controller.signal.throwIfAborted();
     return { users, next: { cursor } };
   } catch (error) {
@@ -385,9 +495,90 @@ export async function getCastReactionPeople(options: { target: ReactionTarget; t
   }
 }
 
+// Viewer-scoped receipt cache. Only the viewer's own writes change these values;
+// the session invalidates or primes entries around them and clears on account
+// changes. Concurrent readers share one request, which aborts once all leave.
+const REACTION_STATUS_TTL_MS = 5 * 60_000;
+const REACTION_STATUS_CACHE_LIMIT = 2_000;
+interface ReactionStatusEntry { promise: Promise<boolean>; expires: number; controller?: AbortController; waiters: number }
+const reactionStatusCache = new Map<string, ReactionStatusEntry>();
+
+function reactionStatusKey(viewerFid: number, target: ReactionTarget, type: ReactionKind): string {
+  return `${fidValue(viewerFid)}:${fidValue(target.fid)}:${hashValue(target.hash)}:${reactionKind(type)}`;
+}
+
+function storeReactionStatus(key: string, entry: ReactionStatusEntry): void {
+  reactionStatusCache.delete(key);
+  reactionStatusCache.set(key, entry);
+  while (reactionStatusCache.size > REACTION_STATUS_CACHE_LIMIT) reactionStatusCache.delete(reactionStatusCache.keys().next().value!);
+}
+
+function startReactionStatusRead(key: string, viewerFid: number, target: ReactionTarget, type: ReactionKind): ReactionStatusEntry {
+  const controller = new AbortController();
+  const entry: ReactionStatusEntry = { promise: Promise.resolve(false), expires: Infinity, controller, waiters: 0 };
+  entry.promise = fetchReactionStatus(viewerFid, target, type, controller.signal).then(value => {
+    entry.controller = undefined;
+    entry.expires = Date.now() + REACTION_STATUS_TTL_MS;
+    return value;
+  }, (error: unknown) => {
+    entry.controller = undefined;
+    if (reactionStatusCache.get(key) === entry) reactionStatusCache.delete(key);
+    throw error;
+  });
+  entry.promise.catch(() => undefined);
+  storeReactionStatus(key, entry);
+  return entry;
+}
+
+function awaitReactionStatus(key: string, entry: ReactionStatusEntry, signal?: AbortSignal): Promise<boolean> {
+  entry.waiters += 1;
+  return new Promise((resolve, reject) => {
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true; entry.waiters -= 1;
+      signal?.removeEventListener('abort', abort);
+    };
+    const abort = () => {
+      release();
+      if (entry.waiters === 0 && entry.controller) {
+        entry.controller.abort(signal!.reason);
+        if (reactionStatusCache.get(key) === entry) reactionStatusCache.delete(key);
+      }
+      reject(signal!.reason);
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+    entry.promise.then(value => { release(); resolve(value); }, (error: unknown) => { release(); reject(error); });
+  });
+}
+
+export function invalidateReactionStatus(viewerFid: number, target: ReactionTarget, type: ReactionKind): void {
+  reactionStatusCache.delete(reactionStatusKey(viewerFid, target, type));
+}
+
+/** Record the state a successfully submitted write of the viewer's own produced. */
+export function primeReactionStatus(viewerFid: number, target: ReactionTarget, type: ReactionKind, value: boolean): void {
+  storeReactionStatus(reactionStatusKey(viewerFid, target, type), { promise: Promise.resolve(value), expires: Date.now() + REACTION_STATUS_TTL_MS, waiters: 0 });
+}
+
+export function clearReactionStatusCache(): void {
+  reactionStatusCache.clear();
+}
+
 /** Hypersnap does not populate cast.viewer_context. Resolve the actual current
- * add receipt; only the worker's exact source-defined absence code is false. */
-export async function getReactionStatus(viewerFid: number, target: ReactionTarget, type: ReactionKind, signal?: AbortSignal): Promise<boolean> {
+ * add receipt; only the worker's exact source-defined absence code is false.
+ * Results are cached per viewer and target; `fresh` always reads the node. */
+export async function getReactionStatus(viewerFid: number, target: ReactionTarget, type: ReactionKind, signal?: AbortSignal, options?: { fresh?: boolean }): Promise<boolean> {
+  const key = reactionStatusKey(viewerFid, target, type);
+  signal?.throwIfAborted();
+  let entry = options?.fresh ? undefined : reactionStatusCache.get(key);
+  if (entry && entry.expires <= Date.now()) { reactionStatusCache.delete(key); entry = undefined; }
+  if (entry) storeReactionStatus(key, entry);
+  else entry = startReactionStatusRead(key, viewerFid, target, type);
+  return awaitReactionStatus(key, entry, signal);
+}
+
+async function fetchReactionStatus(viewerFid: number, target: ReactionTarget, type: ReactionKind, signal?: AbortSignal): Promise<boolean> {
   const params = new URLSearchParams({ fid: fidValue(viewerFid), reaction_type: reactionKind(type), target_fid: fidValue(target.fid), target_hash: hashValue(target.hash) });
   try {
     const value = await requestJson<unknown>('/v1/reactionById', params, signal);
@@ -401,8 +592,8 @@ export async function getReactionStatus(viewerFid: number, target: ReactionTarge
   }
 }
 
-/** At most 25 visible casts and four requests in flight. Callers must key cached
- * results by viewer FID as well as target and cancel when the account changes. */
+/** At most 25 visible casts and four requests in flight. Reads share the
+ * viewer-scoped getReactionStatus cache; cancel when the account changes. */
 export async function getReactionStatuses(viewerFid: number, targets: ReactionTarget[], signal?: AbortSignal): Promise<ReactionStatus[]> {
   fidValue(viewerFid);
   if (!Array.isArray(targets) || targets.length > 25) throw new Error('Check up to 25 visible casts at a time.');
@@ -461,7 +652,7 @@ async function readProfileReactions(options: { fid: number; tab: 'likes' | 'reca
       const target = message.data.reactionBody.targetCastId;
       if (!target) return undefined;
       try {
-        const cast = await getCast(target.hash, localSignal);
+        const cast = await getPublicCast(target.hash, localSignal);
         if (!isObject(cast) || !publicUser(cast.author) || cast.author.fid !== target.fid || typeof cast.hash !== 'string' || hashValue(cast.hash) !== hashValue(target.hash)
           || typeof cast.text !== 'string' || typeof cast.timestamp !== 'string' || !Number.isFinite(Date.parse(cast.timestamp)) || !Array.isArray(cast.embeds)
           || !isObject(cast.reactions) || !Number.isSafeInteger(cast.reactions.likes_count) || cast.reactions.likes_count < 0
