@@ -19,6 +19,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'faster-content-control-checks',
+    date: '2026-10-27',
+    title: 'Content controls check casts faster',
+    summary: 'Checking a cast against your muted accounts, muted words and hidden casts no longer rescans every list entry, so long feeds with many content controls filter faster.',
+    changes: [
+      'Look up muted accounts and hidden casts directly instead of scanning up to 100 accounts and 500 hidden casts for each cast and quoted cast.',
+      'Prepare muted words once per content settings change instead of once per cast.',
+      'Filtering results are unchanged: the same casts are hidden, with the same reasons, using the same Unicode matching. Preferences still stay on this browser.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/827b73cfb9afde67424db18fb80c7205ba970d59',
+    tag: 'Reliability',
+  },
+  {
     id: 'gateway-forwards-validated-json',
     date: '2026-10-27',
     title: 'Feeds and profiles load with less gateway work',
