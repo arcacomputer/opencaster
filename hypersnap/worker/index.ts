@@ -297,7 +297,16 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
   if (url.pathname === '/media' || url.pathname.startsWith('/media/')) return handleMediaRequest(request, env);
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return proxy(request, url);
   if (request.method !== 'GET' && request.method !== 'HEAD') return failure(405, 'method_not_allowed', 'This method is unavailable.');
-  return secure(await env.ASSETS.fetch(request));
+  return cacheStaticAsset(url, secure(await env.ASSETS.fetch(request)));
+}
+
+// Vite content-hashes everything under /assets/, so a changed file gets a new
+// URL. Root fonts keep fixed names and get a shorter lifetime.
+function cacheStaticAsset(url: URL, response: Response): Response {
+  if ((response.status !== 200 && response.status !== 304) || response.headers.get('Content-Type')?.includes('text/html')) return response;
+  if (url.pathname.startsWith('/assets/')) response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  else if (/^\/[^/]+\.ttf$/.test(url.pathname)) response.headers.set('Cache-Control', 'public, max-age=86400');
+  return response;
 }
 
 export default { fetch: handleRequest };

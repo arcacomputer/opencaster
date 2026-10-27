@@ -555,3 +555,32 @@ describe('supported community queries', () => {
     }
   });
 });
+
+describe('static asset caching', () => {
+  const asset = (body: string, type: string, status = 200) => ({ fetch: vi.fn().mockResolvedValue(new Response(status === 304 ? null : body, { status, headers: { 'Content-Type': type, 'Cache-Control': 'public, max-age=0, must-revalidate' } })) });
+
+  it.each([['GET', 200], ['HEAD', 200], ['GET', 304]] as const)('lets browsers keep content-hashed bundles (%s %i)', async (method, status) => {
+    const response = await handleRequest(new Request(`${BASE}/assets/index-B1x9QzPa.js`, { method }), { ...env, ASSETS: asset('export {}', 'text/javascript', status) });
+    expect(response.status).toBe(status); expect(response.headers.get('Cache-Control')).toBe('public, max-age=31536000, immutable');
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+  });
+
+  it('caches fixed-name root fonts for a day only', async () => {
+    const response = await handleRequest(new Request(`${BASE}/InterVariable.ttf`), { ...env, ASSETS: asset('font', 'font/ttf') });
+    expect(response.headers.get('Cache-Control')).toBe('public, max-age=86400');
+  });
+
+  it('never caches HTML, including the SPA fallback for a missing bundle', async () => {
+    for (const path of ['/', '/profile/alice', '/assets/missing-chunk.js']) {
+      const response = await handleRequest(new Request(`${BASE}${path}`), env);
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+    }
+  });
+
+  it('leaves failed and unhashed asset responses on their default policy', async () => {
+    const missing = await handleRequest(new Request(`${BASE}/assets/gone.js`), { ...env, ASSETS: asset('', 'text/plain', 404) });
+    expect(missing.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
+    const image = await handleRequest(new Request(`${BASE}/unknown-dark.png`), { ...env, ASSETS: asset('png', 'image/png') });
+    expect(image.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
+  });
+});
