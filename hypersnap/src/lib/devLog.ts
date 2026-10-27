@@ -19,6 +19,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'public-browsing-maintenance-checks',
+    date: '2026-10-27',
+    title: 'Keeping public browsing predictable',
+    summary: 'A maintenance pass keeps feed refreshes and public-account lookups predictable, with stronger automated checks for feed rules and shared previews.',
+    changes: [
+      'Keep an explicit refresh and its parent-cast cache in one update, while cancelling reads from the previous refresh.',
+      'Preserve pending public-account lookups during ordinary rerenders; cancel them when their input or destination changes, or their view closes.',
+      'Continue rejecting ASCII control characters in shared-feed names and filters while preserving supported Unicode text, with checks for every prohibited character and nearby valid characters.',
+      'Clear client and gateway lint findings, preserve escaped public-preview text and safe upstream error responses, and add regression checks for refresh and lookup cancellation. Hypersnap’s existing indexing and availability limits still apply.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/dca2e040565b574d18ae7b2398c5462d7f98e7f3',
+    tag: 'Reliability',
+  },
+  {
     id: 'immediate-pending-casts-and-readable-refresh',
     date: '2026-10-26',
     title: 'See your cast while the network catches up',
