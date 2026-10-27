@@ -19,16 +19,29 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
-    id: 'faster-content-filtered-feeds',
+    id: 'faster-content-control-checks',
     date: '2026-10-27',
-    title: 'Content-filtered feeds render faster',
-    summary: 'Feeds and bookmarks no longer recheck every loaded cast against your mutes and hidden casts each time an unrelated part of the page updates.',
+    title: 'Content controls check casts faster',
+    summary: 'Checking a cast against your muted accounts, muted words and hidden casts no longer rescans every list entry, so long feeds with many content controls filter faster.',
     changes: [
-      'Filter the loaded feed and bookmarks once per change to the casts, search, sort, reveals or content controls, instead of on every screen update such as a notice or dialog.',
-      'Check muted accounts and hidden casts with direct lookups, and prepare muted words once per settings change. Each cast is checked once rather than twice.',
+      'Look up muted accounts and hidden casts directly instead of scanning up to 100 accounts and 500 hidden casts for each cast and quoted cast.',
+      'Prepare muted words once per content settings change instead of once per cast.',
       'Filtering results are unchanged: the same casts are hidden, with the same reasons, using the same Unicode matching. Preferences still stay on this browser.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/827b73cfb9afde67424db18fb80c7205ba970d59',
+    tag: 'Reliability',
+  },
+  {
+    id: 'feed-stays-responsive-while-typing',
+    date: '2026-10-27',
+    title: 'Long feeds stay responsive while you type a search',
+    summary: 'Typing in the search box, dismissing a notification or opening a dialog no longer redraws every loaded cast, so the search box keeps up after you have scrolled through several pages.',
+    changes: [
+      'Keep the header and right column search boxes in sync without redrawing the feed on each keystroke.',
+      'Redraw a cast only when the cast, your session, its bookmark state or your content controls change, and reuse its parsed mentions and links.',
+      'Check each loaded cast against your content controls once per change instead of on every redraw. Filtering, bookmarks, search results and cast text are unchanged.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/28bd65a113838d296d64801761df147cb72f1577',
     tag: 'Reliability',
   },
   {
