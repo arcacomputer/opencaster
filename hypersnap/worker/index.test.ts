@@ -434,6 +434,25 @@ describe('the fixed Hypersnap gateway', () => {
     expect((await response.json() as { code: string }).code).toBe('response_too_large');
   });
 
+  it('forwards a validated JSON object byte-for-byte with JSON and security headers', async () => {
+    const body = '{ "fid": 12345678901234567890, "text": "caf\\u00e9 \u2603",\n"nested": {"a": [1, 2.50]} }';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { headers: { 'Content-Type': 'application/json', 'Set-Cookie': 'upstream=1' } })));
+    const response = await handleRequest(new Request(`${BASE}/api/v1/info`), env);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(body);
+    expect(response.headers.get('Content-Type')).toBe('application/json; charset=utf-8');
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    expect(response.headers.get('Set-Cookie')).toBeNull();
+  });
+
+  it.each(['[1, 2]', 'null', '"text"', '{"truncated": '])('still rejects a successful upstream body that is not a JSON object: %s', async body => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { headers: { 'Content-Type': 'application/json' } })));
+    const response = await handleRequest(new Request(`${BASE}/api/v1/info`), env);
+    expect(response.status).toBe(502);
+    expect(await response.text()).not.toContain('truncated');
+  });
+
   it('aborts a slow node and returns a controlled timeout', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn((_url: string, options: RequestInit) => new Promise((_resolve, reject) => {
@@ -534,5 +553,34 @@ describe('supported community queries', () => {
       const result = await handleRequest(new Request(`${BASE}/api${path}`), env);
       expect(result.status).toBe(503); expect((await result.json() as { code: string }).code).toBe('feature_unavailable');
     }
+  });
+});
+
+describe('static asset caching', () => {
+  const asset = (body: string, type: string, status = 200) => ({ fetch: vi.fn().mockResolvedValue(new Response(status === 304 ? null : body, { status, headers: { 'Content-Type': type, 'Cache-Control': 'public, max-age=0, must-revalidate' } })) });
+
+  it.each([['GET', 200], ['HEAD', 200], ['GET', 304]] as const)('lets browsers keep content-hashed bundles (%s %i)', async (method, status) => {
+    const response = await handleRequest(new Request(`${BASE}/assets/index-B1x9QzPa.js`, { method }), { ...env, ASSETS: asset('export {}', 'text/javascript', status) });
+    expect(response.status).toBe(status); expect(response.headers.get('Cache-Control')).toBe('public, max-age=31536000, immutable');
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+  });
+
+  it('caches fixed-name root fonts for a day only', async () => {
+    const response = await handleRequest(new Request(`${BASE}/InterVariable.ttf`), { ...env, ASSETS: asset('font', 'font/ttf') });
+    expect(response.headers.get('Cache-Control')).toBe('public, max-age=86400');
+  });
+
+  it('never caches HTML, including the SPA fallback for a missing bundle', async () => {
+    for (const path of ['/', '/profile/alice', '/assets/missing-chunk.js']) {
+      const response = await handleRequest(new Request(`${BASE}${path}`), env);
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+    }
+  });
+
+  it('leaves failed and unhashed asset responses on their default policy', async () => {
+    const missing = await handleRequest(new Request(`${BASE}/assets/gone.js`), { ...env, ASSETS: asset('', 'text/plain', 404) });
+    expect(missing.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
+    const image = await handleRequest(new Request(`${BASE}/unknown-dark.png`), { ...env, ASSETS: asset('png', 'image/png') });
+    expect(image.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
   });
 });
