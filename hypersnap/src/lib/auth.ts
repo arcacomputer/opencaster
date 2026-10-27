@@ -1,5 +1,5 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
-import { ApiError, getCast, getFollowStatus, getReactionStatus, getSigners, getUser, submitMessage, type Signer, type SignersResponse, type User } from './api';
+import { ApiError, clearReactionStatusCache, getCast, getFollowStatus, getReactionStatus, getSigners, getUser, invalidateReactionStatus, primeReactionStatus, submitMessage, type Signer, type SignersResponse, type User } from './api';
 import { PAIRING_SCOPES, PAIRING_TTL_SECONDS, validatePairingRequest, validatePairingScopes, verifyPairingApproval, validateRevocationRequest, verifyRevocationApproval, type PairingApproval, type PairingRequest, type RevocationRequest, type RevocationApproval } from './pairing';
 import { buildSignedMessage, CastType, farcasterTimestamp, MessageType, ReactionType, SignatureScheme, type MessageDataInput } from './protocol/messageBuilder';
 import { abiEncodeSignedKeyRequestMetadata, bytesToHex, hexToBytes } from './protocol/signedKeyRequest';
@@ -300,6 +300,7 @@ export async function unlockSavedSessionWithPasskey(options: ConnectOptions & { 
 }
 
 function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetadata, persisted = false): WalletSession {
+  clearReactionStatusCache();
   const publicKey = hexToBytes(metadata.publicKey);
   let disposed = false;
   let revoking = false;
@@ -319,7 +320,7 @@ function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetada
   let lastWriteTimestamp = 0;
   const assertSession = () => { if (disposed || revoking || revokeSubmitted) throw new Error('Your session has ended or is being revoked. Unlock or authorize your device again.'); };
   const sign = async (digest: Uint8Array) => { if (disposed) throw new Error('Your session has ended.'); return ed25519.sign(digest, privateKey); };
-  const dispose = () => { disposed = true; saveController?.abort(); privateKey.fill(0); };
+  const dispose = () => { disposed = true; saveController?.abort(); privateKey.fill(0); clearReactionStatusCache(); };
   const saveWrappedVault = async (wrap: (signal: AbortSignal) => Promise<StoredSignerVault>, options: ConnectOptions = {}) => {
     assertSession();
     assertActive(options.signal);
@@ -402,11 +403,14 @@ function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetada
     return { target: normalized, key: `${normalized.fid}:${normalized.hash}:${type}` };
   };
   const reactionUnknown = () => new ApiError('An earlier reaction has unknown status. Check reaction status again; no second reaction will be submitted until its intended state is visible.', 504, 'submission_unknown');
-  const readReactionStatus = async (target: CastTarget, type: 'like' | 'recast', signal?: AbortSignal): Promise<boolean> => {
+  // Confirmation reads and uncertain writes bypass the shared receipt cache.
+  const readReactionStatus = async (target: CastTarget, type: 'like' | 'recast', signal?: AbortSignal, fresh = false): Promise<boolean> => {
     const identity = reactionIdentity(target, type);
     assertActive(signal);
     const version = reactionVersions.get(identity.key) ?? 0;
-    const observed = await getReactionStatus(metadata.fid, identity.target, type, signal);
+    const observed = fresh || uncertainReactions.has(identity.key)
+      ? await getReactionStatus(metadata.fid, identity.target, type, signal, { fresh: true })
+      : await getReactionStatus(metadata.fid, identity.target, type, signal);
     assertSession(); assertActive(signal);
     const pending = uncertainReactions.get(identity.key);
     // A read begun before a submission cannot reconcile that later write,
@@ -534,18 +538,22 @@ function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetada
         const desired = !remove;
         const pending = uncertainReactions.get(identity.key);
         if (pending) {
-          await readReactionStatus(identity.target, type);
+          await readReactionStatus(identity.target, type, undefined, true);
           if (pending.desired === desired) return pending.receipt;
         } else {
           const confirmed = confirmedReactionIntents.get(identity.key);
-          if (confirmed?.desired === desired && await readReactionStatus(identity.target, type) === desired) return confirmed.receipt;
+          if (confirmed?.desired === desired && await readReactionStatus(identity.target, type, undefined, true) === desired) return confirmed.receipt;
         }
         confirmedReactionIntents.delete(identity.key);
-        return await send({ type: remove ? MessageType.REACTION_REMOVE : MessageType.REACTION_ADD, fid: metadata.fid, body: { reactionBody: { type: type === 'like' ? ReactionType.LIKE : ReactionType.RECAST, target: { castId: { fid: identity.target.fid, hash: hashBytes(identity.target.hash) } } } } }, receipt => {
+        const receipt = await send({ type: remove ? MessageType.REACTION_REMOVE : MessageType.REACTION_ADD, fid: metadata.fid, body: { reactionBody: { type: type === 'like' ? ReactionType.LIKE : ReactionType.RECAST, target: { castId: { fid: identity.target.fid, hash: hashBytes(identity.target.hash) } } } } }, receipt => {
           attempted = receipt;
           reactionVersions.set(identity.key, (reactionVersions.get(identity.key) ?? 0) + 1);
+          invalidateReactionStatus(metadata.fid, identity.target, type);
         });
+        if (!disposed) primeReactionStatus(metadata.fid, identity.target, type, desired);
+        return receipt;
       } catch (error) {
+        if (attempted) invalidateReactionStatus(metadata.fid, identity.target, type);
         if (attempted && error instanceof ApiError && error.code === 'submission_unknown') {
           uncertainReactions.set(identity.key, { desired: !remove, receipt: attempted });
           reactionVersions.set(identity.key, (reactionVersions.get(identity.key) ?? 0) + 1);
