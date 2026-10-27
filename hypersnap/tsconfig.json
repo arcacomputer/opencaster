@@ -5,5 +5,5 @@
     "strict": true, "skipLibCheck": true, "noEmit": true,
     "esModuleInterop": true, "resolveJsonModule": true, "types": ["vite/client"]
   },
-  "include": ["src", "worker", "vite.config.ts"]
+  "include": ["src", "worker", "analytics", "vite.config.ts"]
 }

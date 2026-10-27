@@ -3,11 +3,29 @@
   "name": "hypersnap-quorum",
   "account_id": "e320a5a80611f9a30148d452929b1fb1",
   "main": "worker/index.ts",
+  // Server-only origin settings. The credential is a version-bound Worker secret,
+  // never a VITE_* value or browser asset. Missing credential fails closed.
+  "vars": {
+    "HYPERSNAP_ORIGIN": "https://node.opencaster.org",
+    "HYPERSNAP_AGGREGATE_CACHE": "trusted-origin-v1",
+    "HYPERSNAP_READ_FALLBACK": "haatz-v1"
+  },
   "compatibility_date": "2026-10-19",
   "workers_dev": true,
   "assets": { "directory": "./dist", "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": true },
   "routes": [{ "pattern": "opencaster.org", "custom_domain": true }, { "pattern": "quorum.arca.computer", "custom_domain": true }],
-  "observability": { "enabled": false },
+  // Keep dashboard invocation logs enabled on later deployments. Platform logs
+  // store request metadata with query strings removed; aggregate analytics below
+  // receives only explicitly allowlisted data. Automatic traces remain off.
+  "observability": {
+    "enabled": true,
+    "redact_query_string": true,
+    "logs": { "enabled": true, "invocation_logs": true, "persist": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": false },
+    "issues": { "enabled": false }
+  },
+  "analytics_engine_datasets": [{ "binding": "ANALYTICS", "dataset": "opencaster_activity" }],
+  "ratelimits": [{ "name": "ANALYTICS_RATE_LIMITER", "namespace_id": "109202601", "simple": { "limit": 60, "period": 60 } }],
   "r2_buckets": [{ "binding": "MEDIA_BUCKET", "bucket_name": "hypersnap-quorum-media" }],
   "durable_objects": { "bindings": [{ "name": "MEDIA_QUOTA", "class_name": "MediaUploadQuota" }] },
   "migrations": [{ "tag": "media-quota-v1", "new_sqlite_classes": ["MediaUploadQuota"] }]

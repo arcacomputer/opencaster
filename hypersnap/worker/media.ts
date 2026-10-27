@@ -1,12 +1,13 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { MAX_MEDIA_BYTES, MEDIA_UPLOAD_HEADER, isMediaType, mediaGrantPayload, parseMediaUploadGrant, sha256Hex, type MediaType, type MediaUploadGrant } from '../src/lib/media';
 import { hexToBytes } from '../src/lib/protocol/signedKeyRequest';
+import { fetchUpstream, resolveUpstream, type UpstreamEnv } from './upstream';
 
 interface MediaObject {
   body: ReadableStream<Uint8Array>; size: number; httpEtag: string;
   httpMetadata?: { contentType?: string };
 }
-export interface MediaEnv {
+export interface MediaEnv extends UpstreamEnv {
   MEDIA_BUCKET?: {
     get(key: string): Promise<MediaObject | null>;
     head(key: string): Promise<Omit<MediaObject, 'body'> | null>;
@@ -15,7 +16,6 @@ export interface MediaEnv {
   MEDIA_QUOTA?: { idFromName(name: string): unknown; get(id: unknown): { fetch(request: Request): Promise<Response> } };
 }
 
-const UPSTREAM = 'https://haatz.quilibrium.com';
 const DAY_SECONDS = 86400;
 const MAX_REGISTRY_BYTES = 1024 * 1024;
 const MAX_DAILY_ACCOUNT_UPLOADS = 10;
@@ -35,20 +35,24 @@ function success(value: unknown): Response {
 }
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 
-async function readLimited(body: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array> {
+async function readLimited(body: ReadableStream<Uint8Array> | null, limit: number, signal?: AbortSignal): Promise<Uint8Array> {
   if (!body) throw new Error('Missing body');
   const chunks: Uint8Array[] = [];
   let length = 0;
   const reader = body.getReader();
+  const cancel = () => { void reader.cancel().catch(() => undefined); };
+  signal?.addEventListener('abort', cancel, { once: true });
   try {
     while (true) {
+      if (signal?.aborted) { cancel(); throw new Error('Registry deadline exceeded'); }
       const item = await reader.read();
+      if (signal?.aborted) throw new Error('Registry deadline exceeded');
       if (item.done) break;
       length += item.value.byteLength;
-      if (length > limit) { await reader.cancel(); throw new Error('Body too large'); }
+      if (length > limit) { cancel(); throw new Error('Body too large'); }
       chunks.push(item.value);
     }
-  } finally { reader.releaseLock(); }
+  } finally { signal?.removeEventListener('abort', cancel); reader.releaseLock(); }
   const bytes = new Uint8Array(length);
   let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
@@ -57,14 +61,23 @@ async function readLimited(body: ReadableStream<Uint8Array> | null, limit: numbe
 
 /** Header signatures are checked before the node request or durable storage.
  * Revoked/expired keys never authorize a new upload, even if the browser kept it. */
-async function activeSigner(grant: MediaUploadGrant): Promise<boolean> {
+async function activeSigner(grant: MediaUploadGrant, env: MediaEnv): Promise<boolean> {
+  const config = resolveUpstream(env);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10000);
-  try {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => { controller.abort(); reject(new Error('Registry deadline exceeded')); }, 10000);
+  });
+  // Race the complete operation, not only fetch's abort signal. A transport or
+  // cancellation hook can ignore abort; it must never hold upload authorization.
+  const lookup = Promise.resolve().then(async () => {
     const params = new URLSearchParams({ fid: String(grant.fid), pageSize: '1000', 'requesterFids[0]': String(grant.fid) });
-    const response = await fetch(`${UPSTREAM}/v1/signersByFid?${params}`, { signal: controller.signal, cache: 'no-store', redirect: 'manual', headers: { Accept: 'application/json' } });
-    if (!response.ok || !response.headers.get('Content-Type')?.includes('application/json')) { await response.body?.cancel(); throw new Error('Registry unavailable'); }
-    const value: unknown = JSON.parse(new TextDecoder().decode(await readLimited(response.body, MAX_REGISTRY_BYTES)));
+    const response = await fetchUpstream(config, `/v1/signersByFid?${params}`, { signal: controller.signal });
+    if (controller.signal.aborted || !response.ok || !response.headers.get('Content-Type')?.includes('application/json')) {
+      void response.body?.cancel().catch(() => undefined);
+      throw new Error('Registry unavailable');
+    }
+    const value: unknown = JSON.parse(new TextDecoder().decode(await readLimited(response.body, MAX_REGISTRY_BYTES, controller.signal)));
     if (!object(value) || !Array.isArray(value.signers) || value.signers.length > 1000) throw new Error('Invalid registry');
     // Fail closed on a truncated list. An account with more keys may revoke old
     // keys first; pagination cannot silently turn an incomplete view into trust.
@@ -74,13 +87,16 @@ async function activeSigner(grant: MediaUploadGrant): Promise<boolean> {
       && signer.source === 'SIGNER_SOURCE_OFFCHAIN' && signer.requestFid === grant.fid
       && Number.isSafeInteger(signer.expiresAt) && Number(signer.expiresAt) > Math.floor(Date.now() / 1000) + 30
       && Array.isArray(signer.scopes) && signer.scopes.includes('MESSAGE_TYPE_CAST_ADD'));
-  } finally { clearTimeout(timer); }
+  });
+  // Promise.race observes lookup's late rejection as well as its first outcome.
+  try { return await Promise.race([lookup, deadline]); }
+  finally { clearTimeout(timer); }
 }
 
 const ascii = (bytes: Uint8Array, start: number, length: number) => String.fromCharCode(...bytes.subarray(start, start + length));
 /** Image signatures and declared dimensions are validated server-side. SVG,
  * HTML and arbitrary MIME data are never stored or rendered as active content. */
-export function validateImage(bytes: Uint8Array, type: MediaType): void {
+export function validateImage(bytes: Uint8Array, type: MediaType): { width: number; height: number } {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let width = 0;
   let height = 0;
@@ -117,6 +133,7 @@ export function validateImage(bytes: Uint8Array, type: MediaType): void {
     }
   }
   if (!width || !height || width > 8192 || height > 8192 || width * height > 25_000_000) throw new Error('Invalid or oversized image');
+  return { width, height };
 }
 
 /** Called only for /media paths, before the SPA fallback. */
@@ -148,7 +165,7 @@ export async function handleMediaRequest(request: Request, env: MediaEnv): Promi
   } catch { return failure(401, 'invalid_grant', 'The device upload authorization is invalid or expired.'); }
   const length = request.headers.get('Content-Length');
   if (length && (!/^\d{1,8}$/.test(length) || Number(length) !== grant.size)) return failure(413, 'image_too_large', 'Image size does not match its authorization.');
-  try { if (!await activeSigner(grant)) return failure(403, 'signer_denied', 'This device is no longer authorized to upload.'); }
+  try { if (!await activeSigner(grant, env)) return failure(403, 'signer_denied', 'This device is no longer authorized to upload.'); }
   catch { return failure(503, 'registry_unavailable', 'Signer authorization could not be checked.'); }
   let bytes: Uint8Array;
   try { bytes = await readLimited(request.body, MAX_MEDIA_BYTES); }
@@ -159,7 +176,7 @@ export async function handleMediaRequest(request: Request, env: MediaEnv): Promi
   // Reading a slow mobile upload may outlive its initial signer check. Check
   // authorization again immediately before reserving storage, so a key revoked
   // or expired during the transfer cannot rely on the earlier registry result.
-  try { if (!await activeSigner(grant)) return failure(403, 'signer_denied', 'This device is no longer authorized to upload.'); }
+  try { if (!await activeSigner(grant, env)) return failure(403, 'signer_denied', 'This device is no longer authorized to upload.'); }
   catch { return failure(503, 'registry_unavailable', 'Signer authorization could not be checked.'); }
   // Registry/body work may have outlived the short authorization window.
   try { parseMediaUploadGrant(grant); }
