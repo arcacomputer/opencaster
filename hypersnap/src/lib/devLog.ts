@@ -19,6 +19,21 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'performance-release-with-current-browsing',
+    date: '2026-10-27',
+    title: 'Faster browsing across the current app',
+    summary: 'The browsing improvements now work together with custom feeds, reply context, sharing previews and immediate publishing feedback, while retaining the current gateway protections.',
+    changes: [
+      'Keep feed cards and content checks reusable while typing, with shared reaction-status reads and bulk Likes/Recasts profile loading. Reaction status can be up to five minutes old, list profiles up to one minute old, and relative time labels update when their card redraws.',
+      'Keep the existing public Following picker, custom timelines, parent-reply context, sharing artwork and account-scoped pending cast feedback alongside the performance changes.',
+      'Eligible public node info, trending casts and channel lists/details can use the gateway edge cache for 15, 30 or 60 seconds. Requests carrying browser credentials and continuing pages bypass this cache; browser API responses remain no-store.',
+      'Respect the selected node’s cache restrictions. The current private origin only approves trending casts and channel lists for this cache; its no-store info and channel-detail responses remain uncached. A backup is still consulted only after an eligible primary failure.',
+      'Forward validated node JSON bytes without rebuilding responses and let browsers retain versioned app bundles for a year. The existing private-node validation, media limits, wallet permissions and signing safeguards remain in place.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/0ce6efc404c6ca7a5e848f3914640a044c8d3963',
+    tag: 'Reliability',
+  },
+  {
     id: 'reaction-lists-load-faster',
     date: '2026-10-27',
     title: 'Like and recast lists load faster',
