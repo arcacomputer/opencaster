@@ -31,6 +31,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'notifications-time-labels-faster',
+    date: '2026-10-27',
+    title: 'Notifications render their times faster',
+    summary: 'The notifications page now reuses one date formatter for activity times instead of creating a new one for every row on every update.',
+    changes: [
+      'Format each activity time with a single shared formatter, so filtering, marking read and loading more activity redo less work as the loaded list grows.',
+      'Times look exactly as before: the same browser locale, month, day, hour and minute. Activity without a valid time still shows Recently.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/93c5e901f5209201c0df27963d8c317a6b600469',
+    tag: 'Reliability',
+  },
+  {
     id: 'reaction-status-reads-cached',
     date: '2026-10-27',
     title: 'Like and recast status loads once per cast',
