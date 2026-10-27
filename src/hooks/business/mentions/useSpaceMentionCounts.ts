@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useCallback } from 'react';
+import { useQueries, type UseQueryResult } from '@tanstack/react-query';
 import { usePasskeysContext } from '@quilibrium/quilibrium-js-sdk-channels';
 import { useMessageDB } from '../../../components/context/useMessageDB';
 import { isMentionedWithSettings, getDefaultNotificationSettings, getUserRoles } from '@quilibrium/quorum-shared';
@@ -18,13 +19,12 @@ const DISPLAY_THRESHOLD = 10;
  * Returns a map of spaceId -> total mention count across all channels in that space.
  * Only spaces with mentions > 0 are included in the result.
  *
- * The hook:
- * 1. For each space, gets all channel IDs
- * 2. For each channel, gets the last read timestamp
- * 3. Queries messages after that timestamp where user is mentioned
- * 4. Aggregates total mentions per space
+ * One query per space, keyed ['mention-counts', 'space', spaceId, userAddress],
+ * so an incoming mention invalidates only its own space. Each query reads every
+ * channel's last-read time and its first unread mention candidates (sparse
+ * mention index) in a single IndexedDB transaction.
  *
- * Uses React Query with 30s stale time for performance while maintaining
+ * Uses React Query with 90s stale time for performance while maintaining
  * reasonable real-time updates when invalidated.
  */
 export function useSpaceMentionCounts({
@@ -34,91 +34,65 @@ export function useSpaceMentionCounts({
   const { messageDB } = useMessageDB();
   const userAddress = user.currentPasskeyInfo?.address;
 
-  const { data } = useQuery({
-    // Query key includes space IDs to invalidate when spaces change
-    // Can be invalidated at space level ['mention-counts', 'space', spaceId] or
-    // more broadly ['mention-counts', 'space'] for all spaces
-    queryKey: [
-      'mention-counts',
-      'space',
-      userAddress,
-      ...spaces.map((s) => s.spaceId).sort(),
-    ],
-    queryFn: async () => {
-      if (!userAddress) return {};
-
+  const combine = useCallback(
+    (results: UseQueryResult<number>[]) => {
       const spaceCounts: Record<string, number> = {};
+      results.forEach((result, i) => {
+        if (result.data && result.data > 0) {
+          spaceCounts[spaces[i].spaceId] = result.data;
+        }
+      });
+      return spaceCounts;
+    },
+    [spaces]
+  );
 
-      try {
-        // Load user's notification settings
-        const config = await messageDB.getUserConfig({ address: userAddress });
+  return useQueries({
+    queries: spaces.map((space) => ({
+      // Invalidate one space with ['mention-counts', 'space', spaceId], or all
+      // spaces with ['mention-counts', 'space'].
+      queryKey: ['mention-counts', 'space', space.spaceId, userAddress],
+      queryFn: async (): Promise<number> => {
+        if (!userAddress) return 0;
 
-        // Process each space
-        for (const space of spaces) {
-          let spaceTotal = 0;
-
-          // Get user's role IDs for this space
-          const userRolesData = getUserRoles(userAddress, space);
-          const userRoleIds = userRolesData.map(r => r.roleId);
-
-          // Get notification settings for this space
+        try {
+          // Load user's notification settings
+          const config = await messageDB.getUserConfig({ address: userAddress });
           const settings = config?.notificationSettings?.[space.spaceId];
 
           // Check if entire space is muted (takes precedence over individual settings)
-          if (settings?.isMuted) {
-            continue; // Space is muted - no notifications
-          }
+          if (settings?.isMuted) return 0;
 
           const enabledTypes = settings?.enabledNotificationTypes ||
             getDefaultNotificationSettings(space.spaceId).enabledNotificationTypes;
 
           // Filter to only mention types
           const mentionTypes = enabledTypes.filter(t => t.startsWith('mention-'));
+          if (mentionTypes.length === 0) return 0;
 
-          // If no mention types enabled, skip this space
-          if (mentionTypes.length === 0) {
-            continue;
-          }
+          const userRoleIds = getUserRoles(userAddress, space).map(r => r.roleId);
 
           // Get all channel IDs from all groups in this space
           const channelIds = space.groups.flatMap((group) =>
             group.channels.map((channel) => channel.channelId)
           );
 
-          // Process each channel in the space with early exit
-          for (const channelId of channelIds) {
+          const channels = await messageDB.getSpaceUnreadCandidates({
+            spaceId: space.spaceId,
+            channelIds,
+            kind: 'mentions',
+            limitPerChannel: DISPLAY_THRESHOLD,
+          });
+
+          let spaceTotal = 0;
+          for (const { messages, threadReadTimes } of channels) {
             // Early exit: no need to count beyond display threshold
-            if (spaceTotal >= DISPLAY_THRESHOLD) {
-              break; // Stop scanning remaining channels
-            }
+            if (spaceTotal >= DISPLAY_THRESHOLD) break;
 
-            const conversationId = `${space.spaceId}/${channelId}`;
-
-            // Get conversation to find last read timestamp
-            const { conversation } = await messageDB.getConversation({
-              conversationId,
-            });
-
-            const lastReadTimestamp = conversation?.lastReadTimestamp || 0;
-
-            // Fetch thread read times for this channel
-            const threadReadTimes = await messageDB.getThreadReadTimesForChannel({
-              spaceId: space.spaceId,
-              channelId,
-            });
-
-            // Use optimized database query to get only unread messages with mentions
-            // This is much faster than fetching all 10k messages
-            const remainingLimit = DISPLAY_THRESHOLD - spaceTotal;
-            const messages = await messageDB.getUnreadMentions({
-              spaceId: space.spaceId,
-              channelId,
-              afterTimestamp: lastReadTimestamp,
-              limit: remainingLimit, // Only fetch what we need
-            });
-
-            // Count mentions that are for the current user
-            for (const message of messages) {
+            // Only the first `remaining` candidates of a channel are considered,
+            // as when each channel was queried with that limit.
+            const remaining = DISPLAY_THRESHOLD - spaceTotal;
+            for (const message of messages.slice(0, remaining)) {
               // Thread replies: check against thread read time
               if (message.isThreadReply && message.threadId) {
                 const threadReadTime = threadReadTimes[message.threadId];
@@ -134,32 +108,22 @@ export function useSpaceMentionCounts({
                 space,
               })) {
                 spaceTotal++;
-
-                // Early exit if we've hit the display threshold
-                if (spaceTotal >= DISPLAY_THRESHOLD) {
-                  break; // Stop scanning messages
-                }
+                if (spaceTotal >= DISPLAY_THRESHOLD) break;
               }
             }
           }
 
-          // Only include spaces with mentions
-          if (spaceTotal > 0) {
-            spaceCounts[space.spaceId] = spaceTotal;
-          }
+          return spaceTotal;
+        } catch (error) {
+          console.error('[SpaceMentionCounts] Error calculating mention counts:', error);
+          // Graceful degradation: no badge for this space
+          return 0;
         }
-      } catch (error) {
-        console.error('[SpaceMentionCounts] Error calculating mention counts:', error);
-        // Return empty counts on error - graceful degradation
-        return {};
-      }
-
-      return spaceCounts;
-    },
-    enabled: !!userAddress && spaces.length > 0,
-    staleTime: 90000, // 90 seconds (1.5 minutes) - reduces query frequency while maintaining reasonable UX
-    refetchOnWindowFocus: true, // Immediate updates when user returns to app
+      },
+      enabled: !!userAddress,
+      staleTime: 90000, // 90 seconds (1.5 minutes) - reduces query frequency while maintaining reasonable UX
+      refetchOnWindowFocus: true, // Immediate updates when user returns to app
+    })),
+    combine,
   });
-
-  return data || {};
 }

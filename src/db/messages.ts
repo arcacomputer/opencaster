@@ -212,6 +212,85 @@ interface StoredSearchIndex {
   lastUpdated: number;
 }
 
+const MENTIONS_INDEX = 'by_conversation_mentions';
+const REPLIES_INDEX = 'by_conversation_reply_author';
+
+/**
+ * Older/synced rows may omit memberIds on everyone/role-only mentions. Those
+ * still count as mention candidates, but a missing compound-index component
+ * would omit them from IndexedDB. An empty member list has the same meaning to
+ * mention filtering and leaves the signed content/fingerprint untouched.
+ * Clone only when needed so callers' message objects are never changed.
+ */
+function withIndexableMentions(message: Message): Message {
+  if (!message.mentions || message.mentions.memberIds != null) return message;
+  return {
+    ...message,
+    mentions: { ...message.mentions, memberIds: [] },
+  };
+}
+
+export type UnreadCandidateKind = 'mentions' | 'replies';
+
+export interface ChannelUnreadCandidates {
+  channelId: string;
+  lastReadTimestamp: number;
+  messages: Message[];
+  /** threadId → lastReadTimestamp; only populated when a candidate is a thread reply. */
+  threadReadTimes: Record<string, number>;
+}
+
+/**
+ * Walk a sparse mention/reply index for one channel, collecting up to `limit`
+ * messages created strictly after `afterTimestamp`, oldest first.
+ */
+function collectUnreadCandidates(
+  index: IDBIndex,
+  kind: UnreadCandidateKind,
+  spaceId: string,
+  channelId: string,
+  userAddress: string,
+  afterTimestamp: number,
+  limit: number,
+  onDone: (messages: Message[]) => void,
+  onError: (error: unknown) => void
+): void {
+  const messages: Message[] = [];
+  if (limit <= 0) {
+    onDone(messages);
+    return;
+  }
+  // The mentions key is [spaceId, channelId, createdDate, messageId, memberIds],
+  // so a 3-element lower bound would admit createdDate === afterTimestamp;
+  // those are skipped below. The replies key ends in createdDate, so its
+  // exclusive bound is exact.
+  const range =
+    kind === 'mentions'
+      ? IDBKeyRange.bound(
+          [spaceId, channelId, afterTimestamp],
+          [spaceId, channelId, Number.MAX_VALUE]
+        )
+      : IDBKeyRange.bound(
+          [spaceId, channelId, userAddress, afterTimestamp],
+          [spaceId, channelId, userAddress, Number.MAX_VALUE],
+          true,
+          false
+        );
+  const request = index.openCursor(range, 'next');
+  request.onerror = () => onError(request.error);
+  request.onsuccess = () => {
+    const cursor = request.result;
+    if (!cursor) {
+      onDone(messages);
+      return;
+    }
+    const message = cursor.value as Message;
+    if (message.createdDate > afterTimestamp) messages.push(message);
+    if (messages.length < limit) cursor.continue();
+    else onDone(messages);
+  };
+}
+
 export class MessageDB {
   private db: IDBDatabase | null = null;
   /**
@@ -486,6 +565,44 @@ export class MessageDB {
             keyPath: 'conversationId',
           });
         }
+
+        if (event.oldVersion < 17) {
+          // Sparse indexes for the unread mention / reply badges. A record is
+          // only indexed when every key path resolves to a valid key, so these
+          // hold just the mention-bearing messages and the replies, and an
+          // unread count becomes a key-range lookup instead of a walk over
+          // every unread message. `messageId` keeps ties in the same order as
+          // `by_conversation_time`.
+          const transaction = (event.target as IDBOpenDBRequest).transaction;
+          if (transaction) {
+            const messageStore = transaction.objectStore('messages');
+            messageStore.createIndex(MENTIONS_INDEX, [
+              'spaceId',
+              'channelId',
+              'createdDate',
+              'messageId',
+              'mentions.memberIds',
+            ]);
+            messageStore.createIndex(REPLIES_INDEX, [
+              'spaceId',
+              'channelId',
+              'replyMetadata.parentAuthor',
+              'createdDate',
+            ]);
+            // Populate the mention index for historical everyone/role-only
+            // rows too. Run in this versionchange transaction so the repaired
+            // rows and both indexes become visible atomically.
+            const cursorRequest = messageStore.openCursor();
+            cursorRequest.onsuccess = () => {
+              const cursor = cursorRequest.result;
+              if (!cursor) return;
+              const message = cursor.value as Message;
+              const normalized = withIndexableMentions(message);
+              if (normalized !== message) cursor.update(normalized);
+              cursor.continue();
+            };
+          }
+        }
       };
     });
 
@@ -570,7 +687,7 @@ export class MessageDB {
         if (msg) {
           const readWatermark = readWatermarks?.get(msg.spaceId) ?? 0;
           const patch = resolveDeliveryAckPatch(msg, { readWatermark, now: deliveredAt });
-          if (patch) store.put({ ...msg, ...patch });
+          if (patch) store.put(withIndexableMentions({ ...msg, ...patch }));
         }
         resolve();
       };
@@ -626,7 +743,7 @@ export class MessageDB {
           const msg = cursor.value;
           if (msg.content?.senderId === ownAddress) {
             const patch = resolveReadAckPatch(msg, ctx);
-            if (patch) cursor.update({ ...msg, ...patch });
+            if (patch) cursor.update(withIndexableMentions({ ...msg, ...patch }));
           }
           cursor.continue();
         } else {
@@ -1188,6 +1305,32 @@ export class MessageDB {
     });
   }
 
+  /**
+   * Batched getConversation: one readonly transaction for many ids, with all
+   * gets issued in parallel. Ids with no stored conversation are absent from
+   * the returned map.
+   */
+  async getConversationsByIds(
+    conversationIds: string[]
+  ): Promise<Map<string, Conversation>> {
+    const result = new Map<string, Conversation>();
+    if (conversationIds.length === 0) return result;
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction('conversations', 'readonly');
+      const store = transaction.objectStore('conversations');
+      for (const conversationId of conversationIds) {
+        const request = store.get([conversationId]);
+        request.onsuccess = () => {
+          if (request.result) result.set(conversationId, request.result);
+        };
+      }
+      transaction.oncomplete = () => resolve(result);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+  }
+
   async saveConversation(conversation: Conversation): Promise<void> {
     await this.init();
 
@@ -1533,7 +1676,7 @@ export class MessageDB {
         'readwrite'
       );
       const store = transaction.objectStore('messages');
-      const messageRequest = store.put(message);
+      const messageRequest = store.put(withIndexableMentions(message));
       messageRequest.onerror = () => reject(messageRequest.error);
 
       const conversationStore = transaction.objectStore('conversations');
@@ -2600,7 +2743,7 @@ export class MessageDB {
 
       // Write messages (dedup by messageId via put)
       for (const msg of admissible) {
-        const request = messageStore.put(msg);
+        const request = messageStore.put(withIndexableMentions(msg));
         request.onsuccess = () => { messagesWritten++; };
       }
 
@@ -2794,7 +2937,7 @@ export class MessageDB {
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction('messages', 'readwrite');
       const store = transaction.objectStore('messages');
-      const request = store.put(message);
+      const request = store.put(withIndexableMentions(message));
 
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
@@ -2868,7 +3011,7 @@ export class MessageDB {
           delete message.pinnedBy;
         }
 
-        const putRequest = store.put(message);
+        const putRequest = store.put(withIndexableMentions(message));
         putRequest.onsuccess = () => {
           resolve();
         };
@@ -2918,9 +3061,7 @@ export class MessageDB {
     });
   }
 
-  // No dedicated mention index — filters in memory after the timestamp range
-  // scan. A compound [spaceId, channelId, mentionedUserId, createdDate] index
-  // would scale better but needs a DB migration.
+  /** Mention-bearing messages after `afterTimestamp`, oldest first (sparse index). */
   async getUnreadMentions({
     spaceId,
     channelId,
@@ -2935,45 +3076,22 @@ export class MessageDB {
     await this.init();
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction('messages', 'readonly');
-      const store = transaction.objectStore('messages');
-      const index = store.index('by_conversation_time');
-
-      const range = IDBKeyRange.bound(
-        [spaceId, channelId, afterTimestamp],
-        [spaceId, channelId, Number.MAX_VALUE],
-        true, // Exclude afterTimestamp itself
-        false
+      const index = transaction.objectStore('messages').index(MENTIONS_INDEX);
+      collectUnreadCandidates(
+        index,
+        'mentions',
+        spaceId,
+        channelId,
+        '',
+        afterTimestamp,
+        limit,
+        resolve,
+        reject
       );
-
-      const request = index.openCursor(range, 'next');
-      const messages: Message[] = [];
-
-      request.onsuccess = (event) => {
-        const cursor = (event.target as IDBRequest).result;
-
-        if (cursor && messages.length < limit) {
-          const message = cursor.value as Message;
-
-          // Caller still filters by userAddress since there's no mention index.
-          if (message.mentions) {
-            messages.push(message);
-          }
-
-          if (messages.length < limit) {
-            cursor.continue();
-          } else {
-            resolve(messages);
-          }
-        } else {
-          resolve(messages);
-        }
-      };
-
-      request.onerror = () => reject(request.error);
     });
   }
 
-  // Filters by replyMetadata.parentAuthor in memory after timestamp range scan.
+  /** Replies to `userAddress` after `afterTimestamp`, oldest first (sparse index). */
   async getUnreadReplies({
     spaceId,
     channelId,
@@ -2990,41 +3108,102 @@ export class MessageDB {
     await this.init();
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction('messages', 'readonly');
-      const store = transaction.objectStore('messages');
-      const index = store.index('by_conversation_time');
-
-      // Use existing index to get messages after timestamp
-      const range = IDBKeyRange.bound(
-        [spaceId, channelId, afterTimestamp],
-        [spaceId, channelId, Number.MAX_VALUE],
-        true, // Exclude afterTimestamp itself
-        false
+      const index = transaction.objectStore('messages').index(REPLIES_INDEX);
+      collectUnreadCandidates(
+        index,
+        'replies',
+        spaceId,
+        channelId,
+        userAddress,
+        afterTimestamp,
+        limit,
+        resolve,
+        reject
       );
+    });
+  }
 
-      const request = index.openCursor(range, 'next');
-      const messages: Message[] = [];
+  /**
+   * Per-channel unread mention or reply candidates for a whole space, read in
+   * ONE readonly transaction: each channel's `lastReadTimestamp`, the first
+   * `limitPerChannel` candidates after it (same results as `getUnreadMentions`
+   * / `getUnreadReplies`), and — only when a candidate is a thread reply — the
+   * channel's thread read times. Results are in `channelIds` order.
+   */
+  async getSpaceUnreadCandidates({
+    spaceId,
+    channelIds,
+    kind,
+    userAddress = '',
+    limitPerChannel,
+  }: {
+    spaceId: string;
+    channelIds: string[];
+    kind: UnreadCandidateKind;
+    userAddress?: string;
+    limitPerChannel: number;
+  }): Promise<ChannelUnreadCandidates[]> {
+    if (channelIds.length === 0) return [];
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(
+        ['conversations', 'messages', 'thread_read_times'],
+        'readonly'
+      );
+      const conversations = transaction.objectStore('conversations');
+      const index = transaction
+        .objectStore('messages')
+        .index(kind === 'mentions' ? MENTIONS_INDEX : REPLIES_INDEX);
+      const threadReadTimesIndex = transaction
+        .objectStore('thread_read_times')
+        .index('by_channel');
 
-      request.onsuccess = (event) => {
-        const cursor = (event.target as IDBRequest).result;
+      const results: ChannelUnreadCandidates[] = channelIds.map((channelId) => ({
+        channelId,
+        lastReadTimestamp: 0,
+        messages: [],
+        threadReadTimes: {},
+      }));
+      const fail = (error: unknown) => reject(error);
 
-        if (cursor && messages.length < limit) {
-          const message = cursor.value as Message;
+      results.forEach((result) => {
+        const { channelId } = result;
+        const conversationRequest = conversations.get([`${spaceId}/${channelId}`]);
+        conversationRequest.onerror = () => fail(conversationRequest.error);
+        conversationRequest.onsuccess = () => {
+          const lastReadTimestamp =
+            (conversationRequest.result as Conversation | undefined)
+              ?.lastReadTimestamp || 0;
+          result.lastReadTimestamp = lastReadTimestamp;
+          collectUnreadCandidates(
+            index,
+            kind,
+            spaceId,
+            channelId,
+            userAddress,
+            lastReadTimestamp,
+            limitPerChannel,
+            (messages) => {
+              result.messages = messages;
+              if (!messages.some((m) => m.isThreadReply && m.threadId)) return;
+              const readTimesRequest = threadReadTimesIndex.getAll(
+                IDBKeyRange.only([spaceId, channelId])
+              );
+              readTimesRequest.onerror = () => fail(readTimesRequest.error);
+              readTimesRequest.onsuccess = () => {
+                for (const entry of readTimesRequest.result) {
+                  result.threadReadTimes[entry.threadId] = entry.lastReadTimestamp;
+                }
+              };
+            },
+            fail
+          );
+        };
+      });
 
-          if (message.replyMetadata?.parentAuthor === userAddress) {
-            messages.push(message);
-          }
-
-          if (messages.length < limit) {
-            cursor.continue();
-          } else {
-            resolve(messages);
-          }
-        } else {
-          resolve(messages);
-        }
-      };
-
-      request.onerror = () => reject(request.error);
+      transaction.oncomplete = () => resolve(results);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
     });
   }
 

@@ -81,36 +81,21 @@ export function useChannelMentionCounts({
         // mention:everyone permission before counting an @everyone.
         const space = await messageDB.getSpace(spaceId);
 
-        // Process each channel (excluding muted ones)
-        for (const channelId of channelIds) {
-          // Skip muted channels - they shouldn't contribute to notification counts
-          if (mutedChannelIds.includes(channelId)) {
-            continue;
-          }
-          const conversationId = `${spaceId}/${channelId}`;
+        // Muted channels shouldn't contribute to notification counts
+        const unmutedChannelIds = channelIds.filter(
+          (channelId) => !mutedChannelIds.includes(channelId)
+        );
 
-          // Get conversation to find last read timestamp
-          const { conversation } = await messageDB.getConversation({
-            conversationId,
-          });
+        // One readonly transaction for every channel's read state and unread
+        // mention candidates (capped at what we need for display)
+        const candidates = await messageDB.getSpaceUnreadCandidates({
+          spaceId,
+          channelIds: unmutedChannelIds,
+          kind: 'mentions',
+          limitPerChannel: DISPLAY_THRESHOLD,
+        });
 
-          const lastReadTimestamp = conversation?.lastReadTimestamp || 0;
-
-          // Fetch thread read times for this channel
-          const threadReadTimes = await messageDB.getThreadReadTimesForChannel({
-            spaceId,
-            channelId,
-          });
-
-          // Use optimized database query to get only unread messages with mentions
-          // This is much faster than fetching all 10k messages
-          const messages = await messageDB.getUnreadMentions({
-            spaceId,
-            channelId,
-            afterTimestamp: lastReadTimestamp,
-            limit: DISPLAY_THRESHOLD, // Only fetch what we need for display
-          });
-
+        for (const { channelId, threadReadTimes, messages } of candidates) {
           // Count mentions with per-message early exit
           let channelMentionCount = 0;
           for (const message of messages) {

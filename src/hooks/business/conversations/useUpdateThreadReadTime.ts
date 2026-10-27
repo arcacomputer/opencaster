@@ -40,9 +40,9 @@ export function useUpdateThreadReadTime({ spaceId }: UseUpdateThreadReadTimeProp
     onSuccess: () => {
       // Invalidate all notification caches (same set as useUpdateReadTime)
       queryClient.invalidateQueries({ queryKey: ['mention-counts', 'channel', spaceId] });
-      queryClient.invalidateQueries({ queryKey: ['mention-counts', 'space'] });
+      queryClient.invalidateQueries({ queryKey: ['mention-counts', 'space', spaceId] });
       queryClient.invalidateQueries({ queryKey: ['reply-counts', 'channel', spaceId] });
-      queryClient.invalidateQueries({ queryKey: ['reply-counts', 'space'] });
+      queryClient.invalidateQueries({ queryKey: ['reply-counts', 'space', spaceId] });
       queryClient.invalidateQueries({ queryKey: ['mention-notifications', spaceId] });
       queryClient.invalidateQueries({ queryKey: ['reply-notifications', spaceId] });
       queryClient.invalidateQueries({ queryKey: ['unread-counts', 'channel', spaceId] });

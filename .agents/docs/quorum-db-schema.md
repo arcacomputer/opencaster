@@ -3,7 +3,7 @@ type: doc
 title: 'IndexedDB Schema Reference: `quorum_db`'
 status: done
 created: 2026-01-09T00:00:00.000Z
-updated: 2026-07-20T00:00:00.000Z
+updated: 2026-10-27T00:00:00.000Z
 ---
 
 # IndexedDB Schema Reference: `quorum_db`
@@ -15,7 +15,7 @@ Quick reference for debugging and creating console snippets.
 | Property | Value |
 |----------|-------|
 | **Database Name** | `quorum_db` |
-| **Current Version** | 14 |
+| **Current Version** | 17 |
 | **Version Constant** | `src/db/dbVersion.ts` (`QUORUM_DB_VERSION`) |
 | **Schema Location** | `src/db/messages.ts` |
 
@@ -47,7 +47,7 @@ Quick reference for debugging and creating console snippets.
 
 | Store | Key Path | Indexes |
 |-------|----------|---------|
-| **messages** | `messageId` | `by_conversation_time`, `by_channel_pinned`, `by_thread` |
+| **messages** | `messageId` | `by_conversation_time`, `by_channel_pinned`, `by_thread`, `by_conversation_mentions`, `by_conversation_reply_author` |
 | **conversations** | `[conversationId]` | `by_type_time` |
 | **encryption_states** | `[conversationId, inboxId]` | — |
 | **conversation_users** | `address` | `by_conversation` |
@@ -82,6 +82,8 @@ Quick reference for debugging and creating console snippets.
 - `by_conversation_time` → `[spaceId, channelId, createdDate]`
 - `by_channel_pinned` → `[spaceId, channelId, isPinned, pinnedAt]`
 - `by_thread` → `[spaceId, channelId, threadId, createdDate]`
+- `by_conversation_mentions` → `[spaceId, channelId, createdDate, messageId, mentions.memberIds]` (sparse: only messages with `mentions`; feeds the unread mention badges)
+- `by_conversation_reply_author` → `[spaceId, channelId, replyMetadata.parentAuthor, createdDate]` (sparse: only replies; feeds the unread reply badges)
 
 ```typescript
 {
@@ -734,6 +736,7 @@ for (const s of stores) console.log(s, await countStore(s));
 | 14 | Added: space_member_devices store (per-device space signing keys — durable multi-device) |
 | 15 | Added: departed_spaces store (Spaces the user left or was removed from — stops a backup restore re-joining them) |
 | 16 | Added: deleted_conversations store (chats the user deleted — stops a backup restore resurrecting them) |
+| 17 | Added: sparse `by_conversation_mentions` and `by_conversation_reply_author` indexes on messages (unread mention/reply badges read candidates instead of walking every unread message) |
 
 **When you bump this:** update `QUORUM_DB_VERSION` in `src/db/dbVersion.ts` (the
 only place the number lives), add the row above, and classify any new store in
@@ -742,4 +745,10 @@ only place the number lives), add the row above, and classify any new store in
 
 ---
 
-*Last updated: 2026-08-09*
+*Last updated: 2026-10-27*
+
+The v17 upgrade fills an omitted or null `mentions.memberIds` with an empty
+array on existing mention-bearing rows before the upgrade commits. Message
+saves, updates, and backup imports apply the same normalization so historical
+`@everyone` and role-only mentions remain in the sparse index. This leaves
+message content, IDs, and signatures unchanged.

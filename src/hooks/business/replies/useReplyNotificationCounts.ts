@@ -68,38 +68,22 @@ export function useReplyNotificationCounts({
         // Get muted channels to exclude from counts
         const mutedChannelIds = getMutedChannelsForSpace(spaceId, config?.mutedChannels);
 
-        // Process each channel (excluding muted ones)
-        for (const channelId of channelIds) {
-          // Skip muted channels - they shouldn't contribute to notification counts
-          if (mutedChannelIds.includes(channelId)) {
-            continue;
-          }
+        // Muted channels shouldn't contribute to notification counts
+        const unmutedChannelIds = channelIds.filter(
+          (channelId) => !mutedChannelIds.includes(channelId)
+        );
 
-          const conversationId = `${spaceId}/${channelId}`;
+        // One readonly transaction for every channel's read state and unread
+        // replies (capped at what we need for display)
+        const candidates = await messageDB.getSpaceUnreadCandidates({
+          spaceId,
+          channelIds: unmutedChannelIds,
+          userAddress,
+          kind: 'replies',
+          limitPerChannel: DISPLAY_THRESHOLD,
+        });
 
-          // Get conversation to find last read timestamp
-          const { conversation } = await messageDB.getConversation({
-            conversationId,
-          });
-
-          const lastReadTimestamp = conversation?.lastReadTimestamp || 0;
-
-          // Fetch thread read times for this channel
-          const threadReadTimes = await messageDB.getThreadReadTimesForChannel({
-            spaceId,
-            channelId,
-          });
-
-          // Use optimized database query to get only unread replies
-          // This is much faster than fetching all messages
-          const messages = await messageDB.getUnreadReplies({
-            spaceId,
-            channelId,
-            userAddress,
-            afterTimestamp: lastReadTimestamp,
-            limit: DISPLAY_THRESHOLD, // Only fetch what we need for display
-          });
-
+        for (const { channelId, threadReadTimes, messages } of candidates) {
           // Count replies, excluding those already read in threads
           let channelReplyCount = 0;
           for (const message of messages) {

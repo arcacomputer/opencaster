@@ -153,8 +153,8 @@ export function useSpaceContextMenu(
       await messageDB.bulkSaveThreadReadTimes(threadEntries);
     }
 
-    queryClient.invalidateQueries({ queryKey: ['mention-counts', 'space'] });
-    queryClient.invalidateQueries({ queryKey: ['reply-counts', 'space'] });
+    queryClient.invalidateQueries({ queryKey: ['mention-counts', 'space', spaceId] });
+    queryClient.invalidateQueries({ queryKey: ['reply-counts', 'space', spaceId] });
     queryClient.invalidateQueries({ queryKey: ['unread-counts', 'space'] });
     queryClient.invalidateQueries({ queryKey: ['mention-counts', 'channel', spaceId] });
     queryClient.invalidateQueries({ queryKey: ['reply-counts', 'channel', spaceId] });

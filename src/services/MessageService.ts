@@ -3846,9 +3846,9 @@ export class MessageService {
       decryptedContent.mentions?.memberIds &&
       decryptedContent.mentions.memberIds.length > 0
     ) {
-      // Invalidate space-level mention counts (matches ['mention-counts', 'space', ...])
+      // Invalidate this space's mention count (matches ['mention-counts', 'space', spaceId, ...])
       await queryClient.invalidateQueries({
-        queryKey: ['mention-counts', 'space'],
+        queryKey: ['mention-counts', 'space', spaceId],
       });
       // Invalidate channel-level mention counts (matches ['mention-counts', 'channel', spaceId, ...])
       await queryClient.invalidateQueries({
@@ -3869,16 +3869,18 @@ export class MessageService {
       });
     }
 
-    // Invalidate reply counts when a reply to any user's message arrives
-    // This ensures the notification bubble updates when someone replies to your message
-    if (decryptedContent.replyMetadata?.parentAuthor) {
-      // Invalidate space-level reply counts (matches ['reply-counts', 'space', ...])
+    // Invalidate reply counts when a reply arrives. Count keys carry the
+    // viewer's address after spaceId, so putting parentAuthor in that slot
+    // only matches when the reply is to the current user.
+    const parentAuthor = decryptedContent.replyMetadata?.parentAuthor;
+    if (parentAuthor) {
+      // Matches ['reply-counts', 'space', spaceId, userAddress]
       await queryClient.invalidateQueries({
-        queryKey: ['reply-counts', 'space'],
+        queryKey: ['reply-counts', 'space', spaceId, parentAuthor],
       });
-      // Invalidate channel-level reply counts (matches ['reply-counts', 'channel', spaceId, ...])
+      // Matches ['reply-counts', 'channel', spaceId, userAddress, ...channelIds]
       await queryClient.invalidateQueries({
-        queryKey: ['reply-counts', 'channel', spaceId],
+        queryKey: ['reply-counts', 'channel', spaceId, parentAuthor],
       });
       // Per-space AND global panels (bare prefix matches both).
       await queryClient.invalidateQueries({

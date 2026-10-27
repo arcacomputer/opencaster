@@ -45,26 +45,20 @@ export async function fetchSpaceMentions(
 
   const mutedChannelIds = getMutedChannelsForSpace(space.spaceId, config?.mutedChannels);
   const allChannels = space.groups.flatMap((g) => g.channels);
-  const channelIds = allChannels.map((c) => c.channelId);
+  const channelNames = new Map(allChannels.map((c) => [c.channelId, c.channelName]));
+  const channelIds = allChannels
+    .map((c) => c.channelId)
+    .filter((channelId) => !mutedChannelIds.includes(channelId));
   const out: MentionNotification[] = [];
 
-  for (const channelId of channelIds) {
-    if (mutedChannelIds.includes(channelId)) continue;
-    const conversationId = `${space.spaceId}/${channelId}`;
-    const { conversation } = await messageDB.getConversation({ conversationId });
-    const lastReadTimestamp = conversation?.lastReadTimestamp || 0;
-    const threadReadTimes = await messageDB.getThreadReadTimesForChannel({
-      spaceId: space.spaceId,
-      channelId,
-    });
-    const messages = await messageDB.getUnreadMentions({
-      spaceId: space.spaceId,
-      channelId,
-      afterTimestamp: lastReadTimestamp,
-      limit: perChannelLimit,
-    });
-    const channel = allChannels.find((c) => c.channelId === channelId);
+  const candidates = await messageDB.getSpaceUnreadCandidates({
+    spaceId: space.spaceId,
+    channelIds,
+    kind: 'mentions',
+    limitPerChannel: perChannelLimit,
+  });
 
+  for (const { channelId, lastReadTimestamp, threadReadTimes, messages } of candidates) {
     const unread = messages.filter((message: Message) => {
       if (message.isThreadReply && message.threadId) {
         const trt = threadReadTimes[message.threadId];
@@ -84,7 +78,7 @@ export async function fetchSpaceMentions(
       out.push({
         message,
         channelId,
-        channelName: channel?.channelName || 'Unknown Channel',
+        channelName: channelNames.get(channelId) || 'Unknown Channel',
         mentionType: getMentionType(message, userAddress),
         spaceId: space.spaceId,
         spaceName: space.spaceName,
