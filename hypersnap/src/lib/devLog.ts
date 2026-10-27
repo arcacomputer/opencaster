@@ -31,6 +31,19 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'feed-stays-responsive-while-typing',
+    date: '2026-10-27',
+    title: 'Long feeds stay responsive while you type a search',
+    summary: 'Typing in the search box, dismissing a notification or opening a dialog no longer redraws every loaded cast, so the search box keeps up after you have scrolled through several pages.',
+    changes: [
+      'Keep the header and right column search boxes in sync without redrawing the feed on each keystroke.',
+      'Redraw a cast only when the cast, your session, its bookmark state or your content controls change, and reuse its parsed mentions and links.',
+      'Check each loaded cast against your content controls once per change instead of on every redraw. Filtering, bookmarks, search results and cast text are unchanged.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/28bd65a113838d296d64801761df147cb72f1577',
+    tag: 'Reliability',
+  },
+  {
     id: 'short-cast-links-show-matches-earlier',
     date: '2026-10-22',
     title: 'Short cast links show matches sooner',
