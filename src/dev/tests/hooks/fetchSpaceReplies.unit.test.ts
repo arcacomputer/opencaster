@@ -23,9 +23,14 @@ function makeReply() {
 
 function makeDB(over: any = {}) {
   return {
-    getConversation: vi.fn().mockResolvedValue({ conversation: { lastReadTimestamp: 0 } }),
-    getThreadReadTimesForChannel: vi.fn().mockResolvedValue({}),
-    getUnreadReplies: vi.fn().mockResolvedValue([makeReply()]),
+    getUnreadNotificationCandidates: vi.fn(async ({ channelIds }: { channelIds: string[] }) =>
+      new Map(
+        channelIds.map((id) => [
+          id,
+          { lastReadTimestamp: 0, threadReadTimes: {}, mentions: [], replies: [makeReply()] },
+        ]),
+      ),
+    ),
     ...over,
   } as any;
 }

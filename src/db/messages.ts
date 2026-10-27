@@ -199,6 +199,17 @@ export interface DeletedMessageRecord {
   deletedAt: number;
 }
 
+/** Per-channel result of MessageDB.getUnreadNotificationCandidates. */
+export interface UnreadNotificationCandidates {
+  lastReadTimestamp: number;
+  /** threadId -> lastReadTimestamp, as getThreadReadTimesForChannel returns. */
+  threadReadTimes: Record<string, number>;
+  /** Unread messages with a `mentions` field (caller filters by user/settings). */
+  mentions: Message[];
+  /** Unread messages replying to `userAddress`. */
+  replies: Message[];
+}
+
 export interface SearchResult {
   message: Message;
   score: number;
@@ -1274,6 +1285,32 @@ export class MessageDB {
         resolve({ conversation });
       };
       request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
+   * Batched getConversation: one readonly transaction for many ids, with all
+   * gets issued in parallel. Ids with no stored conversation are absent from
+   * the returned map.
+   */
+  async getConversationsByIds(
+    conversationIds: string[]
+  ): Promise<Map<string, Conversation>> {
+    const result = new Map<string, Conversation>();
+    if (conversationIds.length === 0) return result;
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction('conversations', 'readonly');
+      const store = transaction.objectStore('conversations');
+      for (const conversationId of conversationIds) {
+        const request = store.get([conversationId]);
+        request.onsuccess = () => {
+          if (request.result) result.set(conversationId, request.result);
+        };
+      }
+      transaction.oncomplete = () => resolve(result);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
     });
   }
 
@@ -3146,6 +3183,107 @@ export class MessageDB {
       });
 
       transaction.oncomplete = () => resolve(results);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+  }
+
+  /**
+   * Batched, single-pass equivalent of calling getConversation,
+   * getThreadReadTimesForChannel, getUnreadMentions and getUnreadReplies for
+   * every channel in `channelIds`. Everything runs in ONE readonly transaction
+   * with the per-channel requests issued in parallel, and each channel's unread
+   * range is walked once for both mentions and replies.
+   *
+   * Per channel, `mentions` / `replies` are exactly what getUnreadMentions /
+   * getUnreadReplies would return with `limit` = mentionLimit / replyLimit
+   * (a limit of 0 skips that kind; the walk stops once every requested kind is
+   * full). Callers still apply thread-read-time and mention-settings filters.
+   */
+  async getUnreadNotificationCandidates({
+    spaceId,
+    channelIds,
+    userAddress,
+    mentionLimit = 0,
+    replyLimit = 0,
+  }: {
+    spaceId: string;
+    channelIds: string[];
+    userAddress?: string;
+    mentionLimit?: number;
+    replyLimit?: number;
+  }): Promise<Map<string, UnreadNotificationCandidates>> {
+    const result = new Map<string, UnreadNotificationCandidates>();
+    if (channelIds.length === 0) return result;
+    await this.init();
+    const wantMentions = mentionLimit > 0;
+    const wantReplies = replyLimit > 0 && !!userAddress;
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(
+        ['conversations', 'thread_read_times', 'messages'],
+        'readonly'
+      );
+      const conversations = transaction.objectStore('conversations');
+      const threadReadTimesIndex = transaction
+        .objectStore('thread_read_times')
+        .index('by_channel');
+      const messagesIndex = transaction
+        .objectStore('messages')
+        .index('by_conversation_time');
+
+      for (const channelId of channelIds) {
+        const entry: UnreadNotificationCandidates = {
+          lastReadTimestamp: 0,
+          threadReadTimes: {},
+          mentions: [],
+          replies: [],
+        };
+        result.set(channelId, entry);
+
+        const threadsRequest = threadReadTimesIndex.getAll(
+          IDBKeyRange.only([spaceId, channelId])
+        );
+        threadsRequest.onsuccess = () => {
+          for (const t of threadsRequest.result) {
+            entry.threadReadTimes[t.threadId] = t.lastReadTimestamp;
+          }
+        };
+
+        const conversationRequest = conversations.get([`${spaceId}/${channelId}`]);
+        conversationRequest.onsuccess = () => {
+          const conversation = conversationRequest.result as Conversation | undefined;
+          entry.lastReadTimestamp = conversation?.lastReadTimestamp || 0;
+          if (!wantMentions && !wantReplies) return;
+
+          const range = IDBKeyRange.bound(
+            [spaceId, channelId, entry.lastReadTimestamp],
+            [spaceId, channelId, Number.MAX_VALUE],
+            true, // Exclude lastReadTimestamp itself
+            false
+          );
+          const cursorRequest = messagesIndex.openCursor(range, 'next');
+          cursorRequest.onsuccess = () => {
+            const cursor = cursorRequest.result;
+            if (!cursor) return;
+            const message = cursor.value as Message;
+            if (wantMentions && entry.mentions.length < mentionLimit && message.mentions) {
+              entry.mentions.push(message);
+            }
+            if (
+              wantReplies &&
+              entry.replies.length < replyLimit &&
+              message.replyMetadata?.parentAuthor === userAddress
+            ) {
+              entry.replies.push(message);
+            }
+            const mentionsFull = !wantMentions || entry.mentions.length >= mentionLimit;
+            const repliesFull = !wantReplies || entry.replies.length >= replyLimit;
+            if (!(mentionsFull && repliesFull)) cursor.continue();
+          };
+        };
+      }
+
+      transaction.oncomplete = () => resolve(result);
       transaction.onerror = () => reject(transaction.error);
       transaction.onabort = () => reject(transaction.error);
     });
