@@ -74,6 +74,30 @@ describe('bounded author-scoped cast links', () => {
       expect(snapshot.complete).toBe(false); expect(snapshot.continuation).toBeUndefined();
     }
   });
+  it('stops before the next history page when a verified progress match aborts the caller', async () => {
+    const receipt = historyReceipt(1, hash()); const tail = historyReceipt(2);
+    const hydration = deferred<Response>(); const hydrated = { ...cast(), text: 'Verified hydrated cast' };
+    const fetch = install([{ messages: [receipt, tail], nextPageToken: cursorFor(tail) }, { messages: [] }], url => {
+      expect(url.searchParams.get('identifier')).toBe(hash().slice(2));
+      return hydration.promise;
+    });
+    const controller = new AbortController();
+    const onProgress = vi.fn<(snapshot: CastAliasResult) => void>(snapshot => {
+      expect(snapshot).toEqual({ author, candidates: [hydrated], complete: false, scanned: 2 });
+      expect(fetch.mock.calls.filter(([path]) => path.includes('/castsByFid'))).toHaveLength(1);
+      controller.abort();
+    });
+    const pending = resolveCastAlias({ ...input, onProgress, signal: controller.signal });
+    const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+    expect(onProgress).not.toHaveBeenCalled();
+    hydration.resolve(json({ cast: hydrated }));
+    await rejected;
+    expect(controller.signal.aborted).toBe(true); expect(onProgress).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch.mock.calls.filter(([path]) => path.includes('/castsByFid'))).toHaveLength(1);
+    expect(fetch.mock.calls.filter(([path]) => path.includes('/cast?'))).toHaveLength(1);
+  });
   it('hydrates only after history for callers without progress', async () => {
     const receipt = historyReceipt(1, hash()); const laterPage = deferred<Response>();
     const fetch = install([{ messages: [receipt], nextPageToken: cursorFor(receipt) }, laterPage.promise]);

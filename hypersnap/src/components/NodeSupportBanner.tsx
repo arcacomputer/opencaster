@@ -24,7 +24,7 @@ export default function NodeSupportBanner({ visible }: { visible: boolean }) {
       <h2 id={titleId}>Help us run our own Hypersnap node</h2>
       <p>Support our open-source work and help Arca Computer fund an independently operated node for Opencaster.</p>
       <div className="node-support__actions">
-        <a className="button button--secondary" href={NODE_SUPPORT_URL} target="_blank" rel="noopener noreferrer">Support the node <IconArrowUpRight size={16} aria-hidden="true" /><span className="node-support__sr-only"> (opens Stripe in a new tab)</span></a>
+        <a data-analytics="node-support-open" className="button button--secondary" href={NODE_SUPPORT_URL} target="_blank" rel="noopener noreferrer">Support the node <IconArrowUpRight size={16} aria-hidden="true" /><span className="node-support__sr-only"> (opens Stripe in a new tab)</span></a>
         <small>Optional one-time support · Processed by Stripe</small>
       </div>
     </div>

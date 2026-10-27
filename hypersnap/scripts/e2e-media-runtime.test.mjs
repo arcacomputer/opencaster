@@ -111,7 +111,10 @@ describe('isolated media harness URL transformations', () => {
     expect(plugin.transform(app, '/external/node_modules/package/src/App.tsx')).toBeUndefined();
     const workerPath = fileURLToPath(new URL('../worker/index.ts', import.meta.url));
     const worker = plugin.transform(await fs.readFile(workerPath, 'utf8'), workerPath);
-    expect(worker).toContain("const UPSTREAM = 'https://haatz.quilibrium.com'");
+    const upstreamPath = fileURLToPath(new URL('../worker/upstream.ts', import.meta.url));
+    const upstream = plugin.transform(await fs.readFile(upstreamPath, 'utf8'), upstreamPath);
+    expect(upstream).toContain("const PUBLIC_ORIGIN = 'https://haatz.quilibrium.com'");
+    expect(worker).toContain('fetchUpstream');
     expect(worker).toContain(`const CANONICAL_ORIGIN = '${origin}'`);
     expect(worker).toContain("const LEGACY_HOST = 'quorum.arca.computer'");
     for (const name of ['APP_ORIGIN', 'LEGACY_APP_ORIGIN', 'WORKER_ORIGIN']) expect(publicOrigin(rewrittenOrigins, name)).toBe(origin);

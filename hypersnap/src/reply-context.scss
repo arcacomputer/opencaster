@@ -1,0 +1,17 @@
+.cast-reply-context { margin: .3rem 0 .6rem; min-width: 0; color: var(--color-text-subtle); font-size: .75rem; line-height: 1.45; }
+.cast-reply-context__label { display: flex; align-items: center; gap: .35rem; overflow-wrap: anywhere; }
+.cast-reply-context__label a { color: var(--color-link); }
+.cast-reply-context__open { display: inline-flex; align-items: center; gap: .2rem; margin-top: .2rem; color: var(--color-text-subtle); }
+.cast-reply-context__preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; margin: .35rem 0 0 .2rem; padding: .15rem .65rem; border-left: .125rem solid var(--surface-4); color: var(--color-text-subtle); }
+.cast-reply-context__preview:hover { border-color: var(--accent); color: var(--color-text-strong); text-decoration: none; }
+.cast-reply-context--filtered { padding: .5rem .65rem; border-left: .125rem solid var(--surface-4); }
+.cast-reply-context--filtered p { margin: 0; }
+.cast-reply-context--filtered .button { min-height: 2rem; padding: .35rem 0; font-size: inherit; }
+.conversation-context__notice { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; margin: 0; padding: .6rem 1rem; color: var(--color-text-subtle); font-size: .75rem; line-height: 1.5; }
+.conversation-context__notice p { margin: 0; }
+.conversation-context__notice .button { min-height: 2rem; padding: .25rem .5rem; font-size: inherit; }
+.conversation-context__ancestor { position: relative; }
+.conversation-context__ancestor::after { content: ''; position: absolute; top: 3.7rem; bottom: -.5rem; left: 2.3rem; width: .125rem; background: var(--surface-4); pointer-events: none; }
+.conversation-context__ancestor .cast { border-bottom: 0; padding-bottom: .9rem; }
+.conversation-context__ancestor .filtered-cast { margin-left: 1rem; }
+@media (max-width: 700px) { .conversation-context__ancestor::after { left: 1.95rem; top: 3.4rem; } }

@@ -50,5 +50,7 @@ describe('feed rendering while typing a search', () => {
     expect(header.value).toBe(query); expect(rail.value).toBe(query);
     await act(async () => { rail.form!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
     expect(location.pathname + location.search).toBe('/search?q=open+social');
-  });
+  // Real DOM work for 100 cards plus lazy route loading exceeds five seconds
+  // on shared development hosts; keep this budget local to the integration case.
+  }, 15_000);
 });

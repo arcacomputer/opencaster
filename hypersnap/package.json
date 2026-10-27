@@ -9,6 +9,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "check:devlog": "node scripts/check-devlog.mjs",
+    "analytics:report": "node scripts/analytics-report.mjs",
     "verify": "yarn test && yarn build && yarn signer:build",
     "signer:build": "node scripts/build-signer.mjs",
     "signer:dev": "yarn signer:build && electron dist-signer/main.cjs",
@@ -17,6 +18,7 @@
   "dependencies": {
     "@noble/curves": "2.0.1",
     "@noble/hashes": "1.8.0",
+    "@resvg/resvg-wasm": "2.6.2",
     "@scure/bip32": "1.7.0",
     "@scure/bip39": "1.6.0",
     "@tabler/icons-react": "^3.40.0",

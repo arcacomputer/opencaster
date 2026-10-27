@@ -14,6 +14,51 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('aggregate observability routing', () => {
+  it('handles first-party analytics with the normal security headers and no upstream request', async () => {
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+    const writeDataPoint = vi.fn(); const assets = vi.fn();
+    const response = await handleRequest(new Request(`${BASE}/_analytics/events`, {
+      method: 'POST', headers: { Origin: BASE, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events: [{ kind: 'click', page: 'profile', name: 'profile-open' }] }),
+    }), { ...env, ANALYTICS: { writeDataPoint }, ASSETS: { fetch: assets } });
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(response.headers.get('Content-Security-Policy')).toContain("script-src 'self';");
+    expect(response.headers.get('Referrer-Policy')).toBe('no-referrer');
+    expect(writeDataPoint).toHaveBeenCalledTimes(1);
+    expect(writeDataPoint.mock.calls[0][0].blobs.slice(0, 3)).toEqual(['click', 'profile', 'profile-open']);
+    expect(fetch).not.toHaveBeenCalled(); expect(assets).not.toHaveBeenCalled();
+  });
+
+  it('keeps request metrics to route families and status classes, including failed gateway reads', async () => {
+    const writeDataPoint = vi.fn();
+    const analytics = { ...env, ANALYTICS: { writeDataPoint } };
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('isolated failure')));
+    await handleRequest(new Request(`${BASE}/profile/12345?private=not-telemetry`), analytics);
+    await handleRequest(new Request(`${BASE}/api/v1/info`), analytics);
+    await handleRequest(new Request(`${BASE}/assets/opaque-build.js`), analytics);
+    expect(writeDataPoint.mock.calls.map(([point]) => point.blobs.slice(0, 3))).toEqual([
+      ['request', 'page', '2xx'], ['request', 'api', '5xx'], ['request', 'asset', '2xx'],
+    ]);
+    expect(JSON.stringify(writeDataPoint.mock.calls)).not.toMatch(/12345|private|not-telemetry|opaque-build|isolated failure|https:/);
+    await handleRequest(new Request(`${LEGACY}/profile/12345`), analytics);
+    await handleRequest(new Request(`${BASE}/`, { headers: { DNT: '1' } }), analytics);
+    expect(writeDataPoint).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not let a failed analytics binding change a successful page response', async () => {
+    const response = await handleRequest(new Request(BASE), { ...env, ANALYTICS: { writeDataPoint: () => { throw new Error('offline'); } } });
+    expect(response.status).toBe(200);
+  });
+
+  it.each(['/alice.eth', '/profile/alice.base.eth', '/alice.json'])('counts dotted profile routes as pages: %s', async path => {
+    const writeDataPoint = vi.fn();
+    await handleRequest(new Request(`${BASE}${path}`), { ...env, ANALYTICS: { writeDataPoint } });
+    expect(writeDataPoint.mock.calls[0][0].blobs.slice(0, 3)).toEqual(['request', 'page', '2xx']);
+  });
+});
+
 describe('the Opencaster domain migration', () => {
   it.each([
     '/', '/profile/1234?tab=likes', '/gandhionchain/0xcfd6d3c3?utm_source=share',
@@ -580,20 +625,20 @@ describe('edge caching of global reads', () => {
   }
 
   it.each([
-    '/v1/info',
-    '/v2/farcaster/feed/trending?limit=25&time_window=24h',
-    '/v2/farcaster/channel/trending?limit=20',
-    '/v2/farcaster/channel/all?limit=50',
-    '/v2/farcaster/channel?id=art&type=id',
-  ])('serves repeated public reads from the edge without contacting the node again: %s', async path => {
+    ['/v1/info', { version: 'global' }, 15],
+    ['/v2/farcaster/feed/trending?limit=25&time_window=24h', { casts: [] }, 30],
+    ['/v2/farcaster/channel/trending?limit=20', { channels: [] }, 60],
+    ['/v2/farcaster/channel/all?limit=50', { channels: [] }, 60],
+    ['/v2/farcaster/channel?id=art&type=id', { channel: { id: 'art' } }, 60],
+  ] as const)('serves repeated public reads from the edge without contacting the node again: %s', async (path, value, ttl) => {
     const { store, ctx, settle } = edge();
-    const fetch = vi.fn().mockResolvedValue(jsonResponse({ value: 'global' })); vi.stubGlobal('fetch', fetch);
-    const first = await handleRequest(new Request(`${BASE}/api${path}`, { headers: { Cookie: 'a=b' } }), env, ctx);
+    const fetch = vi.fn().mockResolvedValue(jsonResponse(value)); vi.stubGlobal('fetch', fetch);
+    const first = await handleRequest(new Request(`${BASE}/api${path}`), env, ctx);
     await settle();
-    expect(first.status).toBe(200); expect(await first.json()).toEqual({ value: 'global' }); expect(first.headers.get('Cache-Control')).toBe('no-store');
-    expect(store.get(`${BASE}/api${path}`)?.headers.get('Cache-Control')).toMatch(/^public, s-maxage=(15|30|60)$/);
+    expect(first.status).toBe(200); expect(await first.json()).toEqual(value); expect(first.headers.get('Cache-Control')).toBe('no-store');
+    expect([...store.values()][0]?.headers.get('Cache-Control')).toBe(`public, max-age=${ttl}`);
     const second = await handleRequest(new Request(`${BASE}/api${path}`), env, ctx);
-    expect(second.status).toBe(200); expect(await second.json()).toEqual({ value: 'global' });
+    expect(second.status).toBe(200); expect(await second.json()).toEqual(value);
     expect(second.headers.get('Cache-Control')).toBe('no-store'); expect(second.headers.get('Content-Security-Policy')).toBeTruthy();
     expect(fetch).toHaveBeenCalledTimes(1);
   });

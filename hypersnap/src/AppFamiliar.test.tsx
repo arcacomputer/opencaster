@@ -29,9 +29,15 @@ function session(fid: number, key: string): WalletSession {
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(yes => { resolve = yes; }); return { promise, resolve }; }
 let container: HTMLDivElement; let root: Root;
+let feedIntersection: IntersectionObserverCallback;
+let feedSentinel: Element;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.clearAllMocks(); localStorage.clear(); localStorage.setItem('opencaster.explore', '1'); wallet.next = null; history.replaceState(null, '', '/');
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+  vi.stubGlobal('IntersectionObserver', class {
+    constructor(callback: IntersectionObserverCallback) { feedIntersection = callback; }
+    observe(target: Element) { feedSentinel = target; } disconnect() {}
+  });
   vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function (this: HTMLDialogElement) { this.open = true; });
   vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function (this: HTMLDialogElement) { this.open = false; });
   vi.mocked(getFeed).mockResolvedValue({ casts: [first, second], next: {} });
@@ -189,7 +195,7 @@ describe('isolated familiar-client App integration', () => {
     const select = container.querySelector<HTMLSelectElement>('select[aria-label="Trending time window"]')!;
     expect(select.value).toBe('24h');
     expect(getFeed).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'trending', timeWindow: '24h' }));
-    await click(button('More conversations'));
+    await act(async () => { feedIntersection([{ target: feedSentinel, isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver); });
     const oldRequest = vi.mocked(getFeed).mock.calls.find(([value]) => value.cursor === 'old-trending-page')![0];
     await act(async () => { select.value = '7d'; select.dispatchEvent(new Event('change', { bubbles: true })); });
     expect(oldRequest.signal?.aborted).toBe(true);
