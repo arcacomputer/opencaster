@@ -1,3 +1,43 @@
+# Standalone Opencaster repository · 2026-10-27
+
+[PR #18](https://github.com/arcacomputer/opencaster/pull/18) merged the repository
+cleanup as `5921e84402de2f79d2b66569c6131f71d2269fac`, preserving implementation
+`9f82e33f98720d07e04da7440087943df76407d8` and the complete prior Git history.
+The current tree has 241 tracked files after removing 2,014 inherited Quorum
+messenger files. Opencaster's runtime source, assets, dependency manifest and
+lockfile, deployment configuration, offline signer source and root license are
+unchanged from pre-cleanup `c180f589827c5770b027d61ec3c285730cd79f8b`. Root Yarn
+commands now forward to the standalone application; CI and current guidance
+cover Opencaster and its supporting services. Earlier names and verification
+records remain historical, and upstream attribution and licenses are retained.
+Ignored private records and local outputs were preserved.
+
+Root `VITEST_MAX_FORKS=2 VITEST_MIN_FORKS=1 yarn verify` passed **1,853 tests
+across 73 files**, browser/Worker/dashboard typechecks, production build and
+offline signer build. The same full gate passed from `hypersnap/` in an isolated
+copy with no inherited root source or dependencies; the existing standalone
+dependency installation was reused. Push, PR and merged-main application CI
+also passed. The dev-log guard passed against the pre-cleanup main commit with
+zero shipped application files changed; this source-tree and tooling cleanup
+requires no application milestone or website deployment. Existing bundle-size
+and WalletConnect annotation advisories remain.
+
+CodeQL Actions and JavaScript/TypeScript analyses passed on the cleanup and its
+merge. The initially inherited Python analysis processed zero modules and
+failed because this cleanup removes all Python source. The default setup now
+selects Actions and JavaScript/TypeScript while retaining its existing default
+query suite, remote threat model, standard runner and weekly schedule.
+
+After the separately approved GitHub detachment, the repository API reports
+`fork: false`, with no parent or source repository. Repository ID `1425238416`,
+existing pull requests and its star were retained. Git history and commit URLs
+remain available. No website deployment, real Hypersnap account action or
+production write test was performed for this repository cleanup.
+
+Local backups and metadata exports are in `/tmp/opencaster-cleanup-backup`.
+Gate logs: `/tmp/opencaster-cleanup-latest-root-verify.log` and
+`/tmp/opencaster-cleanup-latest-isolated-verify.log`.
+
 # Performance release with current production features · 2026-10-27
 
 Published release source `b2663de730bbcb58c2afbb6c89df3f2969913642` combines main's eight performance improvements with the actual deployed application and the completed browsing-maintenance work. Implementation merge `0bcfb58e8185cef3a4bbbf803673bce6098408dc` preserves both histories; the separate release-note commit links that implementation and its recorded author date. [PR #15](https://github.com/arcacomputer/opencaster/pull/15) merged as `ee83f994bbed7009c44f93fe354038b57a0c30b1`, preserving the merge commits. Its [standalone and retained verification CI](https://github.com/arcacomputer/opencaster/actions/runs/40478098310) and [additional branch CI](https://github.com/arcacomputer/opencaster/actions/runs/40478106055) passed on the exact published candidate; the retained gate’s own coverage distinctions remain separate from these standalone results. The public history retains all previous milestones and now contains **57** entries.
