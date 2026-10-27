@@ -345,14 +345,13 @@ describe('author-scoped compatible cast URLs', () => {
     const background = '/search?q=cosmos';
     vi.mocked(searchCasts).mockResolvedValue({ casts: [source], next: {} });
     vi.mocked(resolveCastAlias).mockReturnValue(pending.promise);
-    let lookupSignal: AbortSignal | undefined;
     vi.mocked(getConversation).mockImplementation(async () => {
       expect(lookupSignal?.aborted).toBe(true);
       return { cast: otherCast, replies: [{ cast: reply, replies: [] }] };
     });
     await start(background);
     await click(container.querySelector(`main .cast__text a[href="${alias}"]`)!);
-    const request = vi.mocked(resolveCastAlias).mock.calls[0][0]; lookupSignal = request.signal;
+    const request = vi.mocked(resolveCastAlias).mock.calls[0][0]; const lookupSignal = request.signal;
     expect(location.pathname).toBe(alias); expect(thread().textContent).toContain('Loading cast');
     expect(getConversation).not.toHaveBeenCalled();
     await act(async () => request.onProgress?.(result({ complete: false, scanned: 250 })));

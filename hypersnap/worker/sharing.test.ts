@@ -119,7 +119,7 @@ describe('canonical public sharing URLs', () => {
   });
 
   it('escapes HTML attribute separators while preserving the intended search URL', async () => {
-    const query = '\"><script>alert(1)</script>& #next';
+    const query = '"><script>alert(1)</script>& #next';
     const url = new URL('/search', ORIGIN);
     url.searchParams.set('q', query);
     url.searchParams.set('type', 'users');

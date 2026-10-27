@@ -66,13 +66,13 @@ describe('public sharing card SVG layout', () => {
   });
 
   it('escapes user text and removes invalid XML code points without damaging Unicode', () => {
-    const hostile = '\"><script>alert(1)</script>&\u0000\u0001\ufffe\ud800';
+    const hostile = '"><script>alert(1)</script>&\u0000\u0001\ufffe\ud800';
     const svg = buildShareSvg({ ...cast, profile: { ...profile, displayName: hostile, username: hostile }, text: hostile });
     expect(svg).not.toContain('<script>');
     expect(svg).toContain('&lt;script&gt;');
     expect(svg).toContain('&amp;');
     expect(svg).toContain('&quot;');
-    expect(svg).not.toMatch(/[\u0000\u0001\ufffe\ud800]/);
+    for (const character of ['\u0000', '\u0001', '\ufffe', '\ud800']) expect(svg).not.toContain(character);
     expect(svg).not.toContain('onload=');
   });
 
@@ -236,14 +236,14 @@ describe('public sharing card SVG layout', () => {
   });
 
   it('escapes every channel and feed display field and strips invalid XML text', () => {
-    const hostile = '\"><script>alert(1)</script>&\u0000\u0001\ufffe\ud800';
+    const hostile = '"><script>alert(1)</script>&\u0000\u0001\ufffe\ud800';
     const channelSvg = buildShareSvg({ kind: 'channel', channel: { id: hostile, name: hostile, description: hostile } });
     const feedSvg = buildShareSvg({ ...feed, feed: { ...feed.feed, name: hostile, sources: [hostile], rules: [hostile] } });
     for (const svg of [channelSvg, feedSvg]) {
       expect(svg).not.toContain('<script>');
       expect(svg).toContain('&lt;script&gt;');
       expect(svg).toContain('&amp;');
-      expect(svg).not.toMatch(/[\u0000\u0001\ufffe\ud800]/);
+      for (const character of ['\u0000', '\u0001', '\ufffe', '\ud800']) expect(svg).not.toContain(character);
       expect(svg).not.toMatch(/<foreignObject|<filter|<image|onload=/);
     }
   });

@@ -67,7 +67,7 @@ describe('individual public metadata', () => {
   });
 
   it('keeps XML-sensitive names, quotes and replacement tokens inside single escaped tags', () => {
-    const data: ShareData = { kind: 'profile', profile: { fid: 42, username: 'alice', displayName: '\"><img src=x> $&', bio: '" onload="danger & $`', followers: 0 } };
+    const data: ShareData = { kind: 'profile', profile: { fid: 42, username: 'alice', displayName: '"><img src=x> $&', bio: '" onload="danger & $`', followers: 0 } };
     const text = individualMetadata(html, data);
     expect(text).not.toContain('<img src=x>');
     expect(meta(text, 'og:title')).toContain('&quot;&gt;&lt;img src=x&gt; $&amp;');

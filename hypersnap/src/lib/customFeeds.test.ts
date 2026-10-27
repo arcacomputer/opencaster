@@ -28,6 +28,24 @@ describe('public custom feed recipes', () => {
     { ...definition(), filters: { ...definition().filters, hideReplies: 'true' } },
   ])('rejects malformed or out-of-budget definitions: %#', input => { expect(normalizeFeedDefinition(input)).toBeUndefined(); });
 
+  it('rejects every ASCII control character in names and phrases before trimming', () => {
+    const codes = [...Array.from({ length: 32 }, (_, code) => code), 127];
+    for (const code of codes) {
+      const character = String.fromCharCode(code);
+      for (const text of [`${character}label`, `label${character}`, `left${character}right`]) {
+        expect(normalizeFeedDefinition(definition({ name: text }))).toBeUndefined();
+        expect(normalizeFeedDefinition(definition({ filters: { ...definition().filters, includeWords: [text] } }))).toBeUndefined();
+        expect(normalizeFeedDefinition(definition({ filters: { ...definition().filters, excludeWords: [text] } }))).toBeUndefined();
+      }
+    }
+  });
+
+  it('accepts printable ASCII boundaries and Unicode outside the ASCII control range', () => {
+    const text = ' ~\u0080\u009fCafé 東京 🙂 ';
+    const feed = definition({ name: text, filters: { includeWords: [text], excludeWords: [text], hideReplies: false, imagesOnly: false } });
+    expect(normalizeFeedDefinition(feed)).toEqual(definition({ name: text.trim(), filters: { ...feed.filters, includeWords: [text.trim()], excludeWords: [text.trim()] } }));
+  });
+
   it('round-trips Unicode recipes as bounded canonical UTF-8 base64url and shares only allowed fields', () => {
     const feed = definition({ name: 'Café 東京 🙂', sources: [{ kind: 'following', fid: 99 }, { kind: 'channel', channel: 'art' }], filters: { includeWords: ['日本語', 'café'], excludeWords: ['spam'], hideReplies: true, imagesOnly: false } });
     const token = encodeFeed({ ...feed, privateKey: 'secret' } as FeedDefinition);

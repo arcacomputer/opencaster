@@ -80,6 +80,19 @@ describe('public customizable feed controls', () => {
     await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
     expect(open).toHaveBeenCalledExactlyOnceWith(43);
   });
+  it('preserves public following lookups across rerenders and cancels them when the viewed FID changes', async () => {
+    const pending = deferred<User>(); vi.mocked(getUser).mockReturnValueOnce(pending.promise); const open = vi.fn();
+    await render(<PublicFollowingPicker fid={7} onOpen={open} />); await fill('Account username or FID', 'alice');
+    await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    const signal = vi.mocked(getUser).mock.calls[0][1]!;
+    await render(<PublicFollowingPicker fid={7} onOpen={open} />);
+    expect(field('Account username or FID').value).toBe('alice'); expect(signal.aborted).toBe(false);
+    expect(button('Looking up…').disabled).toBe(true);
+    await render(<PublicFollowingPicker fid={8} onOpen={open} />);
+    expect(field('Account username or FID').value).toBe(''); expect(signal.aborted).toBe(true);
+    expect(button('Browse following').disabled).toBe(false);
+    await act(async () => pending.resolve(user)); expect(open).not.toHaveBeenCalled();
+  });
   it('cancels pending source lookup when the editor closes and rejects a mismatched FID', async () => {
     const pending = deferred<User>(); vi.mocked(getUser).mockReturnValueOnce(pending.promise); const props = view();
     await render(<FeedsView {...props} />); await click('Create feed'); await fill('Source type', 'following'); await fill('Account username or FID', '42'); await click('Add source');
