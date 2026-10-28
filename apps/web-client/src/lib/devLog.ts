@@ -19,6 +19,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'quoted-cast-read-reuse',
+    date: '2026-10-28',
+    title: 'Quoted casts share public reads',
+    summary: 'Quoted previews now reuse the bounded parent-cast reader, avoiding repeated reads while preserving loading and unavailable states.',
+    changes: [
+      'Read quoted casts through the shared per-view parent reader, which deduplicates simultaneous requests and caps concurrency.',
+      'Keep a standalone fallback when the reader provider is absent; previews still cancel only their own read subscription when unmounted.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/548d56a1b6f05c52975bf7db01af45894817275a',
+    tag: 'Reliability',
+  },
+  {
     id: 'woff2-web-fonts',
     date: '2026-10-28',
     title: 'Web fonts download faster',

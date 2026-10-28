@@ -227,16 +227,17 @@ function ReplyContext({ cast, parent, preview = true, getCastPath, onProfile, on
   </div>;
 }
 function QuotedCast({ target, onThread, getCastPath }: { getCastPath(cast: Cast): string; target: { fid: number; hash: string }; onThread(cast: Cast): void }) {
+  const readParentCast = useContext(ParentCastRead);
   const controls = useContext(ContentControls);
   const [cast, setCast] = useState<Cast | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   useEffect(() => {
     const controller = new AbortController(); setCast(null); setUnavailable(false);
-    getCast(target.hash, controller.signal).then(value => {
+    readParentCast(target.hash, controller.signal).then(value => {
       if (!controller.signal.aborted) { if (value.author.fid === target.fid) setCast(value); else setUnavailable(true); }
     }).catch(() => { if (!controller.signal.aborted) setUnavailable(true); });
     return () => controller.abort();
-  }, [target.hash, target.fid]);
+  }, [readParentCast, target.hash, target.fid]);
   const reason = cast && !controls.revealed.has(bookmarkHash(cast.hash)!) ? getContentFilterReason(cast, controls.preferences) : undefined;
   if (reason) return <div className="filtered-cast"><p>Quoted cast filtered: {reason}</p><Button variant="ghost" onClick={() => controls.reveal(cast!.hash)}>Show this quote for this view</Button></div>;
   const quoteImages = cast?.embeds.filter((embed): embed is { url: string } => 'url' in embed && !!safeUrl(embed.url) && hasImageEmbed({ ...cast, embeds: [embed] })).slice(0, 2) ?? [];
