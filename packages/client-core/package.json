@@ -11,6 +11,7 @@
     "test": "yarn --cwd ../.. test packages/client-core"
   },
   "exports": {
+    "./pairingScopes": "./src/pairingScopes.ts",
     "./*": "./src/*.ts"
   },
   "dependencies": {

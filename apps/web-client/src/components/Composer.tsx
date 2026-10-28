@@ -4,7 +4,6 @@ import { ApiError, getUser, searchUsers, type Cast, type User } from '@opencaste
 import type { WalletSession } from '../lib/auth';
 import { composeCastContent } from '@opencaster/client-core/content';
 import { composerDraftScope, inlineMentionQuery, readComposerDraft, removeComposerDraft, saveComposerDraft, type SavedComposerDraft } from '../lib/composerDraft';
-import { uploadMedia } from '@opencaster/client-core/media';
 import type { CastPublicationEvent } from '../lib/pendingCasts';
 import { Button, Input } from './ui';
 import '../composer.scss';
@@ -134,6 +133,7 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
     const controller = new AbortController(); uploadController.current?.abort(); uploadController.current = controller;
     uploadingRef.current = true; setUploading(true); setUploadName(file.name); setDraftError('');
     try {
+      const { uploadMedia } = await import('@opencaster/client-core/media');
       const uploaded = await uploadMedia(file, input => session.authorizeMediaUpload(input), controller.signal);
       if (!controller.signal.aborted && run === generation.current && activeContext.current === capturedContext) setEmbeds(current => [...new Set([...current, uploaded.url])].slice(0, attachmentLimit));
     } catch (cause) { if (!controller.signal.aborted && run === generation.current && activeContext.current === capturedContext) setDraftError(errorMessage(cause)); }
