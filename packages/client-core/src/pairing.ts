@@ -3,12 +3,9 @@ import { sha256 } from '@noble/hashes/sha256.js';
 import { keccak_256 } from '@noble/hashes/sha3.js';
 import { bytesToHex, hexToBytes, keyAddDigest, keyRemoveDigest, signedKeyRequestDigest } from '@opencaster/protocol/signedKeyRequest';
 import { APP_ORIGINS } from './appOrigins';
+import { FULL_CLIENT_SCOPES, FULL_SOCIAL_SCOPES, PAIRING_SCOPES } from './pairingScopes';
 
-export const PAIRING_SCOPES = [1, 3, 4] as const;
-/** Requested only through an explicit "Enable social features" approval. */
-export const FULL_SOCIAL_SCOPES = [1, 3, 4, 5, 6, 11] as const;
-/** Cast removal is added only after a separate, explicit wallet approval. */
-export const FULL_CLIENT_SCOPES = [1, 2, 3, 4, 5, 6, 11] as const;
+export { FULL_CLIENT_SCOPES, FULL_SOCIAL_SCOPES, PAIRING_SCOPES } from './pairingScopes';
 export function validatePairingScopes(value: unknown): number[] {
   if (!Array.isArray(value) || ![PAIRING_SCOPES, FULL_SOCIAL_SCOPES, FULL_CLIENT_SCOPES].some(allowed => allowed.length === value.length && allowed.every((scope, index) => value[index] === scope))) {
     throw new Error('Arca only approves the displayed casting permissions or the explicit social and cast-deletion permissions.');

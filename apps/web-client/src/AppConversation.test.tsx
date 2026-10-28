@@ -174,6 +174,7 @@ describe('isolated conversation presentation', () => {
     const original = JSON.stringify(quoted);
     await start();
     await until(() => Boolean(featured().querySelector('.quoted-cast time')));
+    expect(getCast).toHaveBeenCalledTimes(1);
 
     const quote = featured().querySelector('.quoted-cast')!;
     expect(quote.textContent).toContain(quoted.author.username);

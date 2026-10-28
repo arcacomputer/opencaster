@@ -118,7 +118,7 @@ describe('shared custom timeline reading', () => {
     vi.mocked(getFeed).mockImplementation(async options => options.kind === 'trending'
       ? options.cursor ? { casts: [newest, older], next: {} } : { casts: [older, excluded, noMatch, reply], next: { cursor: 'trending-next' } }
       : options.kind === 'user' ? { casts: [{ ...older, hash: older.hash.toUpperCase() }, phraseMuted], next: {} } : { casts: [muted, newer], next: {} });
-    await start(feedPath(definition));
+    await start(feedPath(definition)); await elementWhenReady('main .feed > .cast .cast__text');
     expect(texts()).toEqual([newer.text, older.text]); expect(getFeed).toHaveBeenCalledTimes(3);
     expect(container.querySelector('.custom-feed-header')?.textContent).toContain('Newest loaded first');
     expect(container.querySelector('main')?.textContent).toContain('2 loaded casts are filtered on this browser');

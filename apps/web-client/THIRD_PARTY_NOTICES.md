@@ -1,5 +1,14 @@
 # Third-party code
 
+## Inter and Sen fonts
+
+The web client bundles the variable Inter and Sen fonts as WOFF2 files,
+including two Inter subsets. The original variable TTFs remain in `public/` for
+the existing share-image renderer. Both fonts are licensed under SIL Open Font
+License 1.1; their copyright notices and complete license are shipped in
+[public/licenses/fonts-OFL-1.1.txt](public/licenses/fonts-OFL-1.1.txt), served
+at `/licenses/fonts-OFL-1.1.txt`.
+
 ## resvg WebAssembly 2.6.2
 
 The server-side cast and profile preview renderer uses the unmodified
