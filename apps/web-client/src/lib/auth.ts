@@ -49,7 +49,7 @@ export interface WalletSession {
   deleteCast(target: CastTarget): Promise<WriteReceipt>;
   react(target: CastTarget, type: 'like' | 'recast', remove?: boolean): Promise<WriteReceipt>;
   /** Read-only; an uncertain reaction stays blocked until its intent is visible. */
-  reactionStatus(target: CastTarget, type: 'like' | 'recast', signal?: AbortSignal): Promise<boolean>;
+  reactionStatus(target: CastTarget, type: 'like' | 'recast', signal?: AbortSignal, options?: { castTimestamp?: string }): Promise<boolean>;
   follow(targetFid: number, remove?: boolean): Promise<WriteReceipt>;
   updateProfile(patch: ProfilePatch): Promise<ProfileUpdateResult>;
   refreshProfile(): Promise<User>;
@@ -404,13 +404,15 @@ function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetada
   };
   const reactionUnknown = () => new ApiError('An earlier reaction has unknown status. Check reaction status again; no second reaction will be submitted until its intended state is visible.', 504, 'submission_unknown');
   // Confirmation reads and uncertain writes bypass the shared receipt cache.
-  const readReactionStatus = async (target: CastTarget, type: 'like' | 'recast', signal?: AbortSignal, fresh = false): Promise<boolean> => {
+  const readReactionStatus = async (target: CastTarget, type: 'like' | 'recast', signal?: AbortSignal, fresh = false, options?: { castTimestamp?: string }): Promise<boolean> => {
     const identity = reactionIdentity(target, type);
     assertActive(signal);
     const version = reactionVersions.get(identity.key) ?? 0;
     const observed = fresh || uncertainReactions.has(identity.key)
       ? await getReactionStatus(metadata.fid, identity.target, type, signal, { fresh: true })
-      : await getReactionStatus(metadata.fid, identity.target, type, signal);
+      : options
+        ? await getReactionStatus(metadata.fid, identity.target, type, signal, options)
+        : await getReactionStatus(metadata.fid, identity.target, type, signal);
     assertSession(); assertActive(signal);
     const pending = uncertainReactions.get(identity.key);
     // A read begun before a submission cannot reconcile that later write,
@@ -561,7 +563,7 @@ function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetada
         throw error;
       } finally { reacting.delete(identity.key); }
     },
-    reactionStatus: readReactionStatus,
+    reactionStatus: (target, type, signal, options) => readReactionStatus(target, type, signal, false, options),
     async follow(targetFid, remove = false) {
       assertSession();
       assertFid(targetFid);

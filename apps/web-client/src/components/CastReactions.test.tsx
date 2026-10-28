@@ -6,7 +6,7 @@ import CastReactions from './CastReactions';
 import { ApiError, getReactionStatus, type Cast } from '@opencaster/client-core/api';
 import type { WalletSession } from '../lib/auth';
 vi.mock('@opencaster/client-core/api', async original => ({ ...await original<typeof import('@opencaster/client-core/api')>(), getReactionStatus: vi.fn() }));
-const cast = { hash: `0x${'a'.repeat(40)}`, author: { fid: 20 }, reactions: { likes_count: 5, recasts_count: 2 } } as Cast;
+const cast = { hash: `0x${'a'.repeat(40)}`, author: { fid: 20 }, timestamp: '2026-10-19T12:00:00.000Z', reactions: { likes_count: 5, recasts_count: 2 } } as Cast;
 const makeSession = (fid = 10) => ({ fid, publicKey: String(fid), react: vi.fn().mockResolvedValue({}) }) as unknown as WalletSession;
 let host: HTMLDivElement; let root: Root;
 beforeEach(() => { vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.clearAllMocks(); host = document.createElement('div'); document.body.append(host); root = createRoot(host); });
@@ -19,6 +19,7 @@ describe('verified connected-user reactions', () => {
     const session = makeSession();
     await act(async () => root.render(<CastReactions cast={cast} session={session} onSignIn={vi.fn()} notify={vi.fn()} />));
     expect(button('Unlike').textContent).toBe('5'); expect(button('Recast').textContent).toBe('2');
+    expect(getReactionStatus).toHaveBeenCalledWith(10, { fid: 20, hash: cast.hash }, 'like', expect.any(AbortSignal), { castTimestamp: cast.timestamp });
     await click(button('Unlike'));
     expect(session.react).toHaveBeenCalledWith({ fid: 20, hash: cast.hash }, 'like', true);
     expect(button('Like').textContent).toBe('4');

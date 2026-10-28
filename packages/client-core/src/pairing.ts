@@ -3,6 +3,8 @@ import { sha256 } from '@noble/hashes/sha256.js';
 import { keccak_256 } from '@noble/hashes/sha3.js';
 import { bytesToHex, hexToBytes, keyAddDigest, keyRemoveDigest, signedKeyRequestDigest } from '@opencaster/protocol/signedKeyRequest';
 import { APP_ORIGINS } from './appOrigins';
+import { FARCASTER_EPOCH_SECONDS } from './farcasterEpoch';
+export { FARCASTER_EPOCH_SECONDS } from './farcasterEpoch';
 
 export const PAIRING_SCOPES = [1, 3, 4] as const;
 /** Requested only through an explicit "Enable social features" approval. */
@@ -18,7 +20,6 @@ export function validatePairingScopes(value: unknown): number[] {
 export const PAIRING_TTL_SECONDS = 7 * 24 * 60 * 60;
 export const PAIRING_REQUEST_MAX_BYTES = 16_384;
 export const PAIRING_WINDOW_SECONDS = 15 * 60;
-export const FARCASTER_EPOCH_SECONDS = 1_609_459_200;
 export const PAIRING_ORIGINS = APP_ORIGINS;
 
 export interface PairingRequest {

@@ -56,13 +56,13 @@ export default function CastReactions({ cast, session, onSignIn, notify, onQuote
     const readSession = activeSession.current;
     if (readSession && readSession.fid === sessionFid && readSession.publicKey === sessionPublicKey) {
       void Promise.all((['like', 'recast'] as const).map(type => boundedRead(() => readSession.reactionStatus
-        ? readSession.reactionStatus({ fid: cast.author.fid, hash: cast.hash }, type, controller.signal)
-        : getReactionStatus(readSession.fid, { fid: cast.author.fid, hash: cast.hash }, type, controller.signal), controller.signal)))
+        ? readSession.reactionStatus({ fid: cast.author.fid, hash: cast.hash }, type, controller.signal, { castTimestamp: cast.timestamp })
+        : getReactionStatus(readSession.fid, { fid: cast.author.fid, hash: cast.hash }, type, controller.signal, { castTimestamp: cast.timestamp }), controller.signal)))
         .then(([liked, recasted]) => { if (!controller.signal.aborted) setState({ liked, recasted }); })
         .catch(cause => { if (!controller.signal.aborted) { setError(true); setUncertain(cause instanceof ApiError && cause.code === 'submission_unknown'); } });
     }
     return () => controller.abort();
-  }, [sessionFid, sessionPublicKey, cast.hash, cast.author.fid, retry]);
+  }, [sessionFid, sessionPublicKey, cast.hash, cast.author.fid, cast.timestamp, retry]);
   // With a quote action, the recast button opens a Recast / Quote menu as on
   // X and Farcaster. Reaction state and its safeguards are unchanged.
   useEffect(() => {

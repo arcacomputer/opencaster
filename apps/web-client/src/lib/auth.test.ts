@@ -791,15 +791,18 @@ describe('offline approved per-device authentication', () => {
     vi.mocked(getReactionStatus).mockResolvedValue(true);
     expect(await session.reactionStatus({ ...target, hash: `0x${target.hash.toUpperCase()}` }, 'like')).toBe(true);
     expect(getReactionStatus).toHaveBeenCalledWith(session.fid, target, 'like', undefined);
+    const castTimestamp = '2026-10-19T12:00:00.000Z';
+    expect(await session.reactionStatus(target, 'like', undefined, { castTimestamp })).toBe(true);
+    expect(getReactionStatus).toHaveBeenLastCalledWith(session.fid, target, 'like', undefined, { castTimestamp });
     for (const kind of ['LIKE', '', 'block'] as unknown as Array<'like'>) {
       await expect(session.react(target, kind)).rejects.toThrow('Invalid reaction type');
       await expect(session.reactionStatus(target, kind)).rejects.toThrow('Invalid reaction type');
     }
-    expect(getReactionStatus).toHaveBeenCalledOnce();
+    expect(getReactionStatus).toHaveBeenCalledTimes(2);
     expect(submitMessage).toHaveBeenCalledOnce();
     session.dispose();
     await expect(session.reactionStatus(target, 'like')).rejects.toThrow('session has ended');
-    expect(getReactionStatus).toHaveBeenCalledOnce();
+    expect(getReactionStatus).toHaveBeenCalledTimes(2);
   });
 
   it('primes shared reaction status after an acknowledged write, invalidates attempted failures, and reads fresh while uncertain', async () => {
