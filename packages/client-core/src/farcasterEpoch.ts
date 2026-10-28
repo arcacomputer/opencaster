@@ -1,0 +1,1 @@
+export const FARCASTER_EPOCH_SECONDS = 1_609_459_200;

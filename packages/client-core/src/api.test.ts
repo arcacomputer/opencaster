@@ -443,12 +443,19 @@ describe('browser API client', () => {
   });
 });
 
-const reaction = (letter: string, type: 'Like' | 'Recast' = 'Like', targetFid = 3, accountFid = 7) => ({
+const reaction = (letter: string, type: 'Like' | 'Recast' = 'Like', targetFid = 3, accountFid = 7, timestamp = 183000000) => ({
   hash: `0x${letter.repeat(40)}`,
-  data: { type: 'MESSAGE_TYPE_REACTION_ADD', fid: accountFid, timestamp: 183000000, network: 'FARCASTER_NETWORK_MAINNET',
+  data: { type: 'MESSAGE_TYPE_REACTION_ADD', fid: accountFid, timestamp, network: 'FARCASTER_NETWORK_MAINNET',
     reactionBody: { type: type === 'Like' ? 'REACTION_TYPE_LIKE' : 'REACTION_TYPE_RECAST', targetCastId: { fid: targetFid, hash: `0x${letter.repeat(40)}` } } },
 });
+const reactionWithHash = (hash: string, type: 'Like' | 'Recast' = 'Like') => ({
+  hash: `0x${hash}`,
+  data: { type: 'MESSAGE_TYPE_REACTION_ADD', fid: 7, timestamp: 183000000, network: 'FARCASTER_NETWORK_MAINNET',
+    reactionBody: { type: type === 'Like' ? 'REACTION_TYPE_LIKE' : 'REACTION_TYPE_RECAST', targetCastId: { fid: 3, hash: `0x${hash}` } } },
+});
 const absentReaction = () => new Response(JSON.stringify({ code: 'reaction_not_found', message: 'Absent' }), { status: 404 });
+const farcasterTime = (timestamp: number) => (1_609_459_200 + timestamp) * 1000;
+const farcasterIso = (timestamp: number) => new Date(farcasterTime(timestamp)).toISOString();
 
 describe('paginated cast reaction people', () => {
   const target = { fid: 3, hash: `0x${'a'.repeat(40)}` };
@@ -726,6 +733,164 @@ describe('authoritative public reaction reads', () => {
     const calls = fetch.mock.calls.length;
     await expect(getReactionStatuses(7, [{ fid: 3, hash: 'a'.repeat(40) }], controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
     expect(fetch).toHaveBeenCalledTimes(calls);
+  });
+});
+
+describe('batched reaction status windows', () => {
+  it('uses one recent-reactions request per type for a 25-cast page', async () => {
+    const hashes = Array.from({ length: 25 }, (_, index) => index.toString(16).padStart(40, '0'));
+    const fetch = vi.fn().mockImplementation(async (url: string) => response({
+      messages: hashes.map(hash => reactionWithHash(hash, url.includes('reaction_type=Like') ? 'Like' : 'Recast')),
+      nextPageToken: 'dG9rZW4=',
+    }));
+    vi.stubGlobal('fetch', fetch);
+    const timestamp = new Date(farcasterTime(183_000_000) + 30 * 60_000).toISOString();
+    const targets = hashes.map(hash => ({ fid: 3, hash, timestamp }));
+    const statuses = await getReactionStatuses(7, targets);
+    expect(statuses).toEqual(targets.map(({ fid, hash }) => ({ fid, hash, viewerFid: 7, liked: true, recasted: true })));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls.map(([url]) => url).sort()).toEqual([
+      '/api/v1/reactionsByFid?fid=7&reaction_type=Like&pageSize=100&reverse=true',
+      '/api/v1/reactionsByFid?fid=7&reaction_type=Recast&pageSize=100&reverse=true',
+    ].sort());
+  });
+
+  it('uses large reaction windows for membership but falls back for absent casts', async () => {
+    const hashes = Array.from({ length: 101 }, (_, index) => index.toString(16).padStart(40, '0'));
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({
+        messages: hashes.map(hash => reactionWithHash(hash)),
+        nextPageToken: 'dG9rZW4=',
+      }))
+      .mockResolvedValueOnce(absentReaction());
+    vi.stubGlobal('fetch', fetch);
+    const castTimestamp = farcasterIso(183_000_000 + 3_600);
+    expect(await getReactionStatus(7, { fid: 3, hash: hashes[100] }, 'like', undefined, { castTimestamp })).toBe(true);
+    expect(await getReactionStatus(7, { fid: 3, hash: 'f'.repeat(40) }, 'like', undefined, { castTimestamp })).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[0][0]).toContain('/api/v1/reactionsByFid?');
+    expect(fetch.mock.calls[1][0]).toContain('/api/v1/reactionById?');
+  });
+
+  it('does not infer absence from a window with non-monotonic timestamps', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({
+        messages: [reaction('a', 'Like', 3, 7, 183_000_001), reaction('b', 'Like', 3, 7, 183_000_002)],
+        nextPageToken: 'dG9rZW4=',
+      }))
+      .mockResolvedValueOnce(absentReaction());
+    vi.stubGlobal('fetch', fetch);
+    const castTimestamp = farcasterIso(183_000_010);
+    expect(await getReactionStatus(7, { fid: 3, hash: 'a'.repeat(40) }, 'like', undefined, { castTimestamp })).toBe(true);
+    expect(await getReactionStatus(7, { fid: 3, hash: 'c'.repeat(40) }, 'like', undefined, { castTimestamp })).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1][0]).toContain('/api/v1/reactionById?');
+  });
+
+  it('falls back for casts older than the partial window', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(response({ messages: [reaction('a')], nextPageToken: 'dG9rZW4=' })).mockResolvedValueOnce(absentReaction());
+    vi.stubGlobal('fetch', fetch);
+    expect(await getReactionStatus(7, { fid: 3, hash: 'b'.repeat(40) }, 'like', undefined, { castTimestamp: farcasterIso(183_000_000 - 86_400) })).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1][0]).toContain('/api/v1/reactionById?');
+  });
+
+  it('treats a complete page as covering even old casts', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(response({ messages: [reaction('a')] }));
+    vi.stubGlobal('fetch', fetch);
+    expect(await getReactionStatus(7, { fid: 3, hash: 'b'.repeat(40) }, 'like', undefined, { castTimestamp: farcasterIso(183_000_000 - 86_400) })).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][0]).toContain('/api/v1/reactionsByFid?');
+  });
+
+  it.each(['request failure', 'invalid message'])('falls back and does not cache a window %s', async failure => {
+    const fetch = vi.fn();
+    if (failure === 'request failure') fetch.mockRejectedValueOnce(new Error('Disconnected'));
+    else fetch.mockResolvedValueOnce(response({ messages: [{ data: {} }], nextPageToken: 'dG9rZW4=' }));
+    fetch.mockResolvedValueOnce(absentReaction())
+      .mockResolvedValueOnce(response({ messages: [reaction('c')], nextPageToken: 'dG9rZW4=' }));
+    vi.stubGlobal('fetch', fetch);
+    expect(await getReactionStatus(7, { fid: 3, hash: 'a'.repeat(40) }, 'like', undefined, { castTimestamp: farcasterIso(183_000_000 - 86_400) })).toBe(false);
+    expect(await getReactionStatus(7, { fid: 3, hash: 'b'.repeat(40) }, 'like', undefined, { castTimestamp: farcasterIso(183_000_000 + 86_400) })).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch.mock.calls[2][0]).toContain('/api/v1/reactionsByFid?');
+  });
+
+  it('drops a window when a write primes false, so it cannot revive a stale true', async () => {
+    vi.useFakeTimers();
+    try {
+      const target = { fid: 3, hash: 'a'.repeat(40) };
+      const fetch = vi.fn().mockResolvedValueOnce(response({ messages: [reaction('a')], nextPageToken: 'dG9rZW4=' })).mockResolvedValueOnce(response({ messages: [] }));
+      vi.stubGlobal('fetch', fetch);
+      const options = { castTimestamp: farcasterIso(183_000_000) };
+      expect(await getReactionStatus(7, target, 'like', undefined, options)).toBe(true);
+      vi.setSystemTime(Date.now() - 60_000);
+      primeReactionStatus(7, target, 'like', false);
+      expect(await getReactionStatus(7, target, 'like', undefined, options)).toBe(false);
+      await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
+      expect(await getReactionStatus(7, target, 'like', undefined, options)).toBe(false);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fetch.mock.calls[1][0]).toContain('/api/v1/reactionsByFid?');
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('expires derived statuses no later than their reaction window', async () => {
+    vi.useFakeTimers();
+    const target = { fid: 3, hash: 'a'.repeat(40) };
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({ messages: [reaction('a')], nextPageToken: 'dG9rZW4=' }))
+      .mockResolvedValueOnce(response({ messages: [reaction('a')], nextPageToken: 'dG9rZW4=' }));
+    vi.stubGlobal('fetch', fetch);
+    const options = { castTimestamp: farcasterIso(183_000_000) };
+    const start = Date.now();
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(start).mockReturnValueOnce(start + 1_000);
+    try {
+      expect(await getReactionStatus(7, target, 'like', undefined, options)).toBe(true);
+      expect(now).toHaveBeenCalledTimes(2);
+      now.mockRestore();
+      await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
+      expect(await getReactionStatus(7, target, 'like', undefined, options)).toBe(true);
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it('bypasses reaction windows for fresh reads', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(response(reaction('a')));
+    vi.stubGlobal('fetch', fetch);
+    expect(await getReactionStatus(7, { fid: 3, hash: 'a'.repeat(40) }, 'like', undefined, { fresh: true, castTimestamp: farcasterIso(183_000_000) })).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][0]).toContain('/api/v1/reactionById?');
+  });
+
+  it('falls back when a cast is within the ten-minute window margin', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(response({ messages: [reaction('a')], nextPageToken: 'dG9rZW4=' })).mockResolvedValueOnce(absentReaction());
+    vi.stubGlobal('fetch', fetch);
+    const timestamp = new Date(farcasterTime(183_000_000) + 5 * 60_000).toISOString();
+    expect(await getReactionStatus(7, { fid: 3, hash: 'b'.repeat(40) }, 'like', undefined, { castTimestamp: timestamp })).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1][0]).toContain('/api/v1/reactionById?');
+  });
+
+  it('keeps a shared window alive when one waiter aborts', async () => {
+    let finish!: (value: Response) => void;
+    const fetch = vi.fn().mockImplementation((_url: string, init: RequestInit) => new Promise(resolve => {
+      init.signal?.addEventListener('abort', () => resolve(absentReaction()), { once: true });
+      finish = value => resolve(value);
+    }));
+    vi.stubGlobal('fetch', fetch);
+    const first = new AbortController();
+    const firstRead = getReactionStatus(7, { fid: 3, hash: 'a'.repeat(40) }, 'like', first.signal, { castTimestamp: farcasterIso(183_000_000) });
+    const secondRead = getReactionStatus(7, { fid: 3, hash: 'b'.repeat(40) }, 'like', undefined, { castTimestamp: farcasterIso(183_000_000) });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    first.abort();
+    await expect(firstRead).rejects.toMatchObject({ name: 'AbortError' });
+    expect((fetch.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(false);
+    finish(response({ messages: [reaction('b')], nextPageToken: 'dG9rZW4=' }));
+    expect(await secondRead).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
 

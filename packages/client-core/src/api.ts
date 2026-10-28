@@ -4,6 +4,7 @@
  */
 import { normalizeHypersnapEnsName } from './ensName';
 import { APP_ORIGIN, LEGACY_APP_ORIGIN } from './appOrigins';
+import { FARCASTER_EPOCH_SECONDS } from './farcasterEpoch';
 
 export interface User {
   fid: number;
@@ -277,6 +278,7 @@ export type ProfileTab = 'casts' | 'replies' | 'media' | 'likes' | 'recasts';
 
 export interface ReactionTarget { fid: number; hash: string }
 export interface ReactionStatus extends ReactionTarget { viewerFid: number; liked: boolean; recasted: boolean }
+type ReactionStatusTarget = ReactionTarget & { timestamp?: string };
 type ReactionKind = 'like' | 'recast';
 const BASE64_TOKEN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
@@ -502,15 +504,28 @@ const REACTION_STATUS_TTL_MS = 5 * 60_000;
 const REACTION_STATUS_CACHE_LIMIT = 2_000;
 interface ReactionStatusEntry { promise: Promise<boolean>; expires: number; controller?: AbortController; waiters: number }
 const reactionStatusCache = new Map<string, ReactionStatusEntry>();
+interface ReactionWindow { targets: Set<string>; coveredSinceMs: number }
+interface ReactionWindowEntry { promise: Promise<ReactionWindow>; expires: number; controller?: AbortController; waiters: number }
+const reactionWindowCache = new Map<string, ReactionWindowEntry>();
 
 function reactionStatusKey(viewerFid: number, target: ReactionTarget, type: ReactionKind): string {
   return `${fidValue(viewerFid)}:${fidValue(target.fid)}:${hashValue(target.hash)}:${reactionKind(type)}`;
+}
+
+function reactionWindowKey(viewerFid: number, type: ReactionKind): string {
+  return `${fidValue(viewerFid)}:${reactionKind(type)}`;
 }
 
 function storeReactionStatus(key: string, entry: ReactionStatusEntry): void {
   reactionStatusCache.delete(key);
   reactionStatusCache.set(key, entry);
   while (reactionStatusCache.size > REACTION_STATUS_CACHE_LIMIT) reactionStatusCache.delete(reactionStatusCache.keys().next().value!);
+}
+
+function storeReactionWindow(key: string, entry: ReactionWindowEntry): void {
+  reactionWindowCache.delete(key);
+  reactionWindowCache.set(key, entry);
+  while (reactionWindowCache.size > REACTION_STATUS_CACHE_LIMIT) reactionWindowCache.delete(reactionWindowCache.keys().next().value!);
 }
 
 function startReactionStatusRead(key: string, viewerFid: number, target: ReactionTarget, type: ReactionKind): ReactionStatusEntry {
@@ -528,6 +543,63 @@ function startReactionStatusRead(key: string, viewerFid: number, target: Reactio
   entry.promise.catch(() => undefined);
   storeReactionStatus(key, entry);
   return entry;
+}
+
+async function fetchReactionWindow(viewerFid: number, type: ReactionKind, signal: AbortSignal): Promise<ReactionWindow> {
+  const params = new URLSearchParams({ fid: fidValue(viewerFid), reaction_type: reactionKind(type), pageSize: '100', reverse: 'true' });
+  const response = await requestJson<{ messages: unknown[]; nextPageToken?: unknown }>('/v1/reactionsByFid', params, signal);
+  if (!Array.isArray(response.messages) || response.messages.length > 1_000) throw new ApiError('The node returned invalid reaction history.', 502, 'invalid_response');
+  const next = reactionCursor(response.nextPageToken);
+  const targets = new Set<string>();
+  let oldestTimestampMs = Infinity;
+  let previousTimestampMs = Infinity;
+  let newestFirst = true;
+  for (const value of response.messages) {
+    const message = validateReaction(value, viewerFid, type);
+    const timestampMs = (message.data.timestamp + FARCASTER_EPOCH_SECONDS) * 1000;
+    if (timestampMs > previousTimestampMs) newestFirst = false;
+    previousTimestampMs = timestampMs;
+    oldestTimestampMs = Math.min(oldestTimestampMs, timestampMs);
+    const target = message.data.reactionBody.targetCastId;
+    if (target) targets.add(`${target.fid}:${hashValue(target.hash)}`);
+  }
+  const coveredSinceMs = next
+    ? response.messages.length <= 100 && newestFirst ? oldestTimestampMs : Infinity
+    : -Infinity;
+  return { targets, coveredSinceMs };
+}
+
+function startReactionWindowRead(key: string, viewerFid: number, type: ReactionKind): ReactionWindowEntry {
+  const controller = new AbortController();
+  const entry: ReactionWindowEntry = { promise: Promise.resolve({ targets: new Set(), coveredSinceMs: -Infinity }), expires: Infinity, controller, waiters: 0 };
+  entry.promise = fetchReactionWindow(viewerFid, type, controller.signal).then(window => {
+    entry.controller = undefined;
+    entry.expires = Date.now() + REACTION_STATUS_TTL_MS;
+    return window;
+  }, (error: unknown) => {
+    entry.controller = undefined;
+    if (reactionWindowCache.get(key) === entry) reactionWindowCache.delete(key);
+    throw error;
+  });
+  entry.promise.catch(() => undefined);
+  storeReactionWindow(key, entry);
+  return entry;
+}
+
+function getReactionWindowRead(viewerFid: number, type: ReactionKind): { key: string; entry: ReactionWindowEntry } {
+  const key = reactionWindowKey(viewerFid, type);
+  let entry = reactionWindowCache.get(key);
+  if (entry && entry.expires <= Date.now()) {
+    reactionWindowCache.delete(key);
+    entry = undefined;
+  }
+  if (entry) storeReactionWindow(key, entry);
+  else entry = startReactionWindowRead(key, viewerFid, type);
+  return { key, entry };
+}
+
+function reactionWindowStatusExpires(entry: ReactionWindowEntry): number {
+  return Math.min(Date.now() + REACTION_STATUS_TTL_MS, entry.expires);
 }
 
 function awaitReactionStatus(key: string, entry: ReactionStatusEntry, signal?: AbortSignal): Promise<boolean> {
@@ -552,29 +624,80 @@ function awaitReactionStatus(key: string, entry: ReactionStatusEntry, signal?: A
   });
 }
 
+function awaitReactionWindow(key: string, entry: ReactionWindowEntry, signal?: AbortSignal): Promise<ReactionWindow> {
+  entry.waiters += 1;
+  return new Promise((resolve, reject) => {
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true; entry.waiters -= 1;
+      signal?.removeEventListener('abort', abort);
+    };
+    const abort = () => {
+      release();
+      if (entry.waiters === 0 && entry.controller) {
+        entry.controller.abort(signal!.reason);
+        if (reactionWindowCache.get(key) === entry) reactionWindowCache.delete(key);
+      }
+      reject(signal!.reason);
+    };
+    if (signal?.aborted) { abort(); return; }
+    signal?.addEventListener('abort', abort, { once: true });
+    entry.promise.then(value => { release(); resolve(value); }, (error: unknown) => { release(); reject(error); });
+  });
+}
+
 export function invalidateReactionStatus(viewerFid: number, target: ReactionTarget, type: ReactionKind): void {
   reactionStatusCache.delete(reactionStatusKey(viewerFid, target, type));
 }
 
 /** Record the state a successfully submitted write of the viewer's own produced. */
 export function primeReactionStatus(viewerFid: number, target: ReactionTarget, type: ReactionKind, value: boolean): void {
+  reactionWindowCache.delete(reactionWindowKey(viewerFid, type));
   storeReactionStatus(reactionStatusKey(viewerFid, target, type), { promise: Promise.resolve(value), expires: Date.now() + REACTION_STATUS_TTL_MS, waiters: 0 });
 }
 
 export function clearReactionStatusCache(): void {
   reactionStatusCache.clear();
+  reactionWindowCache.clear();
 }
 
 /** Hypersnap does not populate cast.viewer_context. Resolve the actual current
  * add receipt; only the worker's exact source-defined absence code is false.
  * Results are cached per viewer and target; `fresh` always reads the node. */
-export async function getReactionStatus(viewerFid: number, target: ReactionTarget, type: ReactionKind, signal?: AbortSignal, options?: { fresh?: boolean }): Promise<boolean> {
+export async function getReactionStatus(viewerFid: number, target: ReactionTarget, type: ReactionKind, signal?: AbortSignal, options?: { fresh?: boolean; castTimestamp?: string }): Promise<boolean> {
   const key = reactionStatusKey(viewerFid, target, type);
   signal?.throwIfAborted();
   let entry = options?.fresh ? undefined : reactionStatusCache.get(key);
   if (entry && entry.expires <= Date.now()) { reactionStatusCache.delete(key); entry = undefined; }
   if (entry) storeReactionStatus(key, entry);
-  else entry = startReactionStatusRead(key, viewerFid, target, type);
+  else if (!options?.fresh && options?.castTimestamp !== undefined) {
+    const castTimestampMs = Date.parse(options.castTimestamp);
+    if (Number.isFinite(castTimestampMs)) {
+      const { key: windowKey, entry: windowEntry } = getReactionWindowRead(viewerFid, type);
+      let window: ReactionWindow | undefined;
+      try { window = await awaitReactionWindow(windowKey, windowEntry, signal); }
+      catch { signal?.throwIfAborted(); }
+      if (window && reactionWindowCache.get(windowKey) === windowEntry) {
+        entry = reactionStatusCache.get(key);
+        if (entry && entry.expires <= Date.now()) { reactionStatusCache.delete(key); entry = undefined; }
+        if (entry) {
+          storeReactionStatus(key, entry);
+          return awaitReactionStatus(key, entry, signal);
+        }
+        const targetKey = `${target.fid}:${hashValue(target.hash)}`;
+        if (window.targets.has(targetKey)) {
+          storeReactionStatus(key, { promise: Promise.resolve(true), expires: reactionWindowStatusExpires(windowEntry), waiters: 0 });
+          return true;
+        }
+        if (castTimestampMs - 10 * 60_000 > window.coveredSinceMs) {
+          storeReactionStatus(key, { promise: Promise.resolve(false), expires: reactionWindowStatusExpires(windowEntry), waiters: 0 });
+          return false;
+        }
+      }
+    }
+    entry = startReactionStatusRead(key, viewerFid, target, type);
+  } else entry = startReactionStatusRead(key, viewerFid, target, type);
   return awaitReactionStatus(key, entry, signal);
 }
 
@@ -594,19 +717,19 @@ async function fetchReactionStatus(viewerFid: number, target: ReactionTarget, ty
 
 /** At most 25 visible casts and four requests in flight. Reads share the
  * viewer-scoped getReactionStatus cache; cancel when the account changes. */
-export async function getReactionStatuses(viewerFid: number, targets: ReactionTarget[], signal?: AbortSignal): Promise<ReactionStatus[]> {
+export async function getReactionStatuses(viewerFid: number, targets: ReactionStatusTarget[], signal?: AbortSignal): Promise<ReactionStatus[]> {
   fidValue(viewerFid);
   if (!Array.isArray(targets) || targets.length > 25) throw new Error('Check up to 25 visible casts at a time.');
-  const unique = new Map<string, ReactionTarget>();
+  const unique = new Map<string, ReactionStatusTarget>();
   for (const target of targets) {
     fidValue(target.fid);
     const hash = hashValue(target.hash);
-    unique.set(`${target.fid}:${hash}`, { fid: target.fid, hash });
+    unique.set(`${target.fid}:${hash}`, { fid: target.fid, hash, ...(target.timestamp !== undefined ? { timestamp: target.timestamp } : {}) });
   }
   const normalized = [...unique.values()];
   const jobs = normalized.flatMap(target => (['like', 'recast'] as const).map(type => ({ target, type })));
-  const states = await mapPublicReads(jobs, ({ target, type }, localSignal) => getReactionStatus(viewerFid, target, type, localSignal), signal);
-  return normalized.map((target, index) => ({ ...target, viewerFid, liked: states[index * 2], recasted: states[index * 2 + 1] }));
+  const states = await mapPublicReads(jobs, ({ target, type }, localSignal) => getReactionStatus(viewerFid, target, type, localSignal, target.timestamp !== undefined ? { castTimestamp: target.timestamp } : undefined), signal);
+  return normalized.map(({ fid, hash }, index) => ({ fid, hash, viewerFid, liked: states[index * 2], recasted: states[index * 2 + 1] }));
 }
 
 async function getProfileReactions(options: { fid: number; tab: 'likes' | 'recasts'; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<FeedResponse> {
@@ -658,7 +781,7 @@ async function readProfileReactions(options: { fid: number; tab: 'likes' | 'reca
           || !isObject(cast.reactions) || !Number.isSafeInteger(cast.reactions.likes_count) || cast.reactions.likes_count < 0
           || !Number.isSafeInteger(cast.reactions.recasts_count) || cast.reactions.recasts_count < 0
           || !isObject(cast.replies) || !Number.isSafeInteger(cast.replies.count) || cast.replies.count < 0) throw new ApiError('The node returned invalid reaction history.', 502, 'invalid_response');
-        return { ...cast, reaction_context: { fid: options.fid, type, timestamp: new Date((message.data.timestamp + 1609459200) * 1000).toISOString() } } satisfies Cast;
+        return { ...cast, reaction_context: { fid: options.fid, type, timestamp: new Date((message.data.timestamp + FARCASTER_EPOCH_SECONDS) * 1000).toISOString() } } satisfies Cast;
       } catch (error) {
         if (error instanceof ApiError && error.status === 404 && error.code === 'cast_not_found') return undefined;
         throw error;

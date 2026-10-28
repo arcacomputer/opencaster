@@ -69,6 +69,19 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'batched-reaction-status',
+    date: '2026-10-28',
+    title: 'Recent like and recast checks take fewer requests',
+    summary: 'Recent feed casts can share two reaction-history reads, while older casts keep their individual status checks.',
+    changes: [
+      'Check up to 100 recent likes and recasts at a time for the connected account and reuse those receipts across visible casts.',
+      'Fall back to an individual check when a cast is too old for the recent page, and keep explicit fresh checks on the existing read path.',
+      'Reaction status stays viewer-scoped and can be up to five minutes old; Hypersnap’s paginated history can still require extra reads for older casts.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/d6cd020800821afe1398b8e345358fb63142b049',
+    tag: 'Reliability',
+  },
+  {
     id: 'crypto-loaded-with-features',
     date: '2026-10-28',
     title: 'The browser starts with less signing code',
