@@ -19,6 +19,56 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'feed-rendering-pagination',
+    date: '2026-10-28',
+    title: 'Long feeds stay lighter while browsing',
+    summary: 'Unfocused feed cards can defer rendering, while later pages reuse loaded order and reset reaction state for each viewer.',
+    changes: [
+      'Apply content visibility with an approximate reserved size to feed cards outside keyboard focus; conversation cards are unaffected.',
+      'Deduplicate later pages by cast hash and merge sorted pages without repeatedly sorting already ordered casts.',
+      'Decode feed images asynchronously and preserve viewer-specific reaction state when cards remain mounted across account changes.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/97972769ae18ff9e11400213dcb2afd901f95995',
+    tag: 'Reliability',
+  },
+  {
+    id: 'quoted-cast-read-reuse',
+    date: '2026-10-28',
+    title: 'Quoted casts share public reads',
+    summary: 'Quoted previews now reuse the bounded parent-cast reader, avoiding repeated reads while preserving loading and unavailable states.',
+    changes: [
+      'Read quoted casts through the shared per-view parent reader, which deduplicates simultaneous requests and caps concurrency.',
+      'Keep a standalone fallback when the reader provider is absent; previews still cancel only their own read subscription when unmounted.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/548d56a1b6f05c52975bf7db01af45894817275a',
+    tag: 'Reliability',
+  },
+  {
+    id: 'woff2-web-fonts',
+    date: '2026-10-28',
+    title: 'Web fonts download faster',
+    summary: 'The browser now uses smaller WOFF2 fonts, preloads only Inter’s common Latin subset, and serves the fonts’ license with the built assets.',
+    changes: [
+      'Serve Inter as Latin and extended WOFF2 subsets, and convert Sen to WOFF2, reducing the size of the fonts downloaded by the browser.',
+      'Preload only the Latin Inter subset; the matching character ranges select the extended subset when other glyphs are needed.',
+      'Keep the original TTF files available for gateway-generated share images and serve the fonts’ SIL Open Font License text with both copyright notices.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/0a6c49bf2a749344e08c8ff2fc897404e6691943',
+    tag: 'Reliability',
+  },
+  {
+    id: 'conversation-composer-loading',
+    date: '2026-10-28',
+    title: 'Conversation replies stay visible while the editor loads',
+    summary: 'Opening a conversation now keeps its page visible while the reply composer loads on demand.',
+    changes: [
+      'Show a local loading state for the conversation reply composer instead of suspending the whole app.',
+      'The composer remains a separate, on-demand feature chunk.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/a08260dd70642b4f319c9961237746f1c013f727',
+    tag: 'Reliability',
+  },
+  {
     id: 'batched-reaction-status',
     date: '2026-10-28',
     title: 'Recent like and recast checks take fewer requests',
@@ -29,6 +79,19 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'Reaction status stays viewer-scoped and can be up to five minutes old; Hypersnap’s paginated history can still require extra reads for older casts.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/d6cd020800821afe1398b8e345358fb63142b049',
+    tag: 'Reliability',
+  },
+  {
+    id: 'crypto-loaded-with-features',
+    date: '2026-10-28',
+    title: 'The browser starts with less signing code',
+    summary: 'Anonymous browsing starts with a smaller JavaScript bundle; signing and feed-reading code loads as the related features are used.',
+    changes: [
+      'Move device permission scope constants into a crypto-free module while keeping the existing pairing exports for callers.',
+      'Load the composer, profile editor and custom-feed reader as separate chunks, and fetch media-upload code only when an image is uploaded.',
+      'Cryptographic and protocol-signing libraries remain available to the feature chunks that require them; they are no longer part of the initial app entry.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/8bfc8a2cb0f61691ff52fa26c91bd5113de23206',
     tag: 'Reliability',
   },
   {
