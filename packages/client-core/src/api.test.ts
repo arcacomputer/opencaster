@@ -829,6 +829,29 @@ describe('batched reaction status windows', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it('expires derived statuses no later than their reaction window', async () => {
+    vi.useFakeTimers();
+    const target = { fid: 3, hash: 'a'.repeat(40) };
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({ messages: [reaction('a')], nextPageToken: 'dG9rZW4=' }))
+      .mockResolvedValueOnce(response({ messages: [reaction('a')], nextPageToken: 'dG9rZW4=' }));
+    vi.stubGlobal('fetch', fetch);
+    const options = { castTimestamp: farcasterIso(183_000_000) };
+    const start = Date.now();
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(start).mockReturnValueOnce(start + 1_000);
+    try {
+      expect(await getReactionStatus(7, target, 'like', undefined, options)).toBe(true);
+      expect(now).toHaveBeenCalledTimes(2);
+      now.mockRestore();
+      await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
+      expect(await getReactionStatus(7, target, 'like', undefined, options)).toBe(true);
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it('bypasses reaction windows for fresh reads', async () => {
     const fetch = vi.fn().mockResolvedValueOnce(response(reaction('a')));
     vi.stubGlobal('fetch', fetch);

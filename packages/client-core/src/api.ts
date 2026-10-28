@@ -595,6 +595,10 @@ function getReactionWindowRead(viewerFid: number, type: ReactionKind): { key: st
   return { key, entry };
 }
 
+function reactionWindowStatusExpires(entry: ReactionWindowEntry): number {
+  return Math.min(Date.now() + REACTION_STATUS_TTL_MS, entry.expires);
+}
+
 function awaitReactionStatus(key: string, entry: ReactionStatusEntry, signal?: AbortSignal): Promise<boolean> {
   entry.waiters += 1;
   return new Promise((resolve, reject) => {
@@ -680,11 +684,11 @@ export async function getReactionStatus(viewerFid: number, target: ReactionTarge
         }
         const targetKey = `${target.fid}:${hashValue(target.hash)}`;
         if (window.targets.has(targetKey)) {
-          storeReactionStatus(key, { promise: Promise.resolve(true), expires: Math.min(Date.now() + REACTION_STATUS_TTL_MS, windowEntry.expires), waiters: 0 });
+          storeReactionStatus(key, { promise: Promise.resolve(true), expires: reactionWindowStatusExpires(windowEntry), waiters: 0 });
           return true;
         }
         if (castTimestampMs - 10 * 60_000 > window.coveredSinceMs) {
-          storeReactionStatus(key, { promise: Promise.resolve(false), expires: Math.min(Date.now() + REACTION_STATUS_TTL_MS, windowEntry.expires), waiters: 0 });
+          storeReactionStatus(key, { promise: Promise.resolve(false), expires: reactionWindowStatusExpires(windowEntry), waiters: 0 });
           return false;
         }
       }
