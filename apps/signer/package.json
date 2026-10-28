@@ -8,7 +8,7 @@
   "scripts": {
     "build": "node scripts/build-signer.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "yarn --cwd ../.. test apps/signer",
     "dev": "yarn build && electron dist-signer/main.cjs",
     "package": "node scripts/package-signer.mjs"
   },

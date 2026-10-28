@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "yarn --cwd ../.. test services/gateway"
   },
   "dependencies": {
     "@noble/curves": "2.0.1",

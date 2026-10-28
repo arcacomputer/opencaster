@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "yarn --cwd ../.. test services/analytics",
     "report": "node scripts/analytics-report.mjs"
   },
   "devDependencies": {

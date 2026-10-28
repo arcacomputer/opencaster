@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "yarn --cwd ../.. test packages/web-ui --passWithNoTests"
   },
   "exports": {
     "./ui": "./src/ui.tsx"
