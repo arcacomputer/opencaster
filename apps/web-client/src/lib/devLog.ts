@@ -19,6 +19,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'conversation-composer-loading',
+    date: '2026-10-28',
+    title: 'Conversation replies stay visible while the editor loads',
+    summary: 'Opening a conversation now keeps its page visible while the reply composer loads on demand.',
+    changes: [
+      'Show a local loading state for the conversation reply composer instead of suspending the whole app.',
+      'The composer remains a separate, on-demand feature chunk.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/a08260dd70642b4f319c9961237746f1c013f727',
+    tag: 'Reliability',
+  },
+  {
     id: 'crypto-loaded-with-features',
     date: '2026-10-28',
     title: 'The browser starts with less signing code',
