@@ -1,3 +1,64 @@
+# Opencaster monorepo migration · 2026-10-27
+
+Implementation [`c9d19456`](https://github.com/arcacomputer/opencaster/commit/c9d19456b0acc6b1c4a4775603bb3d1050edbece)
+and workspace-test entry-point correction
+[`4b10c6c9`](https://github.com/arcacomputer/opencaster/commit/4b10c6c930257b5484ffa891b8ded04318f6b3ac)
+move the existing client, signer and services into seven Yarn Classic workspaces.
+The root lockfile is byte-for-byte identical to the former application lockfile;
+this migration changes no external dependency versions. No mobile or desktop
+social client is added.
+
+The root `yarn verify` gate passed **1,863 tests across 73 files**, all shared
+package/browser/gateway/dashboard typechecks, the production browser build and
+offline signer typecheck/build. `yarn typecheck` also passed independently for
+all seven workspaces. A fresh external shared clone at
+`/tmp/opencaster-monorepo-clean-robt5lbs` installed dependencies with
+`yarn install --frozen-lockfile` and passed the complete gate at `c9d19456`, with
+clean Git status and all workspace links resolving within that clone. The later
+workspace-test command correction passed `yarn workspaces run test`; the browser
+UI package has no separate unit tests and is exercised by the existing client
+and signer checks. Root analytics-report `--help` also passed without querying
+an account or creating a report.
+
+Release-guard integration tests cover committed and working-tree comparisons,
+old/new dev-log paths, preserved and removed milestone IDs, ambiguous copies,
+and changes across apps, services, packages and root dependency/build inputs.
+The migration's dev-log check passed against task baseline
+`2190e4054e9a5d02f941928129182f50eb598834`, recognizing only the new
+`opencaster-client-monorepo` milestone. This task baseline is not a claim about
+the currently deployed source; a later deployment still requires its actual
+pre-release deployed commit.
+
+The root `yarn dev --port 5193` command served the landing page and dev log in
+the browser. The new milestone and relocated feature-guide link rendered, with
+no captured console errors. These were local public-read/navigation checks;
+no wallet connection, account write or media upload was performed.
+
+Gateway and analytics configuration comparisons preserved deployment names,
+routes, storage bindings, origin settings and policies. Gateway Wrangler
+**4.141.0** dry-run bundled its renderer Wasm and resolved the relocated web
+assets. The older CLI does not recognize the existing analytics SQL binding;
+a separate disposable Yarn installation of Wrangler **4.145.0** successfully
+bundled analytics and recognized `ANALYTICS_SQL` with no configuration warning.
+That analytics dry-run denied networking and real credential-file reads.
+Repeated signer builds produced identical manifests and payload hashes from
+the same sources. Developer ID packaging and notarization were not exercised.
+No deployment was performed.
+
+Existing WalletConnect annotation and browser chunk-size advisories remain.
+Yarn also emitted a non-failing private-workspaces warning during installation;
+all seven workspace manifests and the root are private. This is not an
+independent security audit or production write verification.
+
+Receipts: `/tmp/opencaster-monorepo-final-verify.log`,
+`/tmp/opencaster-monorepo-typecheck.log`,
+`/tmp/opencaster-monorepo-workspace-tests.log`,
+`/tmp/opencaster-monorepo-signer-rebuild.log`,
+`/tmp/opencaster-monorepo-clean-robt5lbs-install.log`,
+`/tmp/opencaster-monorepo-clean-robt5lbs-verify.log`,
+`/tmp/opencaster-monorepo-gateway-dryrun.log` and
+`/tmp/opencaster-analytics-wrangler-lrq9z0_m/dryrun.log`.
+
 > **Repository layout:** Opencaster now uses Yarn workspaces under `apps/`,
 > `services/` and `packages/`. Run the current `yarn verify` gate from the
 > repository root. Historical records below retain their original `hypersnap/`

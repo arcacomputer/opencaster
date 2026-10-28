@@ -19,6 +19,21 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'opencaster-client-monorepo',
+    date: '2026-10-27',
+    title: 'One source tree for Opencaster’s clients',
+    summary: 'Contributors can develop and check the browser client, offline signer and supporting services together, with shared protocol code and one dependency lockfile.',
+    changes: [
+      'Move the browser application to apps/web-client and the offline signing companion to apps/signer, with the gateway and operator analytics in their own service workspaces.',
+      'Share the existing protocol primitives, API and content contracts, and browser UI primitives through local packages. Wallet connections, passkeys and encrypted browser vaults remain with the web client.',
+      'Run dependency installation, tests and the complete verification gate from the repository root. Update CI, signer build inputs, source links and contributor documentation for the workspace layout.',
+      'Preserve earlier dev-log milestones when comparing releases across the directory move, and require release notes for changes throughout the monorepo.',
+      'Keep existing network permissions, deployment and storage identifiers, and Hypersnap limits. Android, iOS, Windows and macOS social clients remain future work.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/4b10c6c930257b5484ffa891b8ded04318f6b3ac',
+    tag: 'Reliability',
+  },
+  {
     id: 'performance-release-with-current-browsing',
     date: '2026-10-27',
     title: 'Faster browsing across the current app',
