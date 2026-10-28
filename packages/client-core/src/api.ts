@@ -563,7 +563,10 @@ async function fetchReactionWindow(viewerFid: number, type: ReactionKind, signal
     const target = message.data.reactionBody.targetCastId;
     if (target) targets.add(`${target.fid}:${hashValue(target.hash)}`);
   }
-  return { targets, coveredSinceMs: next ? newestFirst ? oldestTimestampMs : Infinity : -Infinity };
+  const coveredSinceMs = next
+    ? response.messages.length <= 100 && newestFirst ? oldestTimestampMs : Infinity
+    : -Infinity;
+  return { targets, coveredSinceMs };
 }
 
 function startReactionWindowRead(key: string, viewerFid: number, type: ReactionKind): ReactionWindowEntry {

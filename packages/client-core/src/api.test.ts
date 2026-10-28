@@ -755,16 +755,21 @@ describe('batched reaction status windows', () => {
     ].sort());
   });
 
-  it('uses reaction windows containing more than 100 messages', async () => {
+  it('uses large reaction windows for membership but falls back for absent casts', async () => {
     const hashes = Array.from({ length: 101 }, (_, index) => index.toString(16).padStart(40, '0'));
-    const fetch = vi.fn().mockResolvedValueOnce(response({
-      messages: hashes.map(hash => reactionWithHash(hash)),
-      nextPageToken: 'dG9rZW4=',
-    }));
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({
+        messages: hashes.map(hash => reactionWithHash(hash)),
+        nextPageToken: 'dG9rZW4=',
+      }))
+      .mockResolvedValueOnce(absentReaction());
     vi.stubGlobal('fetch', fetch);
-    expect(await getReactionStatus(7, { fid: 3, hash: hashes[100] }, 'like', undefined, { castTimestamp: farcasterIso(183_000_000 + 3_600) })).toBe(true);
-    expect(fetch).toHaveBeenCalledOnce();
+    const castTimestamp = farcasterIso(183_000_000 + 3_600);
+    expect(await getReactionStatus(7, { fid: 3, hash: hashes[100] }, 'like', undefined, { castTimestamp })).toBe(true);
+    expect(await getReactionStatus(7, { fid: 3, hash: 'f'.repeat(40) }, 'like', undefined, { castTimestamp })).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(2);
     expect(fetch.mock.calls[0][0]).toContain('/api/v1/reactionsByFid?');
+    expect(fetch.mock.calls[1][0]).toContain('/api/v1/reactionById?');
   });
 
   it('does not infer absence from a window with non-monotonic timestamps', async () => {
