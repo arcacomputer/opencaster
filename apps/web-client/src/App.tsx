@@ -33,7 +33,8 @@ import { quorumSocialPath } from './lib/socialLinks';
 import { trackPageView } from './lib/analytics';
 import { getCastAncestors, matchesParentCast, parentCastReference, type CastAncestors } from './lib/castContext';
 import { createParentCastReader } from './lib/parentCastReader';
-import { decodeFeed, encodeFeed, newSavedFeed, normalizeFeedDefinition, orderFeedCasts, readSavedFeeds, writeSavedFeeds, type FeedDefinition, type SavedFeed } from '@opencaster/client-core/customFeeds';
+import { mergeFeedPage } from './lib/feedPageMerge';
+import { decodeFeed, encodeFeed, newSavedFeed, normalizeFeedDefinition, readSavedFeeds, writeSavedFeeds, type FeedDefinition, type SavedFeed } from '@opencaster/client-core/customFeeds';
 import './familiar.scss';
 import './cast-features.scss';
 import './reply-context.scss';
@@ -120,7 +121,7 @@ function relativeTime(timestamp: string) {
 function Avatar({ user, large = false }: { user?: User; large?: boolean }) {
   const [failedUrl, setFailedUrl] = useState('');
   const url = safeUrl(user?.pfp_url);
-  return <span className={`avatar ${large ? 'avatar--large' : ''}`}>{url && failedUrl !== url ? <img src={url} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailedUrl(url)} /> : (user?.display_name || user?.username || 'O').slice(0, 2).toUpperCase()}</span>;
+  return <span className={`avatar ${large ? 'avatar--large' : ''}`}>{url && failedUrl !== url ? <img src={url} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailedUrl(url)} /> : (user?.display_name || user?.username || 'O').slice(0, 2).toUpperCase()}</span>;
 }
 function LinkedText({ text, onNavigate }: { text: string; onNavigate(path: string): void }) {
   const parts = useMemo(() => textLinks(text), [text]);
@@ -135,13 +136,13 @@ function LinkedText({ text, onNavigate }: { text: string; onNavigate(path: strin
   })}</>;
 }
 function CastText({ cast, onProfile, onNavigate }: { cast: Cast; onProfile(user: User): void; onNavigate(path: string): void }) {
-  const attachmentUrls = cast.embeds?.filter((embed): embed is { url: string } => 'url' in embed && !!safeUrl(embed.url)).slice(0, 2).map(embed => safeUrl(embed.url)) ?? [];
+  const attachmentUrls = useMemo(() => cast.embeds?.filter((embed): embed is { url: string } => 'url' in embed && !!safeUrl(embed.url)).slice(0, 2).map(embed => safeUrl(embed.url)) ?? [], [cast.embeds]);
   const { text, mentioned_profiles: mentionedProfiles, mentioned_profiles_ranges: mentionedRanges } = cast;
   const segments = useMemo(() => renderMentionSegments({ text, mentioned_profiles: mentionedProfiles, mentioned_profiles_ranges: mentionedRanges }), [text, mentionedProfiles, mentionedRanges]);
-  const hiddenLines = new Set(segments.map(segment => segment.kind === 'text' ? segment.text : '\ufffc').join('').split('\n').flatMap((line, index) => {
+  const hiddenLines = useMemo(() => new Set(segments.map(segment => segment.kind === 'text' ? segment.text : '\ufffc').join('').split('\n').flatMap((line, index) => {
     const url = safeUrl(line.trim());
     return url && attachmentUrls.includes(url) ? [index] : [];
-  }));
+  })), [segments, attachmentUrls]);
   let lineIndex = 0;
   return <>{segments.map((segment, index) => {
     if (segment.kind !== 'text') return <a data-analytics="profile-open" className="cast-mention" key={index} href={profilePath(segment.user.fid)} onClick={event => localClick(event, () => onProfile(segment.user))}>@{segment.user.username || segment.user.fid}</a>;
@@ -242,7 +243,7 @@ function QuotedCast({ target, onThread, getCastPath }: { getCastPath(cast: Cast)
   if (reason) return <div className="filtered-cast"><p>Quoted cast filtered: {reason}</p><Button variant="ghost" onClick={() => controls.reveal(cast!.hash)}>Show this quote for this view</Button></div>;
   const quoteImages = cast?.embeds.filter((embed): embed is { url: string } => 'url' in embed && !!safeUrl(embed.url) && hasImageEmbed({ ...cast, embeds: [embed] })).slice(0, 2) ?? [];
   return <a data-analytics="cast-open" className="quoted-cast" href={cast ? getCastPath(cast) : castPath(target.hash)} onClick={event => { if (cast) localClick(event, () => onThread(cast)); }}>
-    {cast ? <><span className="quoted-cast__author"><Avatar user={cast.author} /><strong>{cast.author.username || cast.author.display_name || `FID ${target.fid}`}</strong><time dateTime={cast.timestamp}>{relativeTime(cast.timestamp)}</time></span><span className="quoted-cast__text">{renderMentionSegments(cast).map(segment => segment.kind === 'text' ? segment.text : `@${segment.user.username || segment.user.fid}`).join('') || 'Cast with attachments'}</span>{quoteImages.length > 0 && <span className="quoted-cast__images">{quoteImages.map(embed => <img key={embed.url} src={embed.url} alt="Image attached to quoted cast" loading="lazy" referrerPolicy="no-referrer" onError={event => { event.currentTarget.hidden = true; }} />)}</span>}</> : <span>{unavailable ? 'Quoted cast unavailable or deleted' : 'Loading quoted cast…'}</span>}
+      {cast ? <><span className="quoted-cast__author"><Avatar user={cast.author} /><strong>{cast.author.username || cast.author.display_name || `FID ${target.fid}`}</strong><time dateTime={cast.timestamp}>{relativeTime(cast.timestamp)}</time></span><span className="quoted-cast__text">{renderMentionSegments(cast).map(segment => segment.kind === 'text' ? segment.text : `@${segment.user.username || segment.user.fid}`).join('') || 'Cast with attachments'}</span>{quoteImages.length > 0 && <span className="quoted-cast__images">{quoteImages.map(embed => <img key={embed.url} src={embed.url} alt="Image attached to quoted cast" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={event => { event.currentTarget.hidden = true; }} />)}</span>}</> : <span>{unavailable ? 'Quoted cast unavailable or deleted' : 'Loading quoted cast…'}</span>}
   </a>;
 }
 function GuestPrompt({ children, onConnect }: { children: ReactNode; onConnect(): void }) {
@@ -267,9 +268,9 @@ function Landing({ onSignIn, onExplore, onNavigate }: { onSignIn(): void; onExpl
   </main>;
 }
 const CastCard = memo(function CastCard({ cast, featured = false, fullHashLinks = false, parent, replyPreview = true, getCastPath, onProfile, onNavigate, onThread, onShare, onQuote, onDelete, reactionActor, onCastHash, onImages, onOptions, session, onSignIn, saved, onSave, notify }: { cast: Cast; featured?: boolean; fullHashLinks?: boolean; getCastPath(cast: Cast): string; onProfile(user: User): void; onNavigate(path: string): void; onThread(cast: Cast): void; onShare(cast: Cast): void; onQuote(cast: Cast): void; onDelete(cast: Cast): void; reactionActor?: User; onCastHash(hash: string): void; onImages(images: CastImage[], initialIndex: number): void; onOptions(cast: Cast): void; session: WalletSession | null; onSignIn(): void; saved: boolean; onSave(cast: Cast): void; notify(text: string): void } & ReplyPresentation) {
-  const urls = cast.embeds?.filter((embed): embed is { url: string } => 'url' in embed && !!safeUrl(embed.url)).slice(0, 2) ?? [];
+  const urls = useMemo(() => cast.embeds?.filter((embed): embed is { url: string } => 'url' in embed && !!safeUrl(embed.url)).slice(0, 2) ?? [], [cast.embeds]);
   const isImage = (url: string) => hasImageEmbed({ ...cast, embeds: [{ url }] });
-  const images = urls.filter(embed => isImage(embed.url)).map((embed, index) => ({ url: embed.url, alt: `Image ${index + 1} attached to cast by @${cast.author.username || cast.author.fid}` }));
+  const images = useMemo(() => urls.filter(embed => isImage(embed.url)).map((embed, index) => ({ url: embed.url, alt: `Image ${index + 1} attached to cast by @${cast.author.username || cast.author.fid}` })), [urls, cast]);
   const [expanded, setExpanded] = useState(false);
   const collapsed = !featured && !expanded && ((cast.text?.length ?? 0) > 420 || (cast.text?.split('\n').length ?? 0) > 9);
   function openFromCard(event: MouseEvent<HTMLElement>) {
@@ -289,11 +290,11 @@ const CastCard = memo(function CastCard({ cast, featured = false, fullHashLinks 
       <ReplyContext cast={cast} parent={parent} preview={replyPreview} getCastPath={getCastPath} onProfile={onProfile} onNavigate={onNavigate} onThread={onThread} onCastHash={onCastHash} />
       <p className={`cast__text ${collapsed ? 'cast__text--clamp' : ''}`}><CastText cast={cast} onProfile={onProfile} onNavigate={onNavigate} /></p>
       {collapsed && <Button variant="ghost" className="cast__more" onClick={() => setExpanded(true)}>Show more</Button>}
-      {urls.length > 0 && <div className={`cast__attachments ${urls.length > 1 ? 'cast__attachments--multiple' : ''}`} aria-label="Cast attachments">{[...urls].sort((a, b) => Number(isImage(b.url)) - Number(isImage(a.url))).map(embed => isImage(embed.url) ? <a href={embed.url} key={embed.url} target="_blank" rel="noopener noreferrer" data-analytics="cast-image-open" className="embed" aria-label="View attached image" onClick={event => localClick(event, () => onImages(images, images.findIndex(image => image.url === embed.url)))}><img src={embed.url} loading="lazy" alt="Image attached to cast" referrerPolicy="no-referrer" onError={event => { event.currentTarget.hidden = true; }} /></a> : <LinkEmbed key={embed.url} url={embed.url} onNavigate={onNavigate} />)}</div>}
+      {urls.length > 0 && <div className={`cast__attachments ${urls.length > 1 ? 'cast__attachments--multiple' : ''}`} aria-label="Cast attachments">{[...urls].sort((a, b) => Number(isImage(b.url)) - Number(isImage(a.url))).map(embed => isImage(embed.url) ? <a href={embed.url} key={embed.url} target="_blank" rel="noopener noreferrer" data-analytics="cast-image-open" className="embed" aria-label="View attached image" onClick={event => localClick(event, () => onImages(images, images.findIndex(image => image.url === embed.url)))}><img src={embed.url} loading="lazy" decoding="async" alt="Image attached to cast" referrerPolicy="no-referrer" onError={event => { event.currentTarget.hidden = true; }} /></a> : <LinkEmbed key={embed.url} url={embed.url} onNavigate={onNavigate} />)}</div>}
       {cast.embeds?.filter((embed): embed is { cast_id: { fid: number; hash: string } } => 'cast_id' in embed && !!embed.cast_id && Number.isSafeInteger(embed.cast_id.fid) && embed.cast_id.fid > 0 && /^(?:0x)?[a-fA-F0-9]{40}$/.test(embed.cast_id.hash)).slice(0, 2).map(embed => <QuotedCast key={embed.cast_id.hash} target={embed.cast_id} onThread={onThread} getCastPath={getCastPath} />)}
       <div className="cast__actions">
         <Button data-analytics="cast-replies-open" variant="ghost" aria-label="Open replies" onClick={() => onThread(cast)}><IconMessageCircle size={18} /><span>{short(cast.replies?.count)}</span></Button>
-        <CastReactions cast={cast} session={session} onSignIn={onSignIn} notify={notify} onQuote={() => onQuote(cast)} />
+        <CastReactions key={`${cast.hash}:${session?.publicKey ?? 'guest'}`} cast={cast} session={session} onSignIn={onSignIn} notify={notify} onQuote={() => onQuote(cast)} />
         <Button data-analytics={saved ? 'bookmark-remove' : 'bookmark-add'} variant="ghost" aria-label={saved ? 'Remove bookmark' : 'Bookmark cast'} aria-pressed={saved} className={saved ? 'is-saved' : ''} onClick={() => onSave(cast)}><IconBookmark size={18} fill={saved ? 'currentColor' : 'none'} /></Button>
         {session?.fid === cast.author.fid && <Button data-analytics="cast-delete-open" variant="ghost" aria-label="Delete cast" onClick={() => onDelete(cast)}><IconTrash size={18} /></Button>}
         <Button data-analytics="cast-share-open" variant="ghost" aria-label="Share cast" onClick={() => onShare(cast)}><IconShare size={18} /></Button>
@@ -740,12 +741,12 @@ export default function App() {
       feedCursors.current.add(cursor);
       const next = data.next?.cursor || null;
       const repeated = next !== null && feedCursors.current.has(next);
-      setCasts(previous => {
-        const merged = new Map(previous.map(cast => [cast.hash.replace(/^0x/i, '').toLowerCase(), cast]));
-        for (const cast of data.casts) merged.set(cast.hash.replace(/^0x/i, '').toLowerCase(), cast);
-        const values = [...merged.values()];
-        return customFeed ? orderFeedCasts(values, customFeed) : view === 'channel' ? values.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp) || a.hash.localeCompare(b.hash)) : values;
-      }); setCursor(repeated ? null : next);
+      const compareCasts = customFeed?.order === 'newest'
+        ? (a: Cast, b: Cast) => (Date.parse(b.timestamp) || 0) - (Date.parse(a.timestamp) || 0)
+        : view === 'channel'
+          ? (a: Cast, b: Cast) => Date.parse(b.timestamp) - Date.parse(a.timestamp) || a.hash.localeCompare(b.hash)
+          : undefined;
+      setCasts(previous => mergeFeedPage(previous, data.casts, compareCasts)); setCursor(repeated ? null : next);
       if (repeated) setPaginationNotice('The node repeated a feed page. Refresh the feed to check for more conversations.');
     } catch (error) { if (generation === feedGeneration.current && !controller.signal.aborted) setMoreError(message(error)); }
     finally { if (feedMoreRead.current === controller) { feedMoreRead.current = null; if (generation === feedGeneration.current) setLoadingMore(false); } }
@@ -787,7 +788,7 @@ export default function App() {
   const card = (cast: Cast, featured = false, fullHashLinks = false, context: ReplyPresentation = {}) => {
     const reason = filterReason(cast);
     if (reason) return <div className="filtered-cast" key={cast.hash}><p>Cast filtered: {reason}</p><Button variant="secondary" onClick={() => controls.reveal(cast.hash)}>Show this cast for this view</Button><Button data-analytics="nav-settings" variant="ghost" onClick={() => navigate('/settings')}>Manage content controls</Button></div>;
-    return <CastCard key={`${session?.publicKey ?? 'guest'}:${cast.hash}`} cast={cast} featured={featured} fullHashLinks={fullHashLinks} replyPreview={!threadOpen} {...context} getCastPath={castLink} reactionActor={view === 'profile' && profile && profile.fid === cast.reaction_context?.fid ? profile : undefined} session={session} onSignIn={cardSignIn} onProfile={openProfile} onNavigate={navigateSocialLink} onThread={openThread} onShare={setSharedCast} onCastHash={cardCastHash} onImages={cardImages} onOptions={setCastOptions} onQuote={cardQuote} onDelete={setDeletedCast} saved={savedHashes.has(bookmarkHash(cast.hash))} onSave={cardSave} notify={notify} />;
+    return <CastCard key={cast.hash} cast={cast} featured={featured} fullHashLinks={fullHashLinks} replyPreview={!threadOpen} {...context} getCastPath={castLink} reactionActor={view === 'profile' && profile && profile.fid === cast.reaction_context?.fid ? profile : undefined} session={session} onSignIn={cardSignIn} onProfile={openProfile} onNavigate={navigateSocialLink} onThread={openThread} onShare={setSharedCast} onCastHash={cardCastHash} onImages={cardImages} onOptions={setCastOptions} onQuote={cardQuote} onDelete={setDeletedCast} saved={savedHashes.has(bookmarkHash(cast.hash))} onSave={cardSave} notify={notify} />;
   };
   const composeParentUrl = view === 'channel' && channelInfo && safeUrl(channelInfo.parent_url || channelInfo.url) ? channelInfo.parent_url || channelInfo.url : undefined;
   const pending = reconcilePublications(publications, observedCasts).filter(item => item.sessionKey === sessionPublicKey && item.author.fid === sessionFid);

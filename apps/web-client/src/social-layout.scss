@@ -18,6 +18,7 @@
 // Keep Discover/Following reachable while scrolling, as on X and Farcaster.
 .home-feed-tabs { position: sticky; top: 0; z-index: 4; background: color-mix(in srgb, var(--surface-00) 88%, transparent); backdrop-filter: blur(.75rem); }
 
+.feed > .cast:not(:focus-within) { content-visibility: auto; contain-intrinsic-size: auto 420px; }
 
 .guest-prompt { display: flex; align-items: center; gap: .8rem; padding: 1rem 1.75rem; border-bottom: .0625rem solid var(--border); }
 .guest-prompt > p { flex: 1; margin: 0; font-size: .78rem; line-height: 1.6; color: var(--color-text-subtle); }
