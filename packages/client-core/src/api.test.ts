@@ -755,6 +755,33 @@ describe('batched reaction status windows', () => {
     ].sort());
   });
 
+  it('uses reaction windows containing more than 100 messages', async () => {
+    const hashes = Array.from({ length: 101 }, (_, index) => index.toString(16).padStart(40, '0'));
+    const fetch = vi.fn().mockResolvedValueOnce(response({
+      messages: hashes.map(hash => reactionWithHash(hash)),
+      nextPageToken: 'dG9rZW4=',
+    }));
+    vi.stubGlobal('fetch', fetch);
+    expect(await getReactionStatus(7, { fid: 3, hash: hashes[100] }, 'like', undefined, { castTimestamp: farcasterIso(183_000_000 + 3_600) })).toBe(true);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0][0]).toContain('/api/v1/reactionsByFid?');
+  });
+
+  it('does not infer absence from a window with non-monotonic timestamps', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({
+        messages: [reaction('a', 'Like', 3, 7, 183_000_001), reaction('b', 'Like', 3, 7, 183_000_002)],
+        nextPageToken: 'dG9rZW4=',
+      }))
+      .mockResolvedValueOnce(absentReaction());
+    vi.stubGlobal('fetch', fetch);
+    const castTimestamp = farcasterIso(183_000_010);
+    expect(await getReactionStatus(7, { fid: 3, hash: 'a'.repeat(40) }, 'like', undefined, { castTimestamp })).toBe(true);
+    expect(await getReactionStatus(7, { fid: 3, hash: 'c'.repeat(40) }, 'like', undefined, { castTimestamp })).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1][0]).toContain('/api/v1/reactionById?');
+  });
+
   it('falls back for casts older than the partial window', async () => {
     const fetch = vi.fn().mockResolvedValueOnce(response({ messages: [reaction('a')], nextPageToken: 'dG9rZW4=' })).mockResolvedValueOnce(absentReaction());
     vi.stubGlobal('fetch', fetch);

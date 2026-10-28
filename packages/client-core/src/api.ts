@@ -548,17 +548,22 @@ function startReactionStatusRead(key: string, viewerFid: number, target: Reactio
 async function fetchReactionWindow(viewerFid: number, type: ReactionKind, signal: AbortSignal): Promise<ReactionWindow> {
   const params = new URLSearchParams({ fid: fidValue(viewerFid), reaction_type: reactionKind(type), pageSize: '100', reverse: 'true' });
   const response = await requestJson<{ messages: unknown[]; nextPageToken?: unknown }>('/v1/reactionsByFid', params, signal);
-  if (!Array.isArray(response.messages) || response.messages.length > 100) throw new ApiError('The node returned invalid reaction history.', 502, 'invalid_response');
+  if (!Array.isArray(response.messages) || response.messages.length > 1_000) throw new ApiError('The node returned invalid reaction history.', 502, 'invalid_response');
   const next = reactionCursor(response.nextPageToken);
   const targets = new Set<string>();
   let oldestTimestampMs = Infinity;
+  let previousTimestampMs = Infinity;
+  let newestFirst = true;
   for (const value of response.messages) {
     const message = validateReaction(value, viewerFid, type);
-    oldestTimestampMs = Math.min(oldestTimestampMs, (message.data.timestamp + FARCASTER_EPOCH_SECONDS) * 1000);
+    const timestampMs = (message.data.timestamp + FARCASTER_EPOCH_SECONDS) * 1000;
+    if (timestampMs > previousTimestampMs) newestFirst = false;
+    previousTimestampMs = timestampMs;
+    oldestTimestampMs = Math.min(oldestTimestampMs, timestampMs);
     const target = message.data.reactionBody.targetCastId;
     if (target) targets.add(`${target.fid}:${hashValue(target.hash)}`);
   }
-  return { targets, coveredSinceMs: next ? oldestTimestampMs : -Infinity };
+  return { targets, coveredSinceMs: next ? newestFirst ? oldestTimestampMs : Infinity : -Infinity };
 }
 
 function startReactionWindowRead(key: string, viewerFid: number, type: ReactionKind): ReactionWindowEntry {
@@ -675,11 +680,11 @@ export async function getReactionStatus(viewerFid: number, target: ReactionTarge
         }
         const targetKey = `${target.fid}:${hashValue(target.hash)}`;
         if (window.targets.has(targetKey)) {
-          storeReactionStatus(key, { promise: Promise.resolve(true), expires: Date.now() + REACTION_STATUS_TTL_MS, waiters: 0 });
+          storeReactionStatus(key, { promise: Promise.resolve(true), expires: Math.min(Date.now() + REACTION_STATUS_TTL_MS, windowEntry.expires), waiters: 0 });
           return true;
         }
         if (castTimestampMs - 10 * 60_000 > window.coveredSinceMs) {
-          storeReactionStatus(key, { promise: Promise.resolve(false), expires: Date.now() + REACTION_STATUS_TTL_MS, waiters: 0 });
+          storeReactionStatus(key, { promise: Promise.resolve(false), expires: Math.min(Date.now() + REACTION_STATUS_TTL_MS, windowEntry.expires), waiters: 0 });
           return false;
         }
       }
