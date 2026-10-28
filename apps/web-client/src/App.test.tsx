@@ -84,6 +84,10 @@ async function connect(value: WalletSession) { wallet.next = value; await click(
 async function traverse(direction: 'back' | 'forward') {
   await act(async () => { history[direction](); await new Promise(resolve => setTimeout(resolve, 10)); });
 }
+async function until(ready: () => boolean) {
+  for (let attempt = 0; attempt < 100 && !ready(); attempt++) await settleNavigation();
+  expect(ready()).toBe(true);
+}
 
 describe('automatic timeline pagination', () => {
   it('loads near the end once per request, keeps existing casts visible, and stops at exhaustion', async () => {
@@ -174,9 +178,17 @@ describe('homepage node support placement', () => {
 
   it('stays above the home composer for a signed-in account', async () => {
     await start(); await connect(session(FULL_CLIENT_SCOPES));
+    await until(() => Boolean(container.querySelector('main .home-composer .composer')));
     const banner = container.querySelector('.node-support')!; const composer = container.querySelector('main .home-composer .composer')!;
     expect(banner).not.toBeNull(); expect(composer).not.toBeNull();
     expect(banner.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('renders the reply composer for a signed-in conversation', async () => {
+    await start(`/cast/${otherCast.hash}`);
+    await connect(session(FULL_CLIENT_SCOPES));
+    await until(() => Boolean(container.querySelector('.conversation-page .composer')));
+    expect(container.querySelector('.conversation-page .composer')).not.toBeNull();
   });
 
   it.each(['/following', '/settings', '/devlog', '/profile/20'])('does not interrupt %s', async path => {
@@ -640,8 +652,12 @@ describe('isolated App feature integration', () => {
     const feedReads = vi.mocked(getProfileFeed).mock.calls.length;
     const reactionReads = vi.mocked(getReactionStatus).mock.calls.length;
     await click(button('Edit profile'));
-    const editor = dialog('Edit profile');
-    const name = editor.querySelector<HTMLInputElement>('input[type="text"]')!;
+    const { editor, name } = await vi.waitFor(() => {
+      const editor = dialog('Edit profile');
+      const name = editor.querySelector<HTMLInputElement>('input[type="text"]');
+      expect(name).not.toBeNull();
+      return { editor, name: name! };
+    });
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'Confirmed local name');
       name.dispatchEvent(new Event('input', { bubbles: true }));
