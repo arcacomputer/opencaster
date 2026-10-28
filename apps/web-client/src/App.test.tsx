@@ -652,8 +652,12 @@ describe('isolated App feature integration', () => {
     const feedReads = vi.mocked(getProfileFeed).mock.calls.length;
     const reactionReads = vi.mocked(getReactionStatus).mock.calls.length;
     await click(button('Edit profile'));
-    const editor = dialog('Edit profile');
-    const name = editor.querySelector<HTMLInputElement>('input[type="text"]')!;
+    const { editor, name } = await vi.waitFor(() => {
+      const editor = dialog('Edit profile');
+      const name = editor.querySelector<HTMLInputElement>('input[type="text"]');
+      expect(name).not.toBeNull();
+      return { editor, name: name! };
+    });
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'Confirmed local name');
       name.dispatchEvent(new Event('input', { bubbles: true }));
