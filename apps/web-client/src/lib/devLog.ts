@@ -19,6 +19,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'crypto-loaded-with-features',
+    date: '2026-10-28',
+    title: 'The browser starts with less signing code',
+    summary: 'Anonymous browsing starts with a smaller JavaScript bundle; signing and feed-reading code loads as the related features are used.',
+    changes: [
+      'Move device permission scope constants into a crypto-free module while keeping the existing pairing exports for callers.',
+      'Load the composer, profile editor and custom-feed reader as separate chunks, and fetch media-upload code only when an image is uploaded.',
+      'Cryptographic and protocol-signing libraries remain available to the feature chunks that require them; they are no longer part of the initial app entry.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/8bfc8a2cb0f61691ff52fa26c91bd5113de23206',
+    tag: 'Reliability',
+  },
+  {
     id: 'opencaster-client-monorepo',
     date: '2026-10-27',
     title: 'One source tree for Opencaster’s clients',
