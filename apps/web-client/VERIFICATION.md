@@ -1,3 +1,77 @@
+# Browser performance release deployed · 2026-10-28
+
+Release source
+[`3766845`](https://github.com/arcacomputer/opencaster/commit/3766845dfa8191fd5e63ba514b4b25de3e010a8f)
+combines merged PRs [#20](https://github.com/arcacomputer/opencaster/pull/20),
+[#21](https://github.com/arcacomputer/opencaster/pull/21),
+[#22](https://github.com/arcacomputer/opencaster/pull/22),
+[#23](https://github.com/arcacomputer/opencaster/pull/23) and
+[#24](https://github.com/arcacomputer/opencaster/pull/24): WOFF2 fonts, signing
+code loaded with its features, batched recent reaction checks, shared quoted-cast
+reads and lighter feed rendering/pagination. All five final PR heads had green
+verification, CodeQL/analysis and Devin Review checks; the exact main merge also
+passed [verification CI](https://github.com/arcacomputer/opencaster/actions/runs/40662951312).
+
+Authenticated Wrangler metadata identified the actual pre-release source as
+`2bc9cbfc332be103277154f7e863171c77af0891`, Worker
+**`99476d5f-8f5a-4f07-9403-4a435fc374dc`**, at 100% traffic. This baseline was
+confirmed again immediately before upload. The inspected release was deployed to
+`opencaster.org` at **2026-10-28 07:25:58 America/Santiago**
+(`2026-10-28T10:25:58Z`) as Worker
+**`cf8e30ec-0f26-4c1b-9efb-9f099ff29c2a`**, deployment
+`2a4c13d0-882f-456f-b745-3826c069f4e5`, at **100% traffic**. The version message
+records the full source commit; its tag is `performance-20261028-3766845d`.
+No rollback was needed.
+
+The clean release checkout used Node **22.22.3**, Yarn **1.22.21** and
+`yarn install --frozen-lockfile`. The root dev-log guard passed against the actual
+pre-release commit, preserving history and recognizing all six new milestones.
+Root `yarn verify` passed **1,877 tests across 74 files**, all shared-package,
+browser, gateway and analytics typechecks, the production browser build and the
+offline signer typecheck/build in **41.93 seconds**. Wrangler **4.141.0** dry-run
+passed and bundled the gateway renderer Wasm.
+
+Production browser assets were freshly built in
+`/tmp/arca-release-3766845-20261028-Al9pJg`; that exact inspected directory was
+the deployment input. Its **47 files** contained no source maps, symlinks or
+browser test-fixture markers, and their hashes remained unchanged after
+deployment. The public WalletConnect project identifier was explicitly supplied
+to the build and matched the previous live WalletConnect chunk without printing
+its value. A fresh clone without that build setting would disable wallet-app
+connections. No credential was copied into browser assets. The entry is
+`assets/index-CX3MvTD_.js`, with exactly one Latin font preload,
+`assets/Inter-latin-BTmm5tyf.woff2`; the extended Inter and Sen WOFF2 files also
+ship. Gateway runtime settings and all binding metadata match the previous
+version, including the origin/fallback configuration, existing secret binding,
+media storage/quota, analytics and migration tag. The analytics dashboard and
+native signer release were not deployed.
+
+Post-deploy public reads confirmed that all **46 non-HTML asset hashes** match
+the inspected build. HTML points to the new entry and Latin font preload; the
+font returns HTTP 200 with `font/woff2` and one-year immutable caching. The OFL
+license and both original TTF files return HTTP 200, and browser CSS uses WOFF2.
+The live `/devlog` renders all six new milestones. The public profile-3 share
+image returns HTTP 200, `image/png`, at **1200×630**; its five-minute edge cache
+means this read alone does not establish a cache miss or a newly generated PNG.
+
+Live desktop guest browsing loaded Discover through **25, 50 and 75 cards**,
+with **17 quoted previews** hydrated across those pages. Cards rendered in Inter
+without blank-card failures. The Recast/Quote menu opened, and Like as a guest
+opened the account-connection page; that flow was cancelled without connecting.
+A cast conversation rendered **101 cards**, direct profile `398800` loaded
+**15 cards**, and `/channel/spirituality` loaded **50 cards**, without captured
+alerts or console errors. The stale-cursor profile failure noted during the
+pre-release review also reproduced on the previous live app; direct profile
+loads and the post-deploy direct-profile check passed. This release does not
+claim to fix that existing navigation/node issue.
+
+Production checks used public reads/navigation only: no real account connection,
+wallet approval, signature, reaction write, post, follow, profile edit or media
+upload was performed. Signed-in production flows, production writes and mobile
+Safari were not exercised. Automated write checks use isolated synthetic
+identities. This is not an independent security audit. This documentation update
+records the deployed source above and does not deploy a newer application build.
+
 # Opencaster monorepo migration · 2026-10-27
 
 Implementation [`c9d19456`](https://github.com/arcacomputer/opencaster/commit/c9d19456b0acc6b1c4a4775603bb3d1050edbece)
