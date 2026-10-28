@@ -1,0 +1,23 @@
+{
+  "name": "@opencaster/gateway",
+  "version": "0.2.1",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@noble/curves": "2.0.1",
+    "@opencaster/client-core": "0.2.1",
+    "@opencaster/protocol": "0.2.1",
+    "@resvg/resvg-wasm": "2.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.0"
+  }
+}

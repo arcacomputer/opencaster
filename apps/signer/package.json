@@ -1,0 +1,36 @@
+{
+  "name": "@opencaster/signer",
+  "version": "0.2.1",
+  "private": true,
+  "type": "module",
+  "description": "Optional offline custody signing companion.",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "build": "node scripts/build-signer.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "yarn build && electron dist-signer/main.cjs",
+    "package": "node scripts/package-signer.mjs"
+  },
+  "dependencies": {
+    "@noble/curves": "2.0.1",
+    "@opencaster/client-core": "0.2.1",
+    "@opencaster/protocol": "0.2.1",
+    "@opencaster/web-ui": "0.2.1",
+    "@scure/bip32": "1.7.0",
+    "@scure/bip39": "1.6.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@electron/fuses": "2.1.3",
+    "@electron/packager": "20.3.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "electron": "44.9.0",
+    "esbuild": "0.25.12",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.0"
+  }
+}
