@@ -19,6 +19,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'feed-rendering-pagination',
+    date: '2026-10-28',
+    title: 'Long feeds stay lighter while browsing',
+    summary: 'Unfocused feed cards can defer rendering, while later pages reuse loaded order and reset reaction state for each viewer.',
+    changes: [
+      'Apply content visibility with an approximate reserved size to feed cards outside keyboard focus; conversation cards are unaffected.',
+      'Deduplicate later pages by cast hash and merge sorted pages without repeatedly sorting already ordered casts.',
+      'Decode feed images asynchronously and preserve viewer-specific reaction state when cards remain mounted across account changes.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/97972769ae18ff9e11400213dcb2afd901f95995',
+    tag: 'Reliability',
+  },
+  {
     id: 'opencaster-client-monorepo',
     date: '2026-10-27',
     title: 'One source tree for Opencaster’s clients',
