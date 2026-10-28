@@ -19,6 +19,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'batched-reaction-status',
+    date: '2026-10-28',
+    title: 'Recent like and recast checks take fewer requests',
+    summary: 'Recent feed casts can share two reaction-history reads, while older casts keep their individual status checks.',
+    changes: [
+      'Check up to 100 recent likes and recasts at a time for the connected account and reuse those receipts across visible casts.',
+      'Fall back to an individual check when a cast is too old for the recent page, and keep explicit fresh checks on the existing read path.',
+      'Reaction status stays viewer-scoped and can be up to five minutes old; Hypersnap’s paginated history can still require extra reads for older casts.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/d6cd020800821afe1398b8e345358fb63142b049',
+    tag: 'Reliability',
+  },
+  {
     id: 'opencaster-client-monorepo',
     date: '2026-10-27',
     title: 'One source tree for Opencaster’s clients',
