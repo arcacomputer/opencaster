@@ -2,23 +2,37 @@
   "name": "opencaster-repository",
   "private": true,
   "type": "module",
-  "description": "Repository entry points for the Opencaster Hypersnap web client.",
+  "description": "Opencaster clients, shared packages, and supporting services.",
   "license": "AGPL-3.0-only",
   "engines": {
     "node": "22.x",
     "yarn": "1.22.x"
   },
   "scripts": {
-    "dev": "yarn --cwd hypersnap dev",
-    "build": "yarn --cwd hypersnap build",
-    "preview": "yarn --cwd hypersnap preview",
-    "test": "yarn --cwd hypersnap test",
-    "verify": "yarn --cwd hypersnap verify",
-    "check:devlog": "yarn --cwd hypersnap check:devlog",
-    "analytics:report": "yarn --cwd hypersnap analytics:report",
-    "signer:build": "yarn --cwd hypersnap signer:build",
-    "signer:dev": "yarn --cwd hypersnap signer:dev",
-    "signer:package": "yarn --cwd hypersnap signer:package"
+    "dev": "yarn workspace @opencaster/web-client dev",
+    "build": "yarn workspace @opencaster/protocol build && yarn workspace @opencaster/client-core build && yarn workspace @opencaster/web-ui build && yarn workspace @opencaster/web-client build && yarn workspace @opencaster/gateway build && yarn workspace @opencaster/analytics build && yarn signer:build",
+    "preview": "yarn workspace @opencaster/web-client preview",
+    "test": "vitest run",
+    "typecheck": "yarn workspaces run typecheck",
+    "verify": "yarn test && yarn build",
+    "check:devlog": "node scripts/check-devlog.mjs",
+    "analytics:report": "yarn workspace @opencaster/analytics report",
+    "signer:build": "yarn workspace @opencaster/signer build",
+    "signer:dev": "yarn workspace @opencaster/signer dev",
+    "signer:package": "yarn workspace @opencaster/signer package"
   },
-  "packageManager": "yarn@1.22.22"
+  "packageManager": "yarn@1.22.22",
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.0",
+    "vite": "^7.1.0",
+    "happy-dom": "21.0.3"
+  }
 }

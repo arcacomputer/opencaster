@@ -1,0 +1,26 @@
+{
+  "name": "@opencaster/protocol",
+  "version": "0.2.1",
+  "private": true,
+  "type": "module",
+  "description": "Hypersnap wire encoding and signature primitives.",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "yarn --cwd ../.. test packages/protocol"
+  },
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@noble/curves": "2.0.1",
+    "@noble/hashes": "1.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3",
+    "viem": "^2.38.0",
+    "vitest": "^3.2.0"
+  }
+}
