@@ -19,6 +19,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'woff2-web-fonts',
+    date: '2026-10-28',
+    title: 'Web fonts download faster',
+    summary: 'The browser now uses smaller WOFF2 fonts, preloads only Inter’s common Latin subset, and serves the fonts’ license with the built assets.',
+    changes: [
+      'Serve Inter as Latin and extended WOFF2 subsets, and convert Sen to WOFF2, reducing the size of the fonts downloaded by the browser.',
+      'Preload only the Latin Inter subset; the matching character ranges select the extended subset when other glyphs are needed.',
+      'Keep the original TTF files available for gateway-generated share images and serve the fonts’ SIL Open Font License text with both copyright notices.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/0a6c49bf2a749344e08c8ff2fc897404e6691943',
+    tag: 'Reliability',
+  },
+  {
     id: 'opencaster-client-monorepo',
     date: '2026-10-27',
     title: 'One source tree for Opencaster’s clients',
