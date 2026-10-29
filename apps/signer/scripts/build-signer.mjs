@@ -44,7 +44,9 @@ await cp(join(webRoot, 'public/quorum-symbol.svg'), join(output, 'quorum-symbol.
 await cp(join(repoRoot, 'LICENSE'), join(output, 'LICENSE'));
 await cp(join(webRoot, 'THIRD_PARTY_NOTICES.md'), join(output, 'THIRD_PARTY_NOTICES.md'));
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-await writeFile(join(output, 'package.json'), JSON.stringify({ name: 'arca-signer', productName: 'Arca Signer', version: pkg.version, private: true, main: 'main.cjs', license: 'AGPL-3.0-only', author: 'Arca', description: 'Offline Hypersnap custody authorization companion' }, null, 2) + '\n');
+// Packager removes the workspace-only private flag from runtime metadata. Omit
+// it here so the payload manifest also describes the final archived bytes.
+await writeFile(join(output, 'package.json'), JSON.stringify({ name: 'arca-signer', productName: 'Arca Signer', version: pkg.version, main: 'main.cjs', license: 'AGPL-3.0-only', author: 'Arca', description: 'Offline Hypersnap custody authorization companion' }, null, 2) + '\n');
 
 async function files(directory) {
   const result = [];
