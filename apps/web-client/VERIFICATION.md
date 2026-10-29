@@ -1,3 +1,31 @@
+# Dependency maintenance verification · 2026-10-29
+
+Implementation
+[`72df9d2a`](https://github.com/arcacomputer/opencaster/commit/72df9d2a55db30e73ca7bc8ab2654c9dde8e1579)
+updates the workspace test runner and mocker to **4.1.12**, Happy DOM to
+**21.0.4**, and the signer build's Electron runtime to **44.9.1**. The former
+test-pool dependency is no longer in the resolved graph. Vite remains **7.3.7**;
+a compatible root resolution keeps Yarn Classic on the existing Vite 7 line.
+The single root lockfile and all workspace test-runner declarations agree.
+
+A frozen-lockfile install passed with Node **22.22.3** and Yarn **1.22.21**.
+Root `yarn verify` passed **1,877 tests across 74 files**, the shared-package,
+browser, gateway and analytics typechecks, the browser production build and the
+offline signer typecheck/build in **30.68 seconds**. Existing assertions and
+test cases were retained. Test-only migration changes use precise callable mock
+types, scope storage-failure stubs to their test, and wait for the lazy composer
+before typing. The dev-log guard recognizes the separate
+`verification-signer-dependency-refresh` milestone. `yarn audit --json` reported
+zero advisories in every severity category for the resolved dependency graph.
+
+The downloaded official Electron runtime reported **44.9.1** in Node mode. The
+signer payload build covers its JavaScript and provenance manifest; it does not
+produce a signed installer. Native GUI interaction, Developer ID packaging,
+notarization and installer publication were not exercised. No website deployment
+or real account action was performed. These source updates apply to future
+signer packages; existing distributed installers require a separate rebuild and
+release. This verification is not an independent security audit.
+
 # Browser performance release deployed · 2026-10-28
 
 Release source

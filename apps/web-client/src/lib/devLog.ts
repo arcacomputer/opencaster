@@ -19,6 +19,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'verification-signer-dependency-refresh',
+    date: '2026-10-29',
+    title: 'Updated verification tools and signer build runtime',
+    summary: 'Refresh the dependencies used for automated checks and future offline signer packages.',
+    changes: [
+      'Use Vitest 4.1.12 and Happy DOM 21.0.4 across the workspace checks, with test mocks adapted to the newer runner.',
+      'Keep verification on the existing Vite 7 toolchain through a compatible Yarn Classic resolution.',
+      'Select Electron 44.9.1 for newly packaged offline signer builds; existing signer downloads need a separate rebuild and release.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/72df9d2a55db30e73ca7bc8ab2654c9dde8e1579',
+    tag: 'Security',
+  },
+  {
     id: 'feed-rendering-pagination',
     date: '2026-10-28',
     title: 'Long feeds stay lighter while browsing',
