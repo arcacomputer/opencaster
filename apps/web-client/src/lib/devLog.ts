@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'dev-log-local-update-times',
+    date: '2026-10-29',
+    timestamp: '2026-10-29T00:31:25-03:00',
+    title: 'Dev log updates show your local date and time',
+    summary: 'Every milestone now shows its date, time and timezone using your browser’s local settings, making it easier to see when a change was made.',
+    changes: [
+      'Show local dates and times for every update, the first commit and the latest update, including timezone labels and local date formatting.',
+      'Use each linked implementation commit’s recorded time throughout the existing history and order updates by that instant. These are code-change times, not deployment times.',
+      'Check new milestone timestamps against their linked commits before release. Local formatting uses your device settings without requesting your location.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/557316abed4a759044c48088e62471db6210366a',
+    tag: 'Reliability',
+  },
+  {
     id: 'feed-rendering-pagination',
     date: '2026-10-28',
     timestamp: '2026-10-28T06:46:23Z',
