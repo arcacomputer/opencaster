@@ -1,11 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { enrollPasskey, evaluatePasskey, passkeysAvailable, validatePasskeyDescriptor, type PasskeyDescriptor } from './passkey';
 
 const ORIGIN = 'https://opencaster.org';
 const ID = new Uint8Array(32).fill(7);
 const ACCOUNT = { fid: 1234, publicKey: '03'.repeat(32) };
 const b64 = (value: Uint8Array) => btoa(String.fromCharCode(...value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-const hex = (value: Uint8Array) => Array.from(value, byte => byte.toString(16).padStart(2, '0')).join('');
+const hex = (value: BufferSource) => {
+  const bytes = ArrayBuffer.isView(value) ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength) : new Uint8Array(value);
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+};
 const json = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).buffer;
 const descriptor = (): PasskeyDescriptor => ({ origin: ORIGIN, rpId: 'opencaster.org', credentialId: b64(ID), prfSalt: '08'.repeat(32), userHandle: '09'.repeat(32) });
 
@@ -25,7 +28,9 @@ async function authenticator(rpId: string, flags: number, creation = false): Pro
   return value.buffer;
 }
 
-let create: ReturnType<typeof vi.fn>, get: ReturnType<typeof vi.fn>, fetch: ReturnType<typeof vi.fn>;
+type CreateCredential = (options: CredentialCreationOptions) => Promise<SyntheticCredential>;
+type GetCredential = (options: CredentialRequestOptions) => Promise<SyntheticCredential>;
+let create: Mock<CreateCredential>, get: Mock<GetCredential>, fetch: Mock<typeof globalThis.fetch>;
 let userHandle: ArrayBuffer;
 let first: Uint8Array<ArrayBuffer>, second: Uint8Array<ArrayBuffer>;
 let lastAssertion: SyntheticCredential;
@@ -36,7 +41,7 @@ beforeEach(() => {
   vi.stubGlobal('isSecureContext', true);
   userHandle = new Uint8Array(32).fill(9).buffer;
   first = new Uint8Array(32).fill(42); second = new Uint8Array(32).fill(43);
-  create = vi.fn().mockImplementation(async (options: CredentialCreationOptions) => {
+  create = vi.fn<CreateCredential>().mockImplementation(async options => {
     const requested = options.publicKey!;
     userHandle = new Uint8Array(requested.user.id as ArrayBuffer).slice().buffer;
     const result = new SyntheticCredential();
@@ -45,7 +50,7 @@ beforeEach(() => {
     result.outputs = { prf: { enabled: true }, credProps: { rk: true } };
     return result;
   });
-  get = vi.fn().mockImplementation(async (options: CredentialRequestOptions) => {
+  get = vi.fn<GetCredential>().mockImplementation(async options => {
     const requested = options.publicKey!;
     const result = new SyntheticCredential();
     result.response = { clientDataJSON: json({ type: 'webauthn.get', origin: ORIGIN, challenge: b64(new Uint8Array(requested.challenge as ArrayBuffer)), crossOrigin: false }), authenticatorData: await authenticator(requested.rpId!, 0x05), signature: new Uint8Array(64).fill(11).buffer, userHandle: userHandle.slice(0) };
@@ -54,7 +59,7 @@ beforeEach(() => {
     return result;
   });
   vi.stubGlobal('navigator', { credentials: { create, get } });
-  fetch = vi.fn(() => { throw new Error('Passkeys must not call a server.'); });
+  fetch = vi.fn<typeof globalThis.fetch>(() => { throw new Error('Passkeys must not call a server.'); });
   vi.stubGlobal('fetch', fetch);
 });
 afterEach(() => { expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals(); vi.useRealTimers(); });
@@ -69,8 +74,8 @@ describe('local WebAuthn PRF unlock', () => {
     expect(saved.userHandle).toBe(hex(new Uint8Array(userHandle)));
     expect(prfSecret).toEqual(new Uint8Array(32).fill(42));
     expect(first.every(byte => byte === 0) && second.every(byte => byte === 0)).toBe(true);
-    const creation = create.mock.calls[0][0].publicKey;
-    const assertion = get.mock.calls[0][0].publicKey;
+    const creation = create.mock.calls[0][0].publicKey!;
+    const assertion = get.mock.calls[0][0].publicKey!;
     expect(creation.rp).toEqual({ id: 'opencaster.org', name: 'Opencaster on Hypersnap' });
     expect(creation.user.displayName).toBe('Opencaster FID 1234');
     expect(creation.authenticatorSelection).toEqual({ residentKey: 'required', requireResidentKey: true, userVerification: 'required' });
@@ -78,7 +83,7 @@ describe('local WebAuthn PRF unlock', () => {
     expect(creation.extensions).toEqual({ prf: {}, credProps: true });
     expect(assertion.userVerification).toBe('required');
     expect(assertion.allowCredentials).toEqual([{ type: 'public-key', id: ID }]);
-    expect(hex(assertion.extensions.prf.eval.first)).toBe(saved.prfSalt);
+    expect(hex(assertion.extensions!.prf!.eval!.first)).toBe(saved.prfSalt);
     expect(assertion.challenge).not.toEqual(creation.challenge);
     prfSecret.fill(0);
   });
@@ -269,7 +274,7 @@ describe('local WebAuthn PRF unlock', () => {
     const pending = evaluatePasskey(descriptor(), { origin: ORIGIN });
     const assertion = expect(pending).rejects.toMatchObject({ code: 'timeout' });
     await vi.advanceTimersByTimeAsync(60_001); await assertion;
-    expect(get.mock.calls[0][0].signal.aborted).toBe(true);
+    expect(get.mock.calls[0][0].signal!.aborted).toBe(true);
   });
 
   it('turns a native user rejection into cancellation without calling get afterwards', async () => {

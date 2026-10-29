@@ -73,6 +73,17 @@ async function lock() { await click(container.querySelector('button[aria-label="
 async function input(field: HTMLInputElement, value: string) {
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, value); field.dispatchEvent(new Event('input', { bubbles: true })); });
 }
+function stubStorage(overrides: Partial<Pick<Storage, 'getItem' | 'setItem'>>) {
+  const storage = localStorage;
+  // Happy DOM binds storage methods through a Proxy. Replacing the global keeps
+  // failure-mode mocks scoped to this test without relying on proxy spy cleanup.
+  vi.stubGlobal('localStorage', {
+    getItem: storage.getItem.bind(storage), setItem: storage.setItem.bind(storage),
+    removeItem: storage.removeItem.bind(storage), clear: storage.clear.bind(storage),
+    key: storage.key.bind(storage), get length() { return storage.length; }, ...overrides,
+  } satisfies Storage);
+  return storage;
+}
 
 describe('isolated familiar-client App integration', () => {
   it('opens public settings and restores a cast hidden through its menu without a network write', async () => {
@@ -112,10 +123,10 @@ describe('isolated familiar-client App integration', () => {
   it('keeps tab-only muted authors in memory through account switches when preference storage fails', async () => {
     await start(); await connect(session(10, '1'));
     const originalSetItem = localStorage.setItem.bind(localStorage);
-    vi.spyOn(localStorage, 'setItem').mockImplementation((key, value) => {
+    const storage = stubStorage({ setItem(key, value) {
       if (key.startsWith('arca.hypersnap.content-preferences.')) throw new Error('Isolated quota failure');
       originalSetItem(key, value);
-    });
+    } });
     await click(button('Mute @person20 on this browser', await options()));
     expect(texts()).toEqual([second.text]);
     expect(container.querySelector('.toast')?.textContent).toContain('Account muted for this tab. Browser storage is unavailable.');
@@ -127,12 +138,14 @@ describe('isolated familiar-client App integration', () => {
     await connect(session(10, '3')); expect(texts()).toEqual([second.text]);
     await settings(); expect(button('Unmute')).toBeTruthy();
     expect(readContentPreferences().mutedAccounts).toEqual([]); expect(readContentPreferences(11).mutedAccounts).toEqual([]);
-    expect(Object.keys(localStorage).some(key => key.startsWith('arca.hypersnap.content-preferences.'))).toBe(false);
+    expect(Object.keys(storage).some(key => key.startsWith('arca.hypersnap.content-preferences.'))).toBe(false);
   });
 
   it('renders settings and applies tab-only muted phrases when all browser storage reads and writes are denied', async () => {
-    vi.spyOn(localStorage, 'getItem').mockImplementation(() => { throw new Error('Isolated storage access denied'); });
-    vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new Error('Isolated storage access denied'); });
+    stubStorage({
+      getItem() { throw new Error('Isolated storage access denied'); },
+      setItem() { throw new Error('Isolated storage access denied'); },
+    });
     await start('/settings'); await until(() => Boolean(container.querySelector('.content-settings')));
     expect(container.querySelector('main')?.textContent).toContain('Guest preferences');
     await input(container.querySelector<HTMLInputElement>('.content-settings input')!, 'coffee');

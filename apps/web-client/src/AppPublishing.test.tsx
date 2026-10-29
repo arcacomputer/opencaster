@@ -60,6 +60,9 @@ function button(label: string, scope: ParentNode = container) { return [...scope
 async function connect(value: WalletSession) { wallet.next = value; await click(button('Sign in')); await vi.waitFor(async () => { await settle(); expect(button('Approve synthetic wallet')).toBeTruthy(); }); await click(button('Approve synthetic wallet')); await settle(); }
 async function settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); }); }
 async function type(text: string, scope: ParentNode = container.querySelector('.home-composer')!) {
+  // The composer is lazy; wait for the editor instead of assuming the fixed
+  // settle helper has allowed its module to finish loading.
+  await vi.waitFor(async () => { await settle(); expect(scope.querySelector('textarea')).toBeTruthy(); });
   const field = scope.querySelector<HTMLTextAreaElement>('textarea')!;
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field, text); field.dispatchEvent(new Event('input', { bubbles: true })); });
 }

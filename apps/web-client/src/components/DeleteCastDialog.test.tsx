@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ApiError, type Cast } from '@opencaster/client-core/api';
 import type { WalletSession } from '../lib/auth';
@@ -55,9 +55,9 @@ function deferred<T>() {
 describe('asynchronous deletion review and account changes', () => {
   let container: HTMLDivElement;
   let root: Root;
-  let onEnable: ReturnType<typeof vi.fn>;
-  let onDeleted: ReturnType<typeof vi.fn>;
-  let onClose: ReturnType<typeof vi.fn>;
+  let onEnable: Mock<() => void>;
+  let onDeleted: Mock<(cast: Cast) => void>;
+  let onClose: Mock<() => void>;
   beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     container = document.createElement('div'); document.body.append(container); root = createRoot(container);
