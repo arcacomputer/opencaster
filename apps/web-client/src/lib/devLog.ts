@@ -19,6 +19,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'arca-signer-0-2-2',
+    date: '2026-10-29',
+    title: 'Arca Signer v0.2.2 for Apple Silicon',
+    summary: 'The optional offline companion uses an updated Electron runtime and a new versioned download.',
+    changes: [
+      'Package Arca Signer 0.2.2 with Electron 44.9.1 for macOS Apple Silicon.',
+      'Point account-connection and revocation downloads to the new release and its current monorepo source instructions.',
+      'Keep the original casts-and-reactions permission limit and Developer ID signed beta status; Apple notarization and an independent security audit remain pending.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/3e5465f997cec251f7e0d9e30d2fd3b23aa53a45',
+    tag: 'Security',
+  },
+  {
     id: 'verification-signer-dependency-refresh',
     date: '2026-10-29',
     title: 'Updated verification tools and signer build runtime',
