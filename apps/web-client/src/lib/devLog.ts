@@ -19,6 +19,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'preserve-primary-only-gateway',
+    date: '2026-10-29',
+    title: 'Keep public reads on the configured primary',
+    summary: 'Website releases preserve the gateway’s existing primary-only read policy.',
+    changes: [
+      'Keep the Haatz read backup disabled when deploying new website builds.',
+      'Retain index-readiness guards: unavailable primary indexes remain unavailable, with no claim of index completeness.',
+      'Keep the existing origin credential, media storage and request measurements unchanged.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/cf9f04a47991f1fd3e112a59309cc51fd9715f13',
+    tag: 'Reliability',
+  },
+  {
     id: 'arca-signer-0-2-2',
     date: '2026-10-29',
     title: 'Arca Signer v0.2.2 for Apple Silicon',
