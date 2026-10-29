@@ -3,6 +3,8 @@ export type DevLogTag = 'Launch' | 'Wallets' | 'Security' | 'Social' | 'Reliabil
 export interface DevLogMilestone {
   readonly id: string;
   readonly date: string;
+  /** Recorded author time of the linked implementation commit, including its UTC offset. */
+  readonly timestamp: string;
   readonly title: string;
   readonly summary: string;
   readonly changes: readonly string[];
@@ -10,9 +12,10 @@ export interface DevLogMilestone {
   readonly tag: DevLogTag;
 }
 
-// Dates match the commits' author and committer timestamps, both recorded at
-// UTC−03:00. This is the standalone Hypersnap client's history; Quorum Desktop
-// and the underlying social protocols predate this project.
+// Dates preserve the linked commits' author calendar dates; timestamps record
+// their full author times for display in each visitor's timezone. This is the
+// standalone client's history; Quorum Desktop and the underlying social
+// protocols predate it.
 export const PROJECT_STARTED_DATE = '2026-10-19';
 export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 
@@ -21,6 +24,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'feed-rendering-pagination',
     date: '2026-10-28',
+    timestamp: '2026-10-28T06:46:23Z',
     title: 'Long feeds stay lighter while browsing',
     summary: 'Unfocused feed cards can defer rendering, while later pages reuse loaded order and reset reaction state for each viewer.',
     changes: [
@@ -34,6 +38,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'quoted-cast-read-reuse',
     date: '2026-10-28',
+    timestamp: '2026-10-28T06:42:59Z',
     title: 'Quoted casts share public reads',
     summary: 'Quoted previews now reuse the bounded parent-cast reader, avoiding repeated reads while preserving loading and unavailable states.',
     changes: [
@@ -46,6 +51,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'woff2-web-fonts',
     date: '2026-10-28',
+    timestamp: '2026-10-28T06:40:31Z',
     title: 'Web fonts download faster',
     summary: 'The browser now uses smaller WOFF2 fonts, preloads only Inter’s common Latin subset, and serves the fonts’ license with the built assets.',
     changes: [
@@ -59,6 +65,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'conversation-composer-loading',
     date: '2026-10-28',
+    timestamp: '2026-10-28T06:36:52Z',
     title: 'Conversation replies stay visible while the editor loads',
     summary: 'Opening a conversation now keeps its page visible while the reply composer loads on demand.',
     changes: [
@@ -71,6 +78,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'batched-reaction-status',
     date: '2026-10-28',
+    timestamp: '2026-10-28T06:33:32Z',
     title: 'Recent like and recast checks take fewer requests',
     summary: 'Recent feed casts can share two reaction-history reads, while older casts keep their individual status checks.',
     changes: [
@@ -84,6 +92,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'crypto-loaded-with-features',
     date: '2026-10-28',
+    timestamp: '2026-10-28T06:25:01Z',
     title: 'The browser starts with less signing code',
     summary: 'Anonymous browsing starts with a smaller JavaScript bundle; signing and feed-reading code loads as the related features are used.',
     changes: [
@@ -97,6 +106,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'opencaster-client-monorepo',
     date: '2026-10-27',
+    timestamp: '2026-10-27T21:41:33-03:00',
     title: 'One source tree for Opencaster’s clients',
     summary: 'Contributors can develop and check the browser client, offline signer and supporting services together, with shared protocol code and one dependency lockfile.',
     changes: [
@@ -112,6 +122,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'performance-release-with-current-browsing',
     date: '2026-10-27',
+    timestamp: '2026-10-27T06:03:23-03:00',
     title: 'Faster browsing across the current app',
     summary: 'The browsing improvements now work together with custom feeds, reply context, sharing previews and immediate publishing feedback, while retaining the current gateway protections.',
     changes: [
@@ -127,6 +138,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'public-browsing-maintenance-checks',
     date: '2026-10-27',
+    timestamp: '2026-10-27T03:24:47-03:00',
     title: 'Keeping public browsing predictable',
     summary: 'A maintenance pass keeps feed refreshes and public-account lookups predictable, with stronger automated checks for feed rules and shared previews.',
     changes: [
@@ -141,6 +153,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'reaction-lists-load-faster',
     date: '2026-10-27',
+    timestamp: '2026-10-27T04:45:19Z',
     title: 'Like and recast lists load faster',
     summary: 'The people who liked or recast a cast now load in one profile request per page, and recently opened profiles and casts are reused for a minute instead of being downloaded again.',
     changes: [
@@ -155,6 +168,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'faster-content-control-checks',
     date: '2026-10-27',
+    timestamp: '2026-10-27T04:43:43Z',
     title: 'Content controls check casts faster',
     summary: 'Checking a cast against your muted accounts, muted words and hidden casts no longer rescans every list entry, so long feeds with many content controls filter faster.',
     changes: [
@@ -168,6 +182,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'gateway-forwards-validated-json',
     date: '2026-10-27',
+    timestamp: '2026-10-27T04:43:21Z',
     title: 'Feeds and profiles load with less gateway work',
     summary: 'The gateway now forwards each successful Hypersnap read exactly as the node sent it after checking it, instead of rebuilding the JSON first.',
     changes: [
@@ -180,6 +195,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'edge-cached-global-reads',
     date: '2026-10-27',
+    timestamp: '2026-10-27T04:42:31Z',
     title: 'Discover and Channels load faster',
     summary: 'Node info, trending casts and channel lists are now shared at the edge for up to a minute, so most page loads no longer wait for the Hypersnap node.',
     changes: [
@@ -193,6 +209,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'cached-app-bundles',
     date: '2026-10-27',
+    timestamp: '2026-10-27T04:42:07Z',
     title: 'Repeat visits load faster',
     summary: 'Browsers now keep the app’s versioned scripts and styles instead of checking each one with the server on every visit, so reloads and return visits start sooner.',
     changes: [
@@ -206,6 +223,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'notifications-time-labels-faster',
     date: '2026-10-27',
+    timestamp: '2026-10-27T04:41:41Z',
     title: 'Notifications render their times faster',
     summary: 'The notifications page now reuses one date formatter for activity times instead of creating a new one for every row on every update.',
     changes: [
@@ -218,6 +236,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'reaction-status-reads-cached',
     date: '2026-10-27',
+    timestamp: '2026-10-27T04:43:36Z',
     title: 'Like and recast status loads once per cast',
     summary: 'When you are signed in, whether you liked or recasted a cast is now checked once and reused when the cast appears again, so feeds load fewer requests and reaction buttons are ready sooner.',
     changes: [
@@ -232,6 +251,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'feed-stays-responsive-while-typing',
     date: '2026-10-27',
+    timestamp: '2026-10-27T04:44:05Z',
     title: 'Long feeds stay responsive while you type a search',
     summary: 'Typing in the search box, dismissing a notification or opening a dialog no longer redraws every loaded cast, so the search box keeps up after you have scrolled through several pages.',
     changes: [
@@ -245,6 +265,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'immediate-pending-casts-and-readable-refresh',
     date: '2026-10-26',
+    timestamp: '2026-10-26T18:55:29-03:00',
     title: 'See your cast while the network catches up',
     summary: 'Keep conversations readable during refresh, see a new cast immediately, and open profile tabs without waiting for several history pages.',
     changes: [
@@ -261,6 +282,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'channel-and-custom-feed-sharing-previews',
     date: '2026-10-26',
+    timestamp: '2026-10-26T18:57:38-03:00',
     title: 'Share what a channel or feed is about',
     summary: 'Channel and custom-feed links now carry their own previews, so people can see the topic or recipe before opening Opencaster.',
     changes: [
@@ -275,6 +297,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'opencaster-open-door-identity',
     date: '2026-10-26',
+    timestamp: '2026-10-26T18:54:53-03:00',
     title: 'An open door to the conversation',
     summary: 'Opencaster has a new open-door logo: a welcoming arch with the door swung open.',
     changes: [
@@ -288,6 +311,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'individual-cast-and-profile-share-previews',
     date: '2026-10-26',
+    timestamp: '2026-10-26T17:40:41-03:00',
     title: 'The person or post behind a shared link',
     summary: 'Shared profiles and casts now have individual previews with public account details or the actual post.',
     changes: [
@@ -303,6 +327,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'choose-your-public-timelines',
     date: '2026-10-26',
+    timestamp: '2026-10-26T17:36:26-03:00',
     title: 'Your feeds, your view of the conversation',
     summary: 'Create, customize and pin public timelines, and explore someone’s public Following feed without connecting a wallet.',
     changes: [
@@ -319,6 +344,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'automatic-timeline-browsing',
     date: '2026-10-26',
+    timestamp: '2026-10-26T17:15:41-03:00',
     title: 'Keep scrolling through conversations',
     summary: 'Discover more conversations as you scroll, without stopping to press a button at the end of each page.',
     changes: [
@@ -333,6 +359,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'opencaster-social-sharing-cards',
     date: '2026-10-26',
+    timestamp: '2026-10-26T17:15:01-03:00',
     title: 'A proper introduction when you share a link',
     summary: 'Opencaster links include a branded image and a clear platform description for social and messaging previews.',
     changes: [
@@ -347,6 +374,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'cloudflare-verified-private-dashboard-sessions',
     date: '2026-10-24',
+    timestamp: '2026-10-24T07:20:51-03:00',
     title: 'Private dashboard sign-in follows Cloudflare',
     summary: 'Recognize the operator’s approved Cloudflare session when opening the private analytics dashboard.',
     changes: [
@@ -360,6 +388,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'private-operator-analytics-dashboard',
     date: '2026-10-24',
+    timestamp: '2026-10-24T07:08:01-03:00',
     title: 'A private view of website activity',
     summary: 'An operator dashboard brings aggregate visits, countries, traffic sources and interface activity together behind private sign-in.',
     changes: [
@@ -375,6 +404,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'cloudflare-worker-invocation-diagnostics',
     date: '2026-10-24',
+    timestamp: '2026-10-24T06:06:32-03:00',
     title: 'Request diagnostics in Cloudflare',
     summary: 'Stored Worker invocation logs help the operator inspect request outcomes and diagnose service errors.',
     changes: [
@@ -389,6 +419,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'reply-context-in-timelines-and-conversations',
     date: '2026-10-24',
+    timestamp: '2026-10-24T05:38:53-03:00',
     title: 'Replies keep their context',
     summary: 'See who a reply addresses in the timeline and read the earlier casts above an opened reply.',
     changes: [
@@ -405,6 +436,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'private-primary-with-bounded-read-backup',
     date: '2026-10-23',
+    timestamp: '2026-10-23T23:05:46-03:00',
     title: 'Our private node first, Haatz when reads need backup',
     summary: 'Use an authenticated private primary for the core API and keep Haatz as a bounded read backup, without replaying uncertain signed submissions.',
     changes: [
@@ -422,6 +454,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'short-cast-links-open-conversations-directly',
     date: '2026-10-23',
+    timestamp: '2026-10-23T16:58:03-03:00',
     title: 'Short links go straight to the cast',
     summary: 'Open a verified matching cast and its replies immediately, without an intermediate preview or confirmation click.',
     changes: [
@@ -437,6 +470,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'farcaster-shaped-conversations-and-cast-links',
     date: '2026-10-23',
+    timestamp: '2026-10-23T15:42:28-03:00',
     title: 'Familiar conversations and cast links',
     summary: 'Conversations follow a familiar Farcaster-style layout, and shared casts use the same author and short-hash path shape.',
     changes: [
@@ -453,6 +487,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'aggregate-cloudflare-usage-and-health',
     date: '2026-10-23',
+    timestamp: '2026-10-23T14:05:40-03:00',
     title: 'Understanding how Opencaster is used',
     summary: 'Aggregate Cloudflare statistics help improve navigation and reliability, with browser privacy controls and no visitor identifiers or session recordings.',
     changes: [
@@ -468,6 +503,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'short-cast-links-show-matches-earlier',
     date: '2026-10-22',
+    timestamp: '2026-10-22T23:27:55-03:00',
     title: 'Short cast links show matches sooner',
     summary: 'Farcaster-style short links now display verified matching casts as soon as their history page is checked, while remaining checks continue in the background.',
     changes: [
@@ -482,6 +518,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'persistent-node-support-link',
     date: '2026-10-22',
+    timestamp: '2026-10-22T22:34:36-03:00',
     title: 'Node support stays one click away',
     summary: 'A small Support the node link now sits in the sidebar, the right column footer and the landing footer, so it is still reachable after the Discover banner is dismissed.',
     changes: [
@@ -495,6 +532,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'recast-menu-and-active-channels',
     date: '2026-10-22',
+    timestamp: '2026-10-22T21:33:08-03:00',
     title: 'Quote from the recast menu, channels on the side',
     summary: 'The recast button now opens a Recast or Quote menu, and the right column lists active channels instead of two information cards.',
     changes: [
@@ -510,6 +548,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'familiar-profile-and-channel-headers',
     date: '2026-10-22',
+    timestamp: '2026-10-22T17:57:31-03:00',
     title: 'Profiles that look like profiles',
     summary: 'Profiles now open with a cover, an overlapping avatar and the Follow and Share buttons beside it, and profile and channel pages get a back arrow in the header.',
     changes: [
@@ -525,6 +564,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'one-sign-in-prompt',
     date: '2026-10-22',
+    timestamp: '2026-10-22T17:25:47-03:00',
     title: 'One clear way to sign in',
     summary: 'Visitors who are not signed in now see a single Sign in prompt instead of several connect buttons on the same screen.',
     changes: [
@@ -539,6 +579,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'cast-pages-and-signed-out-landing',
     date: '2026-10-22',
+    timestamp: '2026-10-22T17:03:33-03:00',
     title: 'Casts open as pages, plus a proper front door',
     summary: 'Tap anywhere on a cast to open its conversation as a page, and new visitors now start on a landing with Sign in or Explore without an account.',
     changes: [
@@ -555,6 +596,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'feed-first-social-layout',
     date: '2026-10-22',
+    timestamp: '2026-10-22T08:10:36-03:00',
     title: 'A feed-first layout that feels familiar',
     summary: 'Casts now appear on the first screen on desktop and phones, with one navigation column, a Cast button and a five-tab mobile bar like other social clients.',
     changes: [
@@ -571,6 +613,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'optional-hypersnap-node-support',
     date: '2026-10-22',
+    timestamp: '2026-10-22T23:56:39Z',
     title: 'Help fund an independently operated Hypersnap node',
     summary: 'An optional support banner on Discover links to a one-time Stripe checkout for Arca Computer, with proceeds helping fund node hosting and operation.',
     changes: [
@@ -585,6 +628,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'zero-warning-source-checks',
     date: '2026-10-22',
+    timestamp: '2026-10-22T06:53:08-03:00',
     title: 'Cleaner checks and steadier account sessions',
     summary: 'All 262 source lint warnings are resolved across Opencaster and the retained Quorum client, with new regression tests for account changes, cancellation and one-time initialization.',
     changes: [
@@ -601,6 +645,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'repeatable-verification-for-both-clients',
     date: '2026-10-22',
+    timestamp: '2026-10-22T06:03:36-03:00',
     title: 'Stronger checks before updates ship',
     summary: 'A repeatable dependency setup restores the retained Quorum checks, and the full verification command now checks Opencaster through its own Hypersnap test and build tools too.',
     changes: [
@@ -616,6 +661,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'arca-computer-organization-source',
     date: '2026-10-22',
+    timestamp: '2026-10-22T04:40:04-03:00',
     title: 'Opencaster joins the Arca Computer organization',
     summary: 'The public repository now lives at github.com/arcacomputer/opencaster, making the team behind the client easier to find.',
     changes: [
@@ -630,6 +676,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'opencaster-name-and-domain',
     date: '2026-10-22',
+    timestamp: '2026-10-22T04:16:14-03:00',
     title: 'Welcome to Opencaster',
     summary: 'An open source client for everyone, now at opencaster.org. Powered by Arca Computer and running on Hypersnap.',
     changes: [
@@ -646,6 +693,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'social-links-preserve-source-conversation',
     date: '2026-10-22',
+    timestamp: '2026-10-22T03:49:44-03:00',
     title: 'Back takes you to the cast you came from',
     summary: 'Following a supported profile or cast link keeps your place, including when you start from a conversation opened directly.',
     changes: [
@@ -659,6 +707,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'linked-profiles-and-casts-stay-on-quorum',
     date: '2026-10-22',
+    timestamp: '2026-10-22T03:46:26-03:00',
     title: 'Follow profile and cast links without leaving Quorum',
     summary: 'Supported Farcaster and legacy Warpcast links in posts now open their profiles and conversations here, through Hypersnap.',
     changes: [
@@ -675,6 +724,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'compatible-author-and-cast-links',
     date: '2026-10-22',
+    timestamp: '2026-10-22T02:27:09-03:00',
     title: 'Familiar profile and cast links, powered by Hypersnap',
     summary: 'Replace a Farcaster-style link’s host with quorum.arca.computer to open a public profile or find its cast in the history available on Hypersnap.',
     changes: [
@@ -691,6 +741,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'native-ens-and-base-name-lookup',
     date: '2026-10-21',
+    timestamp: '2026-10-21T07:16:30-03:00',
     title: 'Find your account with an ENS or Base name',
     summary: 'Use a linked name.eth or name.base.eth to find your account through Hypersnap, then review its username, FID and custody wallet before connecting.',
     changes: [
@@ -707,6 +758,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'dedicated-onboarding-and-identity-review',
     date: '2026-10-21',
+    timestamp: '2026-10-21T07:04:45-03:00',
     title: 'A clearer path to connect your account',
     summary: 'Sign-in now has its own readable page, with the same complete account summary whether you start with a username, FID or custody wallet address.',
     changes: [
@@ -723,6 +775,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'one-box-cast-composer',
     date: '2026-10-21',
+    timestamp: '2026-10-21T05:22:24-03:00',
     title: 'One box for your next cast',
     summary: 'A look at Farcaster and X informed a simpler writing experience: one expanding text box, a compact toolbar and a clear Cast button, built for Hypersnap.',
     changes: [
@@ -739,6 +792,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'injected-wallet-choice-and-approval-recovery',
     date: '2026-10-21',
+    timestamp: '2026-10-21T04:44:24-03:00',
     title: 'Choose your browser wallet and recover a stuck approval',
     summary: 'Coinbase Wallet and other compatible extensions stay discoverable beside competing wallets, with clearer account selection and a way to cancel and retry pending approval.',
     changes: [
@@ -755,6 +809,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'familiar-browsing-and-content-controls',
     date: '2026-10-21',
+    timestamp: '2026-10-21T02:18:20-03:00',
     title: 'More ways to make Quorum feel like home',
     summary: 'A walkthrough of the live Farcaster client informed another round of familiar tools, built independently around supported Hypersnap reads and clearly labeled local preferences.',
     changes: [
@@ -771,6 +826,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'dev-log-release-checks',
     date: '2026-10-21',
+    timestamp: '2026-10-21T01:54:52-03:00',
     title: 'Every release gets a dev log update',
     summary: 'A release check helps keep this public story current as features and fixes ship.',
     changes: [
@@ -784,6 +840,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'public-development-log',
     date: '2026-10-21',
+    timestamp: '2026-10-21T01:44:23-03:00',
     title: 'The project’s story, open to everyone',
     summary: 'A public dev log brings together the work since the first Hypersnap client commit, with links to the code behind each milestone.',
     changes: [
@@ -797,6 +854,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'community-avatar-fallback',
     date: '2026-10-21',
+    timestamp: '2026-10-21T01:31:55-03:00',
     title: 'Community profiles stay readable when pictures fail',
     summary: 'A small follow-up made suggested people and channel participants more resilient to unavailable profile images.',
     changes: [
@@ -809,6 +867,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'familiar-social-features',
     date: '2026-10-21',
+    timestamp: '2026-10-21T01:29:27-03:00',
     title: 'More of the everyday social experience',
     summary: 'Familiar client features were built against supported Hypersnap reads and signed messages, with local conveniences kept clearly labeled.',
     changes: [
@@ -824,6 +883,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'passkey-protected-devices',
     date: '2026-10-20',
+    timestamp: '2026-10-20T16:47:32-03:00',
     title: 'Passkeys for saved device keys',
     summary: 'Compatible passkey providers can use WebAuthn PRF to protect an already authorized posting key in this browser.',
     changes: [
@@ -837,6 +897,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'discovery-and-conversation-tools',
     date: '2026-10-19',
+    timestamp: '2026-10-19T16:55:10-03:00',
     title: 'Search, activity, quotes and channels',
     summary: 'The client expanded from browsing feeds into finding people, following conversations and posting in indexed channels.',
     changes: [
@@ -851,6 +912,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'isolated-protocol-testing',
     date: '2026-10-19',
+    timestamp: '2026-10-19T16:12:31-03:00',
     title: 'Testing real Hypersnap flows in isolation',
     summary: 'Signed test actions used synthetic accounts on an isolated Hypersnap node. An independent security audit remains outstanding.',
     changes: [
@@ -865,6 +927,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'social-routes-and-public-media',
     date: '2026-10-19',
+    timestamp: '2026-10-19T15:42:26-03:00',
     title: 'Shareable profiles, follows and public images',
     summary: 'The first substantial social expansion added stable public links and more ways to participate using a limited device key.',
     changes: [
@@ -879,6 +942,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'rainbow-wallet-support',
     date: '2026-10-19',
+    timestamp: '2026-10-19T06:36:43-03:00',
     title: 'Rainbow in the browser and on mobile',
     summary: 'Rainbow support grew from mobile pairing links into direct discovery of the browser extension.',
     changes: [
@@ -892,6 +956,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'walletconnect-browser-access',
     date: '2026-10-19',
+    timestamp: '2026-10-19T06:08:04-03:00',
     title: 'Connect a wallet app from Chrome or Safari',
     summary: 'Optional WalletConnect pairing let a regular browser request approval from a separate compatible wallet app.',
     changes: [
@@ -905,6 +970,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'wallet-first-device-approval',
     date: '2026-10-19',
+    timestamp: '2026-10-19T04:49:18-03:00',
     title: 'Move recovery phrases out of the website',
     summary: 'The early sign-in prototype was replaced with wallet-approved random device keys and an optional offline approval companion.',
     changes: [
@@ -918,6 +984,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'public-client-prototype',
     date: '2026-10-19',
+    timestamp: '2026-10-19T04:13:15-03:00',
     title: 'A public Quorum client for Hypersnap',
     summary: 'The project began as a Quorum Desktop fork with a standalone browser client for Hypersnap’s public social network.',
     changes: [

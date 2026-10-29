@@ -68,6 +68,14 @@ export function parseDevLog(source) {
     }
     if (entry.date > previousDate) throw new Error('DEV_LOG must be ordered newest first.');
     previousDate = entry.date;
+    // Historical logs can contain calendar dates alone. Recorded timestamps must
+    // include an offset and retain that already-validated calendar date.
+    if (Object.hasOwn(entry, 'timestamp') &&
+        (typeof entry.timestamp !== 'string' ||
+         !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(entry.timestamp) ||
+         !Number.isFinite(Date.parse(entry.timestamp)) || entry.timestamp.slice(0, 10) !== entry.date)) {
+      throw new Error(`Invalid milestone timestamp: ${entry.id}`);
+    }
     if (![entry.title, entry.summary].every(text) || !Array.isArray(entry.changes) ||
         !entry.changes.length || !entry.changes.every(text) || !tags.has(entry.tag)) {
       throw new Error(`Milestone ${entry.id} needs a title, summary, changes and valid topic.`);
@@ -125,8 +133,10 @@ export function checkDevLog({ base, head, mergeBase = false, cwd = repoRoot }) {
     const sha = entry.commit.split('/').at(-1);
     try {
       git('merge-base', '--is-ancestor', sha, headSha);
-      const commitDate = git('show', '-s', '--format=%aI', sha).slice(0, 10);
+      const commitTimestamp = git('show', '-s', '--format=%aI', sha);
+      const commitDate = commitTimestamp.slice(0, 10);
       if (commitDate !== entry.date) throw new Error(`Use its recorded date ${commitDate}.`);
+      if (commitTimestamp !== entry.timestamp) throw new Error(`Use its recorded timestamp ${commitTimestamp}.`);
     } catch (error) {
       throw new Error(`Milestone ${entry.id}: source must be an existing implementation commit in this history, dated as recorded by Git. ${error.message}`);
     }

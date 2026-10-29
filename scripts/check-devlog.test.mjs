@@ -29,14 +29,14 @@ function repository() {
   const log = (entries, file = LOG) => write(file, `export const DEV_LOG = ${JSON.stringify(entries, null, 2)};\n`);
   return { cwd, git, write, commit, log };
 }
-function milestone(id, commit, date = '2026-10-19') {
-  return { id, date, title: `Milestone ${id}`, summary: `Public progress for ${id}.`, changes: ['A concrete isolated test improvement.'], commit: `${URL_PREFIX}${commit}`, tag: 'Reliability' };
+function milestone(id, commit, date = '2026-10-19', time = '08:00:00-03:00') {
+  return { id, date, timestamp: `${date}T${time}`, title: `Milestone ${id}`, summary: `Public progress for ${id}.`, changes: ['A concrete isolated test improvement.'], commit: `${URL_PREFIX}${commit}`, tag: 'Reliability' };
 }
 function seeded({ legacy = false } = {}) {
   const logPath = legacy ? LEGACY_LOG : LOG;
   const repo = repository(); repo.write(legacy ? 'hypersnap/src/App.tsx' : APP, 'export const version = 1;\n');
   const source = repo.commit('Initial synthetic implementation');
-  const old = [milestone('original-detail', source), milestone('original-launch', source)];
+  const old = [milestone('original-detail', source, '2026-10-19', '12:00:00-03:00'), milestone('original-launch', source, '2026-10-19', '12:00:00-03:00')];
   repo.log(old, logPath); const base = repo.commit('Record original public history');
   return { ...repo, source, old, base };
 }
@@ -72,6 +72,21 @@ describe('release-note guard against real isolated Git history', { timeout: 15_0
     const release = recordedRelease(repo, [note, { ...repo.old[0], title: 'A factual correction' }, repo.old[1]], source);
     const result = checkDevLog({ base: repo.base, head: release.head, cwd: repo.cwd });
     expect(result).toMatchObject({ baseSha: repo.base, headSha: release.head, productFiles: ['apps/web-client/src/App.tsx'], addedIds: ['new-release'] });
+  });
+
+  it('preserves historical calendar-only notes while requiring a timestamp on the new release', () => {
+    const repo = seeded();
+    const historical = repo.old.map(({ timestamp, ...entry }) => entry);
+    repo.log(historical); const base = repo.commit('Record historical calendar-only notes');
+    const source = productChange(repo);
+    const release = recordedRelease(repo, [milestone('new-release', source, '2026-10-20'), ...historical], source);
+    expect(checkDevLog({ base, head: release.head, cwd: repo.cwd }).addedIds).toEqual(['new-release']);
+  });
+
+  it.each([undefined, '2026-10-20T08:01:00-03:00', '2026-10-20T11:00:00Z'])('rejects a new release with a missing or unrecorded author timestamp: %s', timestamp => {
+    const repo = seeded(); const source = productChange(repo);
+    repo.log([{ ...milestone('new-release', source, '2026-10-20'), timestamp }, ...repo.old]);
+    expect(() => checkDevLog({ base: repo.base, cwd: repo.cwd })).toThrow('Use its recorded timestamp 2026-10-20T08:00:00-03:00.');
   });
 
   it('checks a transferred release against historical owner URLs and permits canonical source links without losing milestones', () => {
@@ -187,6 +202,19 @@ describe('release-note guard against real isolated Git history', { timeout: 15_0
 });
 
 describe('release policy and static data validation', () => {
+  it('accepts historical calendar-only data and explicit UTC or positive/negative timestamp offsets', () => {
+    const note = milestone('release', 'a'.repeat(40));
+    const { timestamp, ...historical } = note;
+    for (const entry of [historical, note, { ...note, timestamp: '2026-10-19T08:00:00Z' }, { ...note, timestamp: '2026-10-19T08:00:00+05:30' }]) {
+      expect(parseDevLog(`export const DEV_LOG = ${JSON.stringify([entry])};`)).toEqual([entry]);
+    }
+  });
+
+  it.each(['2026-10-19', '2026-10-19T08:00:00', '2026-10-19T08:00Z', '2026-10-19T24:00:00Z', '2026-10-19T08:60:00Z', '2026-10-19T08:00:60Z', '2026-10-19T08:00:00+24:00', '2026-10-19T08:00:00+03:60', '2026-02-30T08:00:00Z', '2026-10-20T08:00:00Z', 'not a timestamp'])('rejects timestamps without seconds/offsets, invalid times, rolled dates and mismatched calendar dates: %s', timestamp => {
+    const note = { ...milestone('release', 'a'.repeat(40)), timestamp };
+    expect(() => parseDevLog(`export const DEV_LOG = ${JSON.stringify([note])};`)).toThrow('Invalid milestone timestamp');
+  });
+
   it('accepts the organization’s repository and exact historical source URLs while rejecting other owners, repos and lookalikes', () => {
     const current = milestone('organization-release', 'a'.repeat(40));
     const renamed = { ...current, id: 'renamed-release', commit: current.commit.replace('/arcacomputer/', '/arcabotai/') };

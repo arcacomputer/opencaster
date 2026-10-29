@@ -7,6 +7,7 @@
 .devlog-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; padding: 1.2rem 0; margin: 1.3rem 0 0; border-top: .0625rem solid var(--border); }
 .devlog-facts dt { color: var(--color-text-subtle); font-size: .6rem; margin-bottom: .4rem; }
 .devlog-facts dd { font-size: .75rem; font-weight: 500; margin: 0; overflow-wrap: anywhere; }
+.devlog-intro > .devlog-timezone { margin: 0 0 1.2rem; font-size: .65rem; line-height: 1.7; }
 .devlog-intro__actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
 .devlog-intro__actions .button { font-size: .72rem; }
 .devlog-intro__actions > a { display: inline-flex; align-items: center; gap: .3rem; font-size: .7rem; color: var(--color-text-subtle); }

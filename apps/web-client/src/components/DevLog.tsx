@@ -1,28 +1,33 @@
 import { useState } from 'react';
 import { IconArrowDown, IconArrowUpRight, IconCode, IconHistory, IconShieldLock, IconWorld } from '@tabler/icons-react';
-import { DEV_LOG, PROJECT_STARTED_DATE, type DevLogMilestone } from '../lib/devLog';
+import { DEV_LOG, PROJECT_STARTED_AT, type DevLogMilestone } from '../lib/devLog';
 import { Button } from './ui';
 import '../devlog.scss';
 
 const source = 'https://github.com/arcacomputer/opencaster';
 const categories = ['Launch', 'Wallets', 'Security', 'Social', 'Reliability'] as const;
 const labels = { Launch: 'The beginning', Wallets: 'Wallets', Security: 'Security', Social: 'Features', Reliability: 'Reliability' };
-function dateLabel(date: string) {
-  // Milestones are calendar dates, independent of the visitor's timezone.
-  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
+const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+});
+// Compare instants, since author timestamps can use different UTC offsets.
+const chronologicalEntries = [...DEV_LOG].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+function dateLabel(timestamp: string) {
+  return dateTimeFormatter.format(new Date(timestamp));
 }
 
 export default function DevLog() {
   const [category, setCategory] = useState<DevLogMilestone['tag'] | 'all'>('all');
   const [oldestFirst, setOldestFirst] = useState(false);
-  const entries = DEV_LOG.filter(entry => category === 'all' || entry.tag === category);
+  const entries = chronologicalEntries.filter(entry => category === 'all' || entry.tag === category);
   const visible = oldestFirst ? [...entries].reverse() : entries;
   return <div className="devlog">
     <section className="devlog-intro" aria-labelledby="devlog-story">
       <span className="devlog-kicker"><IconHistory size={15} aria-hidden="true" />BUILDING OPENCASTER, IN PUBLIC</span>
       <h2 id="devlog-story">The story so far<span>✳</span></h2>
       <p>From a Quorum fork to Opencaster, an open source client for everyone. Here’s what we’ve shipped on Hypersnap, what changed along the way, and why.</p>
-      <dl className="devlog-facts"><div><dt>First commit</dt><dd><time dateTime={PROJECT_STARTED_DATE}>{dateLabel(PROJECT_STARTED_DATE)}</time></dd></div><div><dt>Milestones</dt><dd>{DEV_LOG.length} and counting</dd></div><div><dt>Latest update</dt><dd><time dateTime={DEV_LOG[0].date}>{dateLabel(DEV_LOG[0].date)}</time></dd></div></dl>
+      <dl className="devlog-facts"><div><dt>First commit</dt><dd><time dateTime={PROJECT_STARTED_AT}>{dateLabel(PROJECT_STARTED_AT)}</time></dd></div><div><dt>Milestones</dt><dd>{DEV_LOG.length} and counting</dd></div><div><dt>Latest update</dt><dd><time dateTime={chronologicalEntries[0].timestamp}>{dateLabel(chronologicalEntries[0].timestamp)}</time></dd></div></dl>
+      <p className="devlog-timezone">Dates and times are from the linked code changes, shown in your local timezone.</p>
       <div className="devlog-intro__actions"><Button variant="secondary" aria-pressed={oldestFirst} onClick={() => { setOldestFirst(value => !value); setCategory('all'); }}><IconArrowDown size={16} aria-hidden="true" />{oldestFirst ? 'Show latest first' : 'Read from the beginning'}</Button><a href={`${source}/commits/main/hypersnap`} target="_blank" rel="noopener noreferrer">Explore the commits<IconArrowUpRight size={15} aria-hidden="true" /></a></div>
     </section>
 
@@ -31,7 +36,7 @@ export default function DevLog() {
 
     <ol className="devlog-timeline" aria-label="Project milestones">{visible.map(entry => <li key={entry.id}>
       <article className="devlog-entry" id={entry.id} aria-labelledby={`${entry.id}-title`}>
-        <div className="devlog-entry__meta"><time dateTime={entry.date}>{dateLabel(entry.date)}</time><span className={`devlog-tag devlog-tag--${entry.tag.toLowerCase()}`}>{labels[entry.tag]}</span></div>
+        <div className="devlog-entry__meta"><time dateTime={entry.timestamp}>{dateLabel(entry.timestamp)}</time><span className={`devlog-tag devlog-tag--${entry.tag.toLowerCase()}`}>{labels[entry.tag]}</span></div>
         <h3 id={`${entry.id}-title`}>{entry.title}</h3><p>{entry.summary}</p>
         <ul>{entry.changes.map(change => <li key={change}>{change}</li>)}</ul>
         <a className="devlog-commit" href={entry.commit} target="_blank" rel="noopener noreferrer" aria-label={`View code for ${entry.title}`}><IconCode size={14} aria-hidden="true" />View the change<span>{entry.commit.split('/').pop()!.slice(0, 7)}</span><IconArrowUpRight size={14} aria-hidden="true" /></a>
