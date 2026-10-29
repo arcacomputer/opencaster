@@ -1,3 +1,82 @@
+# Arca Signer v0.2.2 published · 2026-10-29
+
+[Arca Signer v0.2.2](https://github.com/arcacomputer/opencaster/releases/tag/arca-signer-v0.2.2)
+was published as a prerelease at **2026-10-29T04:56:53Z**
+(**01:56:53 America/Santiago**) from clean source
+[`e2ecfb60`](https://github.com/arcacomputer/opencaster/commit/e2ecfb606c81ab43b74b3a2f884214477fb8ba4d).
+The macOS Apple Silicon ZIP bundles **Electron 44.9.1** and retains the
+original casts/reactions permission limit and explicit revocation flow.
+No Intel Mac, Windows or Linux package was published.
+
+The archive is **128,782,804 bytes**, with SHA-256
+`b38a45ef6f327aad90983b02df38ec77489fa41f11e8bb6c5989bb9627018d04`.
+An independent extraction passed **17 artifact checks**, including deep/strict
+code-signature verification, expected publisher and TeamIdentifier
+`48H3WZWYU3`, hardened runtime, arm64 architecture, the expected JIT-only
+entitlement and all six configured Electron fuses. All ten runtime payload
+hashes match the published and embedded build manifests; the ASAR contains
+exactly those ten files and the manifest. Implementation
+[`fa10e178`](https://github.com/arcacomputer/opencaster/commit/fa10e1789fc92d70b545fe198e91c77607aeed58)
+omits workspace-only metadata from the generated runtime package so packaging
+preserves the manifested bytes.
+
+Root `yarn verify` passed **1,877 tests across 74 files**, all workspace
+typechecks and the browser/signer builds in **34.72 seconds**. Release-source
+[verification CI](https://github.com/arcacomputer/opencaster/actions/runs/40820322179)
+and [code analysis](https://github.com/arcacomputer/opencaster/actions/runs/40820321773)
+passed. The final extracted app opened its native landing page and closed
+successfully. No request was imported, recovery phrase entered or native
+signing operation performed during that smoke test.
+
+Unauthenticated public reads verified the release tag, all four asset names,
+sizes and digests, the three metadata files and the complete ZIP checksum.
+The previous v0.2.1 ZIP digest remains unchanged. The release is
+**Developer ID signed; Apple notarization remains pending**. No real account
+action was performed, and no independent security audit is claimed.
+
+The website download links were deployed separately from clean source
+[`c4e894ef`](https://github.com/arcacomputer/opencaster/commit/c4e894ef45252c60cb11363f9e3debb6b7dd4236)
+at **2026-10-29T05:03:28Z** (**02:03:28 America/Santiago**) as Worker
+**`5bbab539-fe9a-4c03-87fe-afb939bf47bf`**, deployment
+`1bea2c91-6f53-4eec-9d2d-51597e3c188f`, at **100% traffic**. The actual
+pre-release Worker and rollback baseline was
+`5ad10358-81ab-4c1b-bb4d-78166ab40421`, whose metadata and matching script
+etag confirmed source `3766845dfa8191fd5e63ba514b4b25de3e010a8f` with an
+intervening operational binding-only cutover. That cutover had already disabled
+Haatz backup. The tracked configuration now preserves that live setting;
+index-readiness guards remain intact. The baseline was checked immediately
+before deployment. Post-deploy runtime settings and binding metadata match that
+baseline, including the disabled fallback, origin secret binding, media storage,
+quota ledger and request measurements. No rollback was needed.
+
+The root dev-log guard passed against the actual pre-release source, preserving
+history and recognizing all three new milestones. Root `yarn verify` passed
+**1,877 tests across 74 files**, workspace typechecks and browser/signer builds
+in **41.69 seconds**. The exact website-source
+[verification CI](https://github.com/arcacomputer/opencaster/actions/runs/40820965379)
+and [code analysis](https://github.com/arcacomputer/opencaster/actions/runs/40820965266)
+passed. Wrangler **4.141.0** dry-run bundled the gateway renderer Wasm.
+
+The **47 production files** were built in the fresh external directory
+`/tmp/arca-release-signer-0-2-2-final-Uy1irh`; that exact inspected directory
+was deployed, with all local hashes unchanged afterwards. Inspection found no
+source maps, symlinks or browser-test fixture markers. The existing public
+WalletConnect project identifier was supplied and matched the previous live
+bundle without printing it. Public reads verified all **46 non-HTML hashes**,
+entry `assets/index-DMOD7QJ7.js`, the v0.2.2 installer/source links, one Latin
+Inter preload, WOFF2 type/immutable caching, the font license and both original
+TTFs. Guest navigation rendered all three new milestones on `/devlog` with no
+captured console errors.
+
+The public profile-3 share-image route returned HTTP 200, `image/png`,
+**1200×630**, with **`X-Opencaster-Preview: fallback`** and `no-store`.
+This confirms the generic fallback image, not profile hydration, a newly
+rendered profile card or index completeness. Production verification used
+public reads/navigation only. Real account signing/writes, physical mobile
+browsers and native signing/import flows were not exercised. The analytics
+dashboard was not deployed. This documentation commit records the releases
+above and does not deploy a newer build.
+
 # Dependency maintenance verification · 2026-10-29
 
 Implementation
