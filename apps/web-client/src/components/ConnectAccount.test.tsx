@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import ConnectAccount, { DeviceSettings } from './ConnectAccount';
 import { deleteSavedSession, getSavedSessionMethod, preparePairing, unlockSavedSession, unlockSavedSessionWithPasskey, type PendingPairing, type PendingRevocation, type WalletSession } from '../lib/auth';
 import { approvePairingWithWallet, approveRevocationWithWallet, discoverInjectedWallets, type InjectedWallet } from '../lib/wallet';
@@ -23,8 +23,8 @@ let root: Root;
 let session: WalletSession;
 let pending: PendingPairing;
 let walletApproval: PairingApproval;
-let onConnect: ReturnType<typeof vi.fn>;
-let onClose: ReturnType<typeof vi.fn>;
+let onConnect: Mock<(session: WalletSession) => void>;
+let onClose: Mock<() => void>;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.resetAllMocks();
   vi.mocked(passkeysAvailable).mockReturnValue(true);

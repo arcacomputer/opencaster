@@ -3,7 +3,7 @@
 // Only the node boundary and saved-vault lookup are replaced; no live identity.
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { hashTypedData } from 'viem';
 import ConnectAccount from './ConnectAccount';
 import { getSigners, getUser, submitMessage, type SignersResponse, type User } from '@opencaster/client-core/api';
@@ -22,7 +22,7 @@ const user: User = { fid: 1234, username: 'isolated-wallet', custody_address: cu
 let container: HTMLDivElement;
 let root: Root;
 let registry: SignersResponse;
-let onConnect: ReturnType<typeof vi.fn>;
+let onConnect: Mock<(session: WalletSession) => void>;
 let connected: WalletSession | undefined;
 
 function fields(bytes: Uint8Array): Map<number, Uint8Array | number> {

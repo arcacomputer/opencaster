@@ -4,6 +4,8 @@ A local Electron companion for authorizing or revoking an Opencaster Hypersnap b
 
 ## Use
 
+The current [Arca Signer v0.2.2 download](https://github.com/arcacomputer/opencaster/releases/tag/arca-signer-v0.2.2) is a Developer ID–signed beta for macOS Apple Silicon, built with Electron 44.9.1. Apple notarization remains pending. Verify the attached checksum and code signature before use.
+
 1. In Opencaster, enter your FID and download a browser pairing request.
 2. Open Arca Signer and use **Import request JSON**. No recovery phrase is needed for this step.
 3. Compare the full posting public key, account, and custody address between the browser and native app. Review the permissions and lifetime.

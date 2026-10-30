@@ -8,7 +8,8 @@
   "vars": {
     "HYPERSNAP_ORIGIN": "https://node.opencaster.org",
     "HYPERSNAP_AGGREGATE_CACHE": "trusted-origin-v1",
-    "HYPERSNAP_READ_FALLBACK": "haatz-v1"
+    // Preserve the operational primary-only cutover on later deployments.
+    "HYPERSNAP_READ_FALLBACK": "disabled"
   },
   "compatibility_date": "2026-10-19",
   "workers_dev": true,

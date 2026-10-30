@@ -11,7 +11,7 @@ import { normalizeReviewIdentity, parseAccountLookup, sameReviewIdentity, type R
 import '../onboarding.scss';
 
 const sourceUrl = 'https://github.com/arcacomputer/opencaster';
-const releaseTag = 'arca-signer-v0.2.1';
+const releaseTag = 'arca-signer-v0.2.2';
 const signerUrl = `${sourceUrl}/releases/download/${releaseTag}/Arca-Signer-mac-arm64.zip`;
 const approvalLimitBytes = 16 * 1024;
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'This action could not be completed.';
@@ -356,8 +356,8 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
         {!attempted && !socialApproval && <details className="pairing-advanced"><summary>Advanced: approve offline with Arca Signer</summary>
           <section className="pairing-offline"><h3><IconDeviceDesktop size={18} />Optional offline approval</h3><p>If you prefer a separate offline signer, download this public request and open it in Arca Signer. Compare the FID, custody address, complete device fingerprint, and request checksum. Enter your 24 words only in the downloaded signer, then import its public approval file below.</p>
             <div className="pairing-downloads"><Button variant="secondary" onClick={downloadRequest} disabled={busy || expired}><IconArrowDown size={16} />Download request</Button><a href={signerUrl} className="pairing-download-link"><IconArrowDown size={16} />Arca Signer for macOS</a></div>
-            <p className="pairing-release">Optional v0.2.1 · macOS Apple Silicon only · <a href={`${sourceUrl}/releases/tag/${releaseTag}`} target="_blank" rel="noopener noreferrer">Release & verification</a></p>
-            <p className="pairing-release">Developer ID signed beta. Apple notarization pending. Independent security audit pending. <a href={`${sourceUrl}/tree/${releaseTag}/hypersnap/signer`} target="_blank" rel="noopener noreferrer">Source & build instructions</a></p>
+            <p className="pairing-release">Optional v0.2.2 · macOS Apple Silicon only · <a href={`${sourceUrl}/releases/tag/${releaseTag}`} target="_blank" rel="noopener noreferrer">Release & verification</a></p>
+            <p className="pairing-release">Developer ID signed beta. Apple notarization pending. Independent security audit pending. <a href={`${sourceUrl}/tree/${releaseTag}/apps/signer`} target="_blank" rel="noopener noreferrer">Source & build instructions</a></p>
           </section>
           <Input ref={fileInput} type="file" accept="application/json,.json" aria-label="Import public approval JSON" className="pairing-file-input" tabIndex={-1} onChange={event => void importApproval(event)} disabled={busy || expired} />
           <Button className="full-width pairing-import" variant="secondary" onClick={() => fileInput.current?.click()} disabled={busy || expired}><IconFileCheck size={17} />Import offline public approval JSON</Button>
@@ -528,7 +528,7 @@ export function DeviceSettings({ session, onClose, onLock, notify }: { session: 
       {!attempted && <details className="pairing-advanced"><summary>Advanced: approve revocation offline</summary>
         <p className="pairing-copy">Download the public revocation request and open it in Arca Signer. Compare its action, FID, custody address, device key, and checksum. Import the signer’s public approval below. Enter recovery words only in the downloaded signer.</p>
         <div className="pairing-downloads"><Button variant="secondary" disabled={busy || expired} onClick={downloadRevocation}><IconArrowDown size={16} />Download revocation request</Button><a href={signerUrl} className="pairing-download-link"><IconArrowDown size={16} />Arca Signer for macOS</a></div>
-        <p className="pairing-release">Optional v0.2.1 · macOS Apple Silicon only · Developer ID signed beta. Apple notarization and independent security audit pending. <a href={`${sourceUrl}/releases/tag/${releaseTag}`} target="_blank" rel="noopener noreferrer">Release & verification</a></p>
+        <p className="pairing-release">Optional v0.2.2 · macOS Apple Silicon only · Developer ID signed beta. Apple notarization and independent security audit pending. <a href={`${sourceUrl}/releases/tag/${releaseTag}`} target="_blank" rel="noopener noreferrer">Release & verification</a></p>
         <Input ref={fileInput} type="file" accept="application/json,.json" aria-label="Import public revocation approval JSON" className="pairing-file-input" tabIndex={-1} onChange={event => void importRevocation(event)} disabled={busy || expired} />
         <Button variant="secondary" className="full-width pairing-import" disabled={busy || expired} onClick={() => fileInput.current?.click()}><IconFileCheck size={17} />Import offline revocation approval JSON</Button>
         <p className="pairing-release">Only the signer’s public approval JSON belongs here. It contains a signature, never recovery words or a private key.</p>

@@ -22,6 +22,49 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'preserve-primary-only-gateway',
+    date: '2026-10-29',
+    timestamp: '2026-10-29T02:00:31-03:00',
+    title: 'Keep public reads on the configured primary',
+    summary: 'Website releases preserve the gateway’s existing primary-only read policy.',
+    changes: [
+      'Keep the Haatz read backup disabled when deploying new website builds.',
+      'Retain index-readiness guards: unavailable primary indexes remain unavailable, with no claim of index completeness.',
+      'Keep the existing origin credential, media storage and request measurements unchanged.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/cf9f04a47991f1fd3e112a59309cc51fd9715f13',
+    tag: 'Reliability',
+  },
+  {
+    id: 'arca-signer-0-2-2',
+    date: '2026-10-29',
+    timestamp: '2026-10-29T01:49:34-03:00',
+    title: 'Arca Signer v0.2.2 for Apple Silicon',
+    summary: 'The optional offline companion uses an updated Electron runtime and a new versioned download.',
+    changes: [
+      'Package Arca Signer 0.2.2 with Electron 44.9.1 for macOS Apple Silicon.',
+      'Point account-connection and revocation downloads to the new release and its current monorepo source instructions.',
+      'Keep the published payload manifest aligned with the files inside the download.',
+      'Keep the original casts-and-reactions permission limit and Developer ID signed beta status; Apple notarization and an independent security audit remain pending.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/fa10e1789fc92d70b545fe198e91c77607aeed58',
+    tag: 'Security',
+  },
+  {
+    id: 'verification-signer-dependency-refresh',
+    date: '2026-10-29',
+    timestamp: '2026-10-29T00:32:42-03:00',
+    title: 'Updated verification tools and signer build runtime',
+    summary: 'Refresh the dependencies used for automated checks and future offline signer packages.',
+    changes: [
+      'Use Vitest 4.1.12 and Happy DOM 21.0.4 across the workspace checks, with test mocks adapted to the newer runner.',
+      'Keep verification on the existing Vite 7 toolchain through a compatible Yarn Classic resolution.',
+      'Select Electron 44.9.1 for newly packaged offline signer builds; existing signer downloads need a separate rebuild and release.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/72df9d2a55db30e73ca7bc8ab2654c9dde8e1579',
+    tag: 'Security',
+  },
+  {
     id: 'dev-log-local-update-times',
     date: '2026-10-29',
     timestamp: '2026-10-29T00:31:25-03:00',
