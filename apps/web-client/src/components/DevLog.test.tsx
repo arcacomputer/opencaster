@@ -24,8 +24,9 @@ afterEach(async () => {
 
 async function render(locale: string, timeZone: string) {
   // Emulate the browser's defaults while still using the real ICU conversion.
-  const formatter = vi.spyOn(Intl, 'DateTimeFormat').mockImplementation((_locales, options) =>
-    new DateTimeFormat(locale, { ...options, timeZone }));
+  const formatter = vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(function (_locales, options) {
+    return new DateTimeFormat(locale, { ...options, timeZone });
+  });
   const { default: DevLog } = await import('./DevLog');
   await act(async () => root.render(<DevLog />));
   expect(formatter).toHaveBeenCalledWith(undefined, expect.not.objectContaining({ timeZone: expect.anything() }));
