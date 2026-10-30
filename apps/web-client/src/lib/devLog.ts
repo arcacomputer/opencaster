@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'preserve-operational-read-backup',
+    date: '2026-10-30',
+    timestamp: '2026-10-30T12:34:31-03:00',
+    title: 'Keep the current read backup across releases',
+    summary: 'Website releases now preserve the gateway’s active read-backup recovery configuration, so eligible public reads can still load when the private primary is unavailable.',
+    changes: [
+      'Retain the private Hypersnap primary and the existing fixed Haatz backup for eligible public read failures, with at most one backup attempt inside the shared deadline.',
+      'Keep signed submissions and media signer checks on the primary only. Writes are never automatically replayed, and the primary credential never goes to the backup.',
+      'Match the already active production setting after its operational recovery; this does not claim that private indexes are complete.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/3db9a660054e433a1cf506a0097fcb04aab0f511',
+    tag: 'Reliability',
+  },
+  {
     id: 'preserve-primary-only-gateway',
     date: '2026-10-29',
     timestamp: '2026-10-29T02:00:31-03:00',
