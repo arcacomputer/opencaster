@@ -36,10 +36,11 @@ browser override, per-request routing flag or arbitrary-host proxy. Unknown or
 absent values disable retry; both origin bindings absent retain the single
 public development default below, not a primary/backup retry loop.
 
-The checked-in production configuration uses `HYPERSNAP_READ_FALLBACK=disabled`
-to preserve the operational primary-only cutover. Index-readiness guards remain
-in place, so unavailable primary indexes do not silently use the backup. The
-optional failover contract below applies only when an operator enables it.
+The checked-in production configuration uses `HYPERSNAP_READ_FALLBACK=haatz-v1`
+to preserve the active operational read-backup recovery. Index-readiness guards
+remain in place on the private primary; eligible failures can use the fixed
+backup under the bounded failover contract below. Signed writes and media
+signer checks remain primary-only.
 
 If **both bindings are absent**, the unchanged fork/development fallback is
 `https://haatz.quilibrium.com`, with no origin-token header. An empty, partial
