@@ -1,3 +1,60 @@
+# Local dev-log dates and times deployed · 2026-10-30
+
+Release source [`b3c807ce`](https://github.com/arcacomputer/opencaster/commit/b3c807cedcf67596d7de04529476b6df26eaab6a)
+adds browser-local date, time and timezone labels to all **69 milestones**, the
+first commit and the latest update. Full timestamps match each linked
+implementation commit's Git author time; timeline ordering compares instants
+across UTC offsets. The release integrates the already published signer and
+dependency updates, including Arca Signer v0.2.2 download links, and adapts the
+Intl test mock to the current Vitest runner.
+
+Authenticated Cloudflare metadata established the actual pre-release source as
+`c4e894ef45252c60cb11363f9e3debb6b7dd4236`, with the operational read-backup
+recovery active in Worker **`0927c258-8292-4b92-a07f-e5b762f69d29`** at 100%
+traffic. The baseline was confirmed again immediately before upload. The tracked
+gateway configuration now preserves that active `haatz-v1` read-backup setting;
+private-primary configuration, signed-write behavior and media signer checks
+retain their existing contracts.
+
+The release was deployed at **2026-10-30 12:38:03 America/Santiago**
+(`2026-10-30T15:38:03.513947Z`) as Worker
+**`f9faaaa6-9769-4ee9-879b-c7ee3ee827c5`**, deployment
+`118a49dd-122b-4338-9929-a057aedd327b`, at **100% traffic**. All binding metadata,
+including the existing secret binding, and runtime settings match the prior
+active version. The version message records the full release source; the tag is
+`devlog-local-times-20261030-b3c807ce`. Source commits are published on
+`codex/devlog-local-times`.
+
+A clean external checkout used Node **22.22.3**, Yarn **1.22.21** and
+`yarn install --frozen-lockfile`. Root `yarn check:devlog` passed against the
+actual deployed source, recognizing both new milestones and preserving the
+previous 67. Root `yarn verify` passed **1,896 tests across 75 files**, all
+workspace typechecks, the production browser build and offline signer build in
+**40.60 seconds**. Real ICU conversion tests cover US and Chilean formatting,
+Los Angeles and Tokyo timezones, a local date rollover, filtering and chronological
+ordering. The existing cloud-synced duplicate files in the original checkout
+were left untouched and excluded from the clean release checkout.
+
+Production assets were freshly built into
+`/tmp/arca-release-devlog-20261030-bqrlafp4` with the public WalletConnect build
+identifier confirmed against the previous live app, without printing its value.
+The inspected **47 regular files** contain no sourcemaps, symlinks, preview/test
+wrappers or identified debug hooks. Wrangler **4.141.0** dry-run passed, and that
+exact directory was deployed. Post-deploy public reads confirmed the live HTML
+references `assets/index-Dh0LBJxz.js` and all **46 non-HTML file hashes** match the
+inspected build; local asset hashes remained unchanged.
+
+Production browser verification rendered the local-time explanation, all 69
+milestones and the update's complete ISO `datetime` value. Visible timestamps
+used the browser's GMT-3 timezone, with no horizontal page overflow or captured
+console errors. The earlier local desktop/mobile layout checks remain recorded
+by this change's test history. Production checks used public reads/navigation
+only; no real wallet approval, signature, account write or media upload was
+performed. Signed-in production flows and physical mobile browsers were not
+exercised. This is not an independent security audit. The analytics dashboard
+and native signer download were not deployed by this release. This documentation
+records the source deployed above and does not deploy a newer build.
+
 # Arca Signer v0.2.2 published · 2026-10-29
 
 [Arca Signer v0.2.2](https://github.com/arcacomputer/opencaster/releases/tag/arca-signer-v0.2.2)
