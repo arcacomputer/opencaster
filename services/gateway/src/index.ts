@@ -4,7 +4,7 @@
 import { handleMediaRequest, type MediaEnv } from './media';
 import { normalizeHypersnapEnsName } from '@opencaster/client-core/ensName';
 import { handleAnalyticsEvents, recordRequestMetric, type AnalyticsEnv } from './analytics';
-import { fetchUpstream, InvalidUpstreamResponseError, parseUpstreamObject, resolveReadFallback, resolveUpstream, type UpstreamConfig } from './upstream';
+import { fetchUpstream, InvalidUpstreamResponseError, parseUpstreamObject, resolveReadFallback, resolveUpstream, validTimelineCursor, type UpstreamConfig } from './upstream';
 import { withShareUrl } from './sharing';
 import { handleShareImage } from './shareImages';
 export { MediaUploadQuota } from './media';
@@ -104,7 +104,7 @@ const READ_ENDPOINTS: Record<string, Endpoint> = {
   '/v2/farcaster/user/following': { required: ['fid'], query: { ...followPagination, fid } },
   '/v2/farcaster/feed/trending': { query: { ...pagination, time_window: value => ['1h', '6h', '12h', '24h', '7d'].includes(value) } },
   '/v2/farcaster/feed/following': { required: ['fid'], query: { ...pagination, fid } },
-  '/v2/farcaster/feed/user/casts': { required: ['fid'], query: { ...pagination, fid } },
+  '/v2/farcaster/feed/user/casts': { required: ['fid'], query: { ...pagination, fid: integer(0xffffffff) }, validate: params => !params.has('cursor') || validTimelineCursor(params.get('cursor')!, params.get('fid')!) },
   '/v2/farcaster/feed/channels': { required: ['channel_ids'], query: { ...pagination, channel_ids: channel } },
   '/v2/farcaster/cast': { required: ['identifier'], query: { identifier: hash, type: value => value === 'hash', fid } },
   '/v2/farcaster/cast/search': { required: ['q'], query: { q: searchQuery, limit: integer(100) } },
