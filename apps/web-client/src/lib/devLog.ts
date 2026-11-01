@@ -24,7 +24,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'portable-timeline-continuations',
     date: '2026-11-01',
-    timestamp: '2026-11-01T03:34:19+00:00',
+    timestamp: '2026-11-01T03:34:19Z',
     title: 'Keep your place when timeline reads switch nodes',
     summary: 'Profile history can continue across the private primary and its read backup without incorrectly showing an empty final page.',
     changes: [
