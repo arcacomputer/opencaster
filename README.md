@@ -2,7 +2,7 @@
 
 **An open source client for everyone. Powered by Arca Computer. Runs on Hypersnap.**
 
-Opencaster is an independent open-source social client for Hypersnap, developed by Arca Computer. Its monorepo contains the browser application in [`apps/web-client/`](apps/web-client/), the offline signer, supporting services and shared packages.
+Opencaster is an independent open-source social client for Hypersnap, developed by Arca Computer. Its monorepo contains the browser application in [`apps/web-client/`](apps/web-client/), a native public-read preview in [`apps/mobile/`](apps/mobile/), the offline signer, supporting services and shared packages.
 
 Website: [opencaster.org](https://opencaster.org) · [Source](https://github.com/arcacomputer/opencaster) · [Dev log](https://opencaster.org/devlog)
 
@@ -41,6 +41,7 @@ This repository uses Yarn Classic workspaces with one root lockfile. Install dep
 | Workspace | Purpose |
 | --- | --- |
 | [`apps/web-client/`](apps/web-client/) | React browser client, assets and browser test harnesses. |
+| [`apps/mobile/`](apps/mobile/) | Expo/React Native public-browsing preview for Android and iOS. |
 | [`apps/signer/`](apps/signer/) | Offline Electron signing companion. |
 | [`services/gateway/`](services/gateway/) | Cloudflare API gateway, media storage, social previews and request measurements. |
 | [`services/analytics/`](services/analytics/) | Private operator dashboard and local report tool. |
@@ -48,7 +49,7 @@ This repository uses Yarn Classic workspaces with one root lockfile. Install dep
 | [`packages/client-core/`](packages/client-core/) | Shared API, content, routes, pairing and media contracts. |
 | [`packages/web-ui/`](packages/web-ui/) | Browser UI primitives shared by the web client and signer. |
 
-For a workspace-only command, use `yarn workspace @opencaster/web-client dev` or the corresponding workspace name. Mobile and desktop social clients can be added under `apps/` when development begins; this migration adds no new platform client. Follow the repository [release rules](AGENTS.md#releases).
+For a workspace-only command, use `yarn workspace @opencaster/web-client dev`, `yarn workspace @opencaster/mobile start`, or the corresponding workspace name. The mobile preview is a separate native client and does not use the browser UI or a WebView. Follow the repository [release rules](AGENTS.md#releases).
 
 The earlier Quorum messenger application and its development records are available in Git history and the [upstream repository](https://github.com/QuilibriumNetwork/quorum-desktop). They are no longer part of the current source tree.
 
