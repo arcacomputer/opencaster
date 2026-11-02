@@ -1,7 +1,7 @@
 import { getUser, type User } from '@opencaster/client-core/api';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ActionButton, LoadingMessage, ScreenMessage } from '../components/Primitives';
 import type { RootStackParamList } from '../navigation';
 import { safeHttpsUrl } from '../lib/urls';
@@ -54,7 +54,11 @@ export function LookupScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
-      <View style={styles.content}>
+      <ScrollView
+        automaticallyAdjustKeyboardInsets
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text accessibilityRole="header" style={styles.heading}>Find a public profile</Text>
         <Text style={styles.detail}>Search by username or numeric FID. Only public profiles available through Hypersnap can be shown.</Text>
         <TextInput
@@ -89,7 +93,7 @@ export function LookupScreen({ navigation }: Props) {
             />
           )
           : null}
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
