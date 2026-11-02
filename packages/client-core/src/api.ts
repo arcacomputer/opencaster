@@ -5,7 +5,7 @@
 import { normalizeHypersnapEnsName } from './ensName';
 import { APP_ORIGIN, LEGACY_APP_ORIGIN } from './appOrigins';
 import { FARCASTER_EPOCH_SECONDS } from './farcasterEpoch';
-import { API_BASE } from './apiBase';
+import { API_BASE, API_REQUEST_OPTIONS } from './apiBase';
 
 export interface User {
   fid: number;
@@ -209,12 +209,12 @@ async function requestJson<T>(path: string, params?: URLSearchParams, signal?: A
   try {
     const query = params?.toString();
     const response = await fetch(`${API_BASE}${path}${query ? `?${query}` : ''}`, {
+      ...API_REQUEST_OPTIONS,
       method: body ? 'POST' : 'GET',
-      headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/octet-stream' } : {}) },
+      headers: { ...API_REQUEST_OPTIONS.headers, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/octet-stream' } : {}) },
       body: body ? new Uint8Array(body).buffer : undefined,
       signal: controller.signal,
       credentials: 'omit',
-      cache: 'no-store',
       referrerPolicy: 'no-referrer',
     });
     const result: unknown = await response.json().catch(() => null);
