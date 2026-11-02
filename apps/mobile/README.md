@@ -57,7 +57,7 @@ and `getConversation`, with `Cast` and `User` from
 client's base URL to `https://opencaster.org/api`; browser clients continue to
 use their existing `/api` route. There is no direct Farcaster/Neynar service,
 alternative feed, or fallback. Only HTTPS links from public cast text are
-opened, and remote profile/media images are restricted to HTTP(S) URLs.
+opened, and remote profile/media images are restricted to HTTPS URLs.
 
 This preview displays public feed/profile/conversation data where the existing
 Hypersnap-backed index makes it available. The index may be incomplete or
@@ -72,7 +72,7 @@ access, and other authenticated features are not included.
 | Profile lookup | Search by numeric FID or username and open the public profile | Shared API tests and mobile TypeScript check |
 | Public profile | Public identity details and paginated casts | Shared API tests and mobile TypeScript check |
 | Conversation | Selected cast and available nested replies, with indentation capped at five levels | Mobile TypeScript check |
-| Native external content | HTTPS links and HTTP(S) profile/media images | URL-safety tests |
+| Native external content | HTTPS links and HTTPS profile/media images | URL-safety tests |
 | Platform bundles | Metro exports for Android and iOS | `yarn workspace @opencaster/mobile build` |
 
 Automated checks do not constitute visual UI, emulator, device, runtime network,

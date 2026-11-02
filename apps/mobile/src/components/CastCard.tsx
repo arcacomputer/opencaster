@@ -1,8 +1,9 @@
 import type { Cast } from '@opencaster/client-core/api';
-import { useCallback } from 'react';
-import { Alert, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { safeHttpUrl, safeHttpsUrl, splitSafeLinks } from '../lib/urls';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { openHttpsUrl } from '../lib/openHttpsUrl';
+import { safeHttpsUrl, safeMediaEmbedUrls, splitSafeLinks } from '../lib/urls';
 import { palette } from '../theme';
+import { RemoteImageEmbed } from './RemoteImageEmbed';
 
 function displayName(cast: Cast): string {
   return cast.author.display_name?.trim() || (cast.author.username ? `@${cast.author.username}` : `FID ${cast.author.fid}`);
@@ -22,16 +23,6 @@ function countLabel(value: number, noun: string): string | null {
 }
 
 function CastBody({ text }: { text: string }) {
-  const openLink = useCallback(async (url: string) => {
-    const safeUrl = safeHttpsUrl(url);
-    if (!safeUrl) return;
-    try {
-      await Linking.openURL(safeUrl);
-    } catch {
-      Alert.alert('Link unavailable', 'This HTTPS link could not be opened.');
-    }
-  }, []);
-
   return (
     <Text selectable style={styles.body}>
       {splitSafeLinks(text).map((part, index) => part.url
@@ -39,7 +30,7 @@ function CastBody({ text }: { text: string }) {
           <Text
             accessibilityRole="link"
             key={`${part.url}-${index}`}
-            onPress={() => void openLink(part.url!)}
+            onPress={() => void openHttpsUrl(part.url!)}
             style={styles.link}
           >
             {part.text}
@@ -61,12 +52,8 @@ export function CastCard({
   onAuthorPress: (fid: number) => void;
   onThreadPress: (hash: string) => void;
 }) {
-  const avatar = cast.author.pfp_url ? safeHttpUrl(cast.author.pfp_url) : null;
-  const media = cast.embeds.flatMap(embed => {
-    if (!('url' in embed)) return [];
-    const url = safeHttpUrl(embed.url);
-    return url ? [url] : [];
-  });
+  const avatar = cast.author.pfp_url ? safeHttpsUrl(cast.author.pfp_url) : null;
+  const media = safeMediaEmbedUrls(cast.embeds);
   const date = dateLabel(cast.timestamp);
   const counts = [
     countLabel(cast.reactions.likes_count, 'likes'),
@@ -100,12 +87,10 @@ export function CastCard({
         <CastBody text={cast.text} />
       </Pressable>
       {media.map((uri, index) => (
-        <Image
-          accessibilityLabel={`Cast media ${index + 1}`}
+        <RemoteImageEmbed
           key={`${uri}-${index}`}
-          resizeMode="cover"
-          source={{ uri }}
-          style={styles.media}
+          index={index + 1}
+          uri={uri}
         />
       ))}
       {counts ? <Text style={styles.counts}>{counts}</Text> : null}
@@ -161,13 +146,6 @@ const styles = StyleSheet.create({
   link: {
     color: palette.cyan,
     textDecorationLine: 'underline',
-  },
-  media: {
-    backgroundColor: palette.raised,
-    borderRadius: 12,
-    minHeight: 120,
-    maxHeight: 360,
-    width: '100%',
   },
   counts: {
     color: palette.muted,

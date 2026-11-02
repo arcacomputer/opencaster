@@ -1,3 +1,5 @@
+import type { Cast } from '@opencaster/client-core/api';
+
 export function safeHttpUrl(value: string): string | null {
   if (value.length > 2048) return null;
   try {
@@ -12,6 +14,14 @@ export function safeHttpUrl(value: string): string | null {
 export function safeHttpsUrl(value: string): string | null {
   const safeUrl = safeHttpUrl(value);
   return safeUrl && new URL(safeUrl).protocol === 'https:' ? safeUrl : null;
+}
+
+export function safeMediaEmbedUrls(embeds: Cast['embeds']): string[] {
+  return embeds.slice(0, 2).flatMap(embed => {
+    if (!('url' in embed)) return [];
+    const url = safeHttpsUrl(embed.url);
+    return url ? [url] : [];
+  });
 }
 
 export interface TextPart {

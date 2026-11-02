@@ -5,7 +5,7 @@ import { FlatList, Image, RefreshControl, StyleSheet, Text, View } from 'react-n
 import { CastCard } from '../components/CastCard';
 import { ActionButton, LoadingMessage, ScreenMessage } from '../components/Primitives';
 import type { RootStackParamList } from '../navigation';
-import { safeHttpUrl } from '../lib/urls';
+import { safeHttpsUrl } from '../lib/urls';
 import { usePagedCasts } from '../lib/usePagedCasts';
 import { usePublicRead } from '../lib/usePublicRead';
 import { palette } from '../theme';
@@ -18,7 +18,7 @@ function countLabel(value: number, noun: string): string | null {
 }
 
 function ProfileSummary({ user }: { user: User }) {
-  const avatar = user.pfp_url ? safeHttpUrl(user.pfp_url) : null;
+  const avatar = user.pfp_url ? safeHttpsUrl(user.pfp_url) : null;
   const name = user.display_name?.trim() || (user.username ? `@${user.username}` : `FID ${user.fid}`);
   const counts = [countLabel(user.follower_count, 'followers'), countLabel(user.following_count, 'following')]
     .filter(Boolean)

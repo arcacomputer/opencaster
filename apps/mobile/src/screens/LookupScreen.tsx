@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ActionButton, LoadingMessage, ScreenMessage } from '../components/Primitives';
 import type { RootStackParamList } from '../navigation';
-import { safeHttpUrl } from '../lib/urls';
+import { safeHttpsUrl } from '../lib/urls';
 import { usePublicRead } from '../lib/usePublicRead';
 import { palette } from '../theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 type Props = NativeStackScreenProps<RootStackParamList, 'Lookup'>;
 
 function UserResult({ user, onPress }: { user: User; onPress: () => void }) {
-  const avatar = user.pfp_url ? safeHttpUrl(user.pfp_url) : null;
+  const avatar = user.pfp_url ? safeHttpsUrl(user.pfp_url) : null;
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`Open profile for ${user.username || `FID ${user.fid}`}`} onPress={onPress} style={styles.result}>
       {avatar ? <Image accessibilityLabel="Profile image" source={{ uri: avatar }} style={styles.avatar} /> : null}
