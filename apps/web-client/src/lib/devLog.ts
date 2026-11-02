@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'mobile-reply-keyboard-reachability',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T11:10:19+00:00',
+    title: 'Keep reply controls reachable above the keyboard',
+    summary: 'The composer adjusts to the keyboard so reply controls stay reachable; the fresh-mount Android check confirmed the input and Review button above Gboard. iOS behavior was not separately verified.',
+    changes: [
+      'Use height-based keyboard avoidance on Android and the current navigation header height for keyboard positioning.',
+      'The tested Android reply flow kept the typed input and Review button reachable; iOS behavior was not separately validated.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/10a98af218670ec9d5ae054a831c11c1de1daed4',
+    tag: 'Reliability',
+  },
+  {
     id: 'mobile-clock-corrected-social-receipts',
     date: '2026-11-02',
     timestamp: '2026-11-02T10:43:56+00:00',
