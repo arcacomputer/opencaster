@@ -22,6 +22,21 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'inline-external-link-embeds',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T00:11:32-03:00',
+    title: 'See linked posts and media inside a cast',
+    summary: 'Supported URL attachments now show X posts and YouTube, Vimeo and Spotify players inline, so you can read or play their content while browsing.',
+    changes: [
+      'Display supported X posts with their text and media, matching the app theme, plus native players for supported YouTube, Vimeo and Spotify links.',
+      'Load provider frames near the viewport, keep provider scripts outside the app page and retain an original link with loading, unavailable and retry states.',
+      'Show the hostname and destination path for other website attachments instead of an empty preview panel. Ordinary text links and composer attachment limits keep their existing behavior.',
+      'Embedded content contacts its provider and remains subject to availability, private or deleted content and embedding restrictions. No arbitrary website scraping or mini-app execution is added.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/81cd1e6001920e8620349756d67dbe678dc9bb47',
+    tag: 'Social',
+  },
+  {
     id: 'preserve-operational-read-backup',
     date: '2026-10-30',
     timestamp: '2026-10-30T12:34:31-03:00',
