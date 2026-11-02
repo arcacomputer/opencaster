@@ -67,6 +67,50 @@ describe('CastPageController', () => {
     expect(controller.getSnapshot().phase).toBe('loading');
   });
 
+  it.each(['immediate', 'deferred'] as const)('clears refreshing and retains casts after a %s rejection, then retries the first page', async timing => {
+    let reject!: (error: Error) => void;
+    const failure = new Error('Network request failed');
+    const read = vi.fn()
+      .mockResolvedValueOnce(page([cast('first')], 'page-2'))
+      .mockImplementationOnce(() => timing === 'immediate'
+        ? Promise.reject(failure)
+        : new Promise<FeedResponse>((_, fail) => { reject = fail; }))
+      .mockResolvedValueOnce(page([cast('recovered')]));
+    const controller = new CastPageController(read);
+    await controller.refresh();
+
+    const refreshingStates: boolean[] = [];
+    const unsubscribe = controller.subscribe(() => refreshingStates.push(controller.getSnapshot().refreshing));
+    const pending = controller.refresh();
+    expect(controller.getSnapshot()).toMatchObject({ refreshing: true, casts: [cast('first')] });
+    if (timing === 'deferred') reject(failure);
+    await pending;
+
+    expect(refreshingStates).toContain(true);
+    expect(refreshingStates.at(-1)).toBe(false);
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: 'ready',
+      refreshing: false,
+      loadingMore: false,
+      casts: [cast('first')],
+      nextCursor: 'page-2',
+      error: 'Network request failed',
+      retryKind: 'refresh',
+    });
+
+    await controller.retry();
+    expect(read.mock.calls.map(([cursor]) => cursor)).toEqual([null, null, null]);
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: 'ready',
+      refreshing: false,
+      casts: [cast('recovered')],
+      nextCursor: null,
+      error: null,
+      retryKind: null,
+    });
+    unsubscribe();
+  });
+
   it('stops pagination at the configured page limit but still allows refresh', async () => {
     const read = vi.fn()
       .mockResolvedValueOnce(page([cast('first')], 'page-2'))
