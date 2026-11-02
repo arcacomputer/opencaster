@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'mobile-local-content-safety',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T12:37:44+00:00',
+    title: 'Add device-local content safety controls',
+    summary: 'The mobile preview can hide public users and casts on this device using bounded local preferences; this does not report, block network interactions or delete network data, and reporting/support destinations remain unconfigured. Native Android and iOS validation remains pending.',
+    changes: [
+      'Filter public home, profile, conversation, lookup and reply-parent displays by public FIDs and cast hashes, with explicit local restore and reset controls.',
+      'Keep filters in ordinary private app data separate from device-key storage, fail closed on unreadable data, and make no account-deletion, moderation or network-blocking claim.',
+      'Reporting/support destinations and operator policies are not configured; native Android and iOS runtime validation remains pending.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/0699e5e5ad78f6e2e13c81d23fd0783b70c265cf',
+    tag: 'Social',
+  },
+  {
     id: 'mobile-composer-follows-keyboard-height',
     date: '2026-11-02',
     timestamp: '2026-11-02T11:35:14+00:00',
