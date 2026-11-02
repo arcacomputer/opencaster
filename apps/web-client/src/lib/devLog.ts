@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'native-public-browsing-foundation',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T03:32:10+00:00',
+    title: 'A native OpenCaster public-browsing foundation',
+    summary: 'The first native OpenCaster foundation adds an iOS and Android public-browsing app alongside the existing browser client.',
+    changes: [
+      'Browse public trending casts, select a time window, look up a profile by username or FID, and open public profiles and available conversation replies.',
+      'Read through Opencaster’s existing Hypersnap-backed API, with cancellable paginated reads and safe HTTPS links and HTTP(S) media.',
+      'This is a public-read foundation only. Authentication, posting, reactions, messaging, signed builds, store assets, and account, moderation, reviewer-access, and store-compliance workflows are not ready; the native app identifiers remain provisional.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/7ccd187461522795b9a0a31c290caec5fd7afd38',
+    tag: 'Social',
+  },
+  {
     id: 'portable-timeline-continuations',
     date: '2026-11-01',
     timestamp: '2026-11-01T03:34:19Z',
