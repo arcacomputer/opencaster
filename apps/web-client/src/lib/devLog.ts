@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'native-api-cache-query-compatibility',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T06:55:25+00:00',
+    title: 'Keep native feed requests compatible with gateway validation',
+    summary: 'Native public feed reads no longer ask React Native’s fetch polyfill to add a cache-buster parameter the gateway rejects.',
+    changes: [
+      'Preserve the gateway’s exact first-page and pagination query parameters for native feed requests.',
+      'Retain browser no-store caching while using a native no-cache header without the incompatible fetch cache mode.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/2f679599bc0bba28dddcf4ef0699ff04104d098a',
+    tag: 'Reliability',
+  },
+  {
     id: 'mobile-lookup-keyboard-access',
     date: '2026-11-02',
     timestamp: '2026-11-02T03:47:23+00:00',
