@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'mobile-cancelled-setup-key-disposal',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T09:34:51+00:00',
+    title: 'Clear mobile keys during cancelled setup',
+    summary: 'Locking or replacing a native authorization session now clears active key material before protected reads or delayed setup steps finish.',
+    changes: [
+      'Adopt the generated seed before requesting the public request ID, so Lock can zero it while native randomness is pending.',
+      'Clear active key material and authorization state before reading protected storage during unlock.',
+      'Label the saved account identity as Hypersnap.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/8656a1a4b1307c0a71666c4f1998aad175f9c981',
+    tag: 'Security',
+  },
+  {
     id: 'mobile-device-authorization-safety',
     date: '2026-11-02',
     timestamp: '2026-11-02T09:31:48+00:00',
