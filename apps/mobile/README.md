@@ -12,7 +12,7 @@ Use Node 22, Yarn 1.22, and the single root lockfile:
 ```sh
 source ~/.nvm/nvm.sh
 nvm use 22
-yarn install
+yarn install --frozen-lockfile
 yarn workspace @opencaster/mobile start
 yarn workspace @opencaster/mobile android
 yarn workspace @opencaster/mobile ios
@@ -101,8 +101,42 @@ confirmed key absence.
 | Platform bundles | Metro exports for Android and iOS | `yarn workspace @opencaster/mobile build` |
 
 Automated checks do not constitute visual UI, emulator, device, runtime network,
-native compilation, or signed-build verification. There are no store assets or
-release credentials in this workspace.
+native compilation, or signed-build verification. This workspace includes native
+icon assets, but no approved store listing, distribution credentials or completed
+submission configuration.
+
+## Native branding and permissions
+
+App config uses the existing OpenCaster mark for an opaque square iOS/default
+icon and separate Android adaptive/monochrome foregrounds. Editable SVG sources
+and PNG exports are in `assets/`. Regenerate the ignored native projects with
+Expo Prebuild and rebuild both platforms after changing this configuration;
+Metro reloads do not update launcher resources or native permissions.
+
+Android explicitly blocks unused legacy external-storage, overlay, vibration and
+biometric permissions, including declarations contributed by dependencies.
+Approval import uses the system document picker and URI-granted access; transfer
+files and local preferences use private app storage. SecureStore remains
+encrypted without a biometric prompt. Network permission and AndroidX's
+signature-level receiver-protection permission remain necessary. Revisit the
+blocked list before intentionally adding a feature that requires one of them.
+
+Check the generated **release** manifest, not only app config or the debug
+manifest, before distributing:
+
+```sh
+yarn workspace @opencaster/mobile exec expo prebuild --platform android --no-install
+cd apps/mobile/android
+./gradlew :app:processReleaseMainManifest
+```
+
+The merged manifest is under `app/build/intermediates/merged_manifest/release/`.
+This task may also bundle release JavaScript, but it does not establish APK
+installation, runtime behavior or distribution signing. The generated Gradle
+template uses a local debug keystore for its release build type by default;
+such an artifact is a **debug-signed release-mode test build**, not a Play-ready
+release. Inspect the actual built iOS Release app separately for development-only
+metadata, usage descriptions and dependency privacy manifests.
 
 ## Dependencies and licensing
 
@@ -152,17 +186,17 @@ or creating signing assets. The `development`, `preview`, and `production`
 EAS profiles do not configure an owner, project ID, submission, auto-submit,
 update channel, or credentials.
 
-When a maintainer is ready to proceed, they will need to choose and manually
-configure their own Expo/EAS account and project, Apple Developer team and
-bundle registration, Android signing and Play Console account, app privacy and
-store materials, and required platform credentials. Never commit those
-credentials. No account or store operation is performed by this workspace.
+The planned distribution uses personal Apple Developer and Google Play accounts,
+not Arca Computer organizational accounts. Final identifiers, personal seller
+details, signing, privacy disclosures, support/reporting operations and reviewer
+access require the responsible owner's decisions. Never commit credentials.
+No account or store operation is performed by this workspace.
 
-Expo's EAS Free plan currently lists 15 Android and 15 iOS build jobs per month
-at low queue priority; builds stop when the free quota is exhausted, with no
-overage charge or automatic paid purchase. Recheck the vendor's current plan
-limits before scheduling builds. No EAS build has been started for this
-milestone.
+Local native builds do not require an Expo/EAS account. Hosted EAS builds are
+optional and require separately authorized account/project setup. Confirm the
+current included/free quota and disable paid overages before any authorized
+hosted build; do not infer permission to spend from this configuration. No EAS
+build has been started for this milestone.
 
 ## Explicitly not ready
 
