@@ -58,13 +58,21 @@ export function CastCard({
   const { localContent, snapshot } = useLocalContent();
   if (snapshot.phase !== 'ready' || isHiddenTarget(snapshot.data, { fid: cast.author.fid, hash: cast.hash })) return null;
 
+  const hidePost = async () => {
+    if (await localContent.hideCast(cast.hash)) return;
+    Alert.alert('Post hide not confirmed', localContent.getSnapshot().error ?? 'The change was not confirmed. Try again or manage filters in Safety and data.');
+  };
+  const hideUser = async () => {
+    if (await localContent.hideUser(cast.author.fid)) return;
+    Alert.alert('User hide not confirmed', localContent.getSnapshot().error ?? 'The change was not confirmed. Try again or manage filters in Safety and data.');
+  };
   const showContentOptions = () => Alert.alert(
     'Content options',
     `Hide this post or all posts by FID ${cast.author.fid} on this device? This does not report the post or prevent network interaction.`,
     [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Hide post', style: 'destructive', onPress: () => void localContent.hideCast(cast.hash) },
-      { text: `Hide FID ${cast.author.fid}`, style: 'destructive', onPress: () => void localContent.hideUser(cast.author.fid) },
+      { text: 'Hide post', style: 'destructive', onPress: () => { void hidePost(); } },
+      { text: `Hide FID ${cast.author.fid}`, style: 'destructive', onPress: () => { void hideUser(); } },
     ],
   );
 

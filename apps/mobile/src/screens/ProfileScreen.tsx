@@ -57,16 +57,20 @@ export function ProfileScreen({ navigation, route }: Props) {
   const hiddenProfile = snapshot.phase === 'ready'
     && (snapshot.data.users.includes(fid)
       || (profile.phase === 'ready' && snapshot.data.users.includes(profile.value.fid)));
+  const hideUser = useCallback(async (targetFid: number) => {
+    if (await localContent.hideUser(targetFid)) return;
+    Alert.alert('User hide not confirmed', localContent.getSnapshot().error ?? 'The change was not confirmed. Try again or manage filters in Safety and data.');
+  }, [localContent]);
   const confirmHideUser = useCallback((targetFid: number) => {
     Alert.alert(
       `Hide FID ${targetFid} on this device?`,
       'This hides the profile and its public casts in this app only. It does not send a report, delete account data, or prevent network interaction.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Hide user', style: 'destructive', onPress: () => void localContent.hideUser(targetFid) },
+        { text: 'Hide user', style: 'destructive', onPress: () => { void hideUser(targetFid); } },
       ],
     );
-  }, [localContent]);
+  }, [hideUser]);
 
   const listHeader = useMemo(() => (
     <View style={styles.headerContent}>

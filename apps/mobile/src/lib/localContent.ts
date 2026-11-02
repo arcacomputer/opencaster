@@ -83,38 +83,55 @@ export class LocalContent {
     }
   }
 
-  private async change(update: (current: HiddenContent) => HiddenContent, reset = false): Promise<void> {
-    if (this.snapshot.busy || (!reset && this.snapshot.phase !== 'ready')) return;
-    this.publish({ ...this.snapshot, busy: true, error: undefined });
+  private async change(update: (current: HiddenContent) => HiddenContent, reset = false): Promise<boolean> {
+    const current = this.snapshot;
+    if (current.busy || (!reset && current.phase !== 'ready')) return false;
+
+    let data: HiddenContent;
+    let serialized: string;
     try {
-      const data = update(this.snapshot.data);
-      await this.storage.write(JSON.stringify(data));
-      this.publish({ phase: 'ready', busy: false, data });
+      const encoded = JSON.stringify(update(current.data));
+      if (encoded === undefined) throw new Error('Content filters could not be updated.');
+      serialized = encoded;
+      data = decodeHiddenContent(serialized);
     } catch (error) {
+      this.publish({
+        ...current,
+        busy: false,
+        error: error instanceof Error ? error.message : 'Content filters could not be updated.',
+      });
+      return false;
+    }
+
+    this.publish({ ...current, busy: true, error: undefined });
+    try {
+      await this.storage.write(serialized);
+      this.publish({ phase: 'ready', busy: false, data });
+      return true;
+    } catch {
       this.publish({ ...this.snapshot, phase: 'error', busy: false,
-        error: error instanceof Error && error.message.startsWith('At most ')
-          ? error.message
-          : 'Content filters could not be saved. No success was recorded. Retry reading the saved filters or explicitly reset them.' });
+        error: 'Content filters could not be saved. No success was recorded. Retry reading the saved filters or explicitly reset them.' });
+      return false;
     }
   }
 
-  hideUser(value: number): Promise<void> {
+  hideUser(value: number): Promise<boolean> {
     return this.change(current => content([...new Set([...current.users, fid(value)])], current.casts));
   }
 
-  hideCast(value: string): Promise<void> {
+  hideCast(value: string): Promise<boolean> {
     return this.change(current => content(current.users, [...new Set([...current.casts, hash(value)])]));
   }
 
-  restoreUser(value: number): Promise<void> {
+  restoreUser(value: number): Promise<boolean> {
     return this.change(current => content(current.users.filter(item => item !== value), current.casts));
   }
 
-  restoreCast(value: string): Promise<void> {
+  restoreCast(value: string): Promise<boolean> {
     return this.change(current => content(current.users, current.casts.filter(item => item !== hash(value))));
   }
 
-  reset(): Promise<void> {
+  reset(): Promise<boolean> {
     return this.change(() => content([], []), true);
   }
 }

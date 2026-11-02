@@ -53,6 +53,32 @@ describe('LocalContent', () => {
     expect(controller.getSnapshot()).toMatchObject({ phase: 'ready', data: { users: [3] } });
   });
 
+  it('keeps valid preferences ready when a hide exceeds the limit and permits later saves', async () => {
+    const users = Array.from({ length: MAX_HIDDEN_ITEMS }, (_, index) => index + 1);
+    const disk = storage(JSON.stringify({ version: 1, users, casts: [] }));
+    const controller = new LocalContent(disk);
+    await controller.load();
+
+    expect(await controller.hideUser(MAX_HIDDEN_ITEMS + 1)).toBe(false);
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: 'ready',
+      busy: false,
+      data: { version: 1, users, casts: [] },
+      error: expect.stringContaining(`At most ${MAX_HIDDEN_ITEMS}`),
+    });
+    expect(disk.write).not.toHaveBeenCalled();
+
+    expect(await controller.restoreUser(MAX_HIDDEN_ITEMS)).toBe(true);
+    expect(await controller.hideUser(MAX_HIDDEN_ITEMS + 1)).toBe(true);
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: 'ready',
+      busy: false,
+      data: { version: 1, users: [...users.slice(0, -1), MAX_HIDDEN_ITEMS + 1], casts: [] },
+    });
+    expect(controller.getSnapshot().error).toBeUndefined();
+    expect(disk.write).toHaveBeenCalledTimes(2);
+  });
+
   it('serializes operations by refusing another mutation while a save is pending', async () => {
     let finish!: () => void;
     const disk = storage();
@@ -60,12 +86,12 @@ describe('LocalContent', () => {
     await controller.load();
     disk.write.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
     const pending = controller.hideUser(3);
-    await controller.reset();
+    expect(await controller.reset()).toBe(false);
     expect(controller.getSnapshot().busy).toBe(true);
     expect(disk.write).toHaveBeenCalledTimes(1);
     expect(controller.getSnapshot().data.users).toEqual([]);
     finish();
-    await pending;
+    expect(await pending).toBe(true);
     expect(controller.getSnapshot().data.users).toEqual([3]);
   });
 
