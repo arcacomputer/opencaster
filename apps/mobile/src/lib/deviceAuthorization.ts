@@ -97,7 +97,7 @@ function decodeRecord(text: string, now: number): DecodedDeviceRecord {
       || revocation.custodyAddress !== request.custodyAddress || revocation.origin !== APP_ORIGIN
       || revocation.createdAt > Math.floor(now / 1000) + 60)) throw new Error();
     const action = value.action === undefined ? undefined : validateSocialAction(value.action);
-    if (action && (['prepared', 'registering'].includes(value.stage) || action.timestamp > farcasterTimestamp(now) + 60)) throw new Error();
+    if (action && ['prepared', 'registering'].includes(value.stage)) throw new Error();
     return {
       record: { version: 1, request, stage: value.stage, ...(revocation ? { revocation } : {}), ...(action ? { action } : {}) },
       seed,

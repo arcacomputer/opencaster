@@ -292,6 +292,33 @@ describe('native scoped social actions', () => {
     expect(restarted.getSnapshot().action!.timestamp).toBe(receipt.timestamp + 1);
   });
 
+  it('reconciles a pending receipt after the device clock moves backward but guards new writes', async () => {
+    const test = setup();
+    await test.register();
+    test.advance(60 * 60 * 1000);
+    vi.mocked(test.deps.api.submitMessage).mockRejectedValueOnce(new Error('ack lost'));
+    await test.controller.publishCast('hello');
+    const receipt = test.controller.getSnapshot().action!;
+    expect(receipt.status).toBe('pending');
+
+    test.advance(-5 * 60 * 1000);
+    const restarted = new DeviceAuthorization(test.deps);
+    await restarted.unlock();
+    expect(restarted.getSnapshot().action).toEqual(receipt);
+    await restarted.checkAction();
+    expect(restarted.getSnapshot().action?.status).toBe('confirmed');
+    expect(test.deps.api.submitMessage).toHaveBeenCalledTimes(2);
+
+    await restarted.publishCast('wait for the clock');
+    expect(restarted.getSnapshot().error).toMatch(/Wait for the device clock/);
+    expect(test.deps.api.submitMessage).toHaveBeenCalledTimes(2);
+
+    test.advance(5 * 60 * 1000);
+    await restarted.publishCast('clock recovered');
+    expect(restarted.getSnapshot().action?.timestamp).toBe(receipt.timestamp + 1);
+    expect(test.deps.api.submitMessage).toHaveBeenCalledTimes(3);
+  });
+
   it.each(['like', 'recast'] as const)('signs %s add/remove without inferring success from acknowledgement', async reaction => {
     const test = setup();
     await test.register();
