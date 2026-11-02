@@ -275,11 +275,20 @@ export function DeviceAccessScreen({ navigation }: Props) {
                   {pendingApproval?.kind === 'revoke' ? (
                     <ActionButton label="Approve network revocation" onPress={() => confirmApproval('revoke', pendingApproval.text)} disabled={snapshot.busy} />
                   ) : null}
-                  <ActionButton label="Cancel revocation request (local only)" onPress={forget} secondary disabled={snapshot.busy} />
+                  <ActionButton
+                    label="Cancel pending revocation"
+                    onPress={() => void authorization.cancelRevocation()}
+                    secondary
+                    disabled={snapshot.busy}
+                  />
                 </>
               ) : null}
               {snapshot.phase === 'revoking' ? <ActionButton label="Check revocation status" onPress={() => void authorization.checkRevocation()} disabled={snapshot.busy} /> : null}
-              <ActionButton label="Lock" onPress={() => authorization.lock()} secondary disabled={snapshot.busy} />
+              <ActionButton
+                label={snapshot.busy ? 'Stop waiting and lock' : 'Lock'}
+                onPress={() => authorization.lock()}
+                secondary
+              />
               <ActionButton label={snapshot.phase === 'registered' ? 'Forget this device (local only)' : 'Forget local device record'} onPress={forget} secondary disabled={snapshot.busy} />
             </View>
           </>

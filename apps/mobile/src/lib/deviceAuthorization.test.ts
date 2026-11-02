@@ -192,6 +192,28 @@ describe('native protected device authorization', () => {
     expect(test.deps.api.submitMessage).toHaveBeenCalledTimes(2);
   });
 
+  it('cancels only an unsubmitted revocation without deleting or submitting the device key', async () => {
+    const test = setup();
+    await test.register();
+    const seed = JSON.parse(test.saved()!).seed;
+    await test.controller.prepareRevocation();
+    await test.controller.cancelRevocation();
+
+    expect(JSON.parse(test.saved()!)).toMatchObject({ stage: 'registered', seed });
+    expect(JSON.parse(test.saved()!)).not.toHaveProperty('revocation');
+    expect(test.controller.getSnapshot()).toMatchObject({ phase: 'registered', authorized: false });
+    expect(test.controller.getSnapshot().notice).toMatch(/No network revocation was sent/);
+    expect(test.deps.api.submitMessage).toHaveBeenCalledTimes(1);
+
+    await test.controller.prepareRevocation();
+    await test.controller.approveRevocation(revokeApproval(test.controller.getSnapshot().revocation!));
+    expect(test.controller.getSnapshot().phase).toBe('revoking');
+    await test.controller.cancelRevocation();
+    expect(test.controller.getSnapshot().error).toMatch(/submitted revocation status/);
+    expect(JSON.parse(test.saved()!).stage).toBe('revoking');
+    expect(test.deps.api.submitMessage).toHaveBeenCalledTimes(2);
+  });
+
   it('distinguishes local forgetting from network revocation and surfaces deletion failure', async () => {
     const test = setup();
     await test.register();

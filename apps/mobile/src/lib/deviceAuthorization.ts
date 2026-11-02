@@ -330,6 +330,18 @@ export class DeviceAuthorization {
     await this.save({ ...record, stage: 'revoke-prepared', revocation }, generation);
   });
 
+  cancelRevocation = (): Promise<void> => this.operation(async generation => {
+    const record = this.current();
+    if (record.stage !== 'revoke-prepared' || !record.revocation) {
+      fail('Only an unsubmitted revocation request can be canceled. Check submitted revocation status instead.');
+    }
+    await this.save({ version: 1, request: record.request, stage: 'registered' }, generation);
+    this.publish({
+      authorized: false,
+      notice: 'No network revocation was sent. The protected device key was retained; check authorization status before using it.',
+    });
+  });
+
   approveRevocation = (text: string): Promise<void> => this.operation(async (generation, signal) => {
     const record = this.current();
     if (record.stage !== 'revoke-prepared' || !record.revocation) fail('Create a revocation request first.');
