@@ -37,6 +37,20 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Social',
   },
   {
+    id: 'portable-timeline-continuations',
+    date: '2026-11-01',
+    timestamp: '2026-11-01T03:34:19Z',
+    title: 'Keep your place when timeline reads switch nodes',
+    summary: 'Profile history can continue across the private primary and its read backup without incorrectly showing an empty final page.',
+    changes: [
+      'Validate timeline cursors against their account, cast-key format and supported namespace before sending a read upstream.',
+      'Adapt only the verified storage namespace for the selected trusted node, preserving the timestamp and cast hash that identify the continuation position.',
+      'Keep existing authentication, read deadlines and fallback behavior. Heavy reads may still use the backup; signed submissions are unchanged.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/4c478e56f70948d1be5487975db2dfb7306ffad6',
+    tag: 'Reliability',
+  },
+  {
     id: 'preserve-operational-read-backup',
     date: '2026-10-30',
     timestamp: '2026-10-30T12:34:31-03:00',
