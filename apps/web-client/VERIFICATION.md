@@ -1,3 +1,38 @@
+# Inline provider embeds · local verification
+
+Casts with supported URL attachments now render X posts and YouTube, Vimeo
+and Spotify players inside sandboxed provider frames. Provider scripts stay
+outside the application page. Other website attachments show their hostname
+and destination path. These are received protocol attachments; this change
+does not add composer link scraping or publish additional embeds automatically.
+
+Root `yarn verify` passed **1,981 tests across 77 files**, all workspace
+checks, the production browser build and offline signer build. The new coverage
+includes 70 provider URL cases and 15 browser-component tests for lazy loading,
+exact frame/origin/post message validation, bounded resizing, lifecycle states,
+timeout/retry, cleanup, media readiness and local-link navigation.
+
+A temporary read-only loopback fixture served production-built assets through
+the actual gateway headers, with synthetic public casts and no wallet. The
+exact X URL attached to the reported cast,
+`https://x.com/atrupar/status/2117076916637213166`, rendered its author, text and
+video inline. User-initiated video playback advanced past five seconds and was
+paused through the player. The documented Interior example also rendered.
+YouTube's developer example, Vimeo's player example and a Spotify track showed
+their native content and controls. Playback was exercised on X; the other
+providers were checked for rendering, not complete playback behavior.
+
+At a 320-pixel browser viewport, a two-attachment cast kept the X frame 279
+pixels wide and the document's client/scroll widths equal. The attachment strip
+retained its own horizontal scrolling. The viewport override was restored.
+A fresh external production build contained no synthetic fixture or preview
+wrapper markers. No production account action, upload, branch push or
+deployment was performed. Signed-in production flows and physical mobile
+browsers were not exercised. Provider availability, deleted/private content,
+embedding restrictions and future provider format changes remain external
+limits; every embed keeps its original link. This is not an independent
+security audit.
+
 # Local dev-log dates and times deployed · 2026-10-30
 
 Release source [`b3c807ce`](https://github.com/arcacomputer/opencaster/commit/b3c807cedcf67596d7de04529476b6df26eaab6a)

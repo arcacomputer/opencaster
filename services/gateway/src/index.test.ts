@@ -527,7 +527,7 @@ describe('the fixed Hypersnap gateway', () => {
     expect(csp).toContain("script-src 'self'");
     expect(csp).toContain("connect-src 'self'");
     expect(csp).toContain('wss://relay.walletconnect.org');
-    expect(csp).toContain('frame-src https://verify.walletconnect.org https://verify.walletconnect.com;');
+    expect(csp).toContain("frame-src https://verify.walletconnect.org https://verify.walletconnect.com https://platform.twitter.com https://www.youtube-nocookie.com https://player.vimeo.com https://open.spotify.com;");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toContain('unsafe-inline');
     expect(csp).not.toContain('unsafe-eval');
