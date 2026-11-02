@@ -172,6 +172,23 @@ describe('native protected device authorization', () => {
     expect(test.controller.getSnapshot()).toMatchObject({ phase: 'locked', authorized: false, busy: false });
   });
 
+  it('zeroes a generated seed while waiting for the public request ID when locked', async () => {
+    const test = setup();
+    const seed = new Uint8Array(32).fill(23);
+    let finish!: (value: Uint8Array) => void;
+    vi.mocked(test.deps.randomBytes)
+      .mockResolvedValueOnce(seed)
+      .mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const pending = test.prepare();
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+    test.controller.lock();
+    expect([...seed]).toEqual(new Array(32).fill(0));
+    finish(new Uint8Array(32).fill(24));
+    await pending;
+    expect(test.deps.storage.write).not.toHaveBeenCalled();
+    expect(test.controller.getSnapshot()).toMatchObject({ phase: 'locked', authorized: false });
+  });
+
   it('confirms actual removal rather than expiry, preserving a failed local cleanup for retry', async () => {
     const test = setup();
     await test.register();

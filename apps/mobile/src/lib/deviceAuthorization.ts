@@ -209,6 +209,8 @@ export class DeviceAuthorization {
   };
 
   unlock = (): Promise<void> => this.operation(async (generation, signal) => {
+    this.clearSeed();
+    this.publish({ authorized: false });
     const decoded = await this.readStoredRecord();
     let adopted = false;
     try {
@@ -249,6 +251,9 @@ export class DeviceAuthorization {
     try {
       this.check(generation);
       if (!(seed instanceof Uint8Array) || seed.length !== 32) fail('Native secure randomness is unavailable.');
+      this.clearSeed();
+      this.seed = seed;
+      adopted = true;
       const requestId = await this.dependencies.randomBytes();
       this.check(generation);
       if (!(requestId instanceof Uint8Array) || requestId.length !== 32) fail('Native secure randomness is unavailable.');
@@ -260,10 +265,10 @@ export class DeviceAuthorization {
         nonce, deadline: createdAt - FARCASTER_EPOCH_SECONDS + PAIRING_WINDOW_SECONDS,
       }, this.now());
       const record: DeviceRecord = { version: 1, request, stage: 'prepared' };
-      this.clearSeed();
-      this.seed = seed;
-      adopted = true;
       await this.save(record, generation);
+    } catch (error) {
+      if (this.seed === seed) this.clearSeed();
+      throw error;
     } finally {
       if (!adopted || this.seed !== seed) seed.fill(0);
     }

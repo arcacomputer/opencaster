@@ -226,7 +226,7 @@ export function DeviceAccessScreen({ navigation }: Props) {
                   ? (savedIdentity.value.username ? `@${savedIdentity.value.username}` : '(none)')
                   : savedIdentity.phase === 'loading' ? 'Looking up the public username…' : 'Username lookup unavailable'}
               </Text>
-              <Text style={styles.detailLabel}>Farcaster identity</Text>
+              <Text style={styles.detailLabel}>Hypersnap identity</Text>
               <Text style={styles.body}>FID {record.fid} · custody {record.custodyAddress}</Text>
               <Text style={styles.detailLabel}>Authorization status</Text>
               <Text style={styles.body}>
