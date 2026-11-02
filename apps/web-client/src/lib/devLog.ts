@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'mobile-native-icons-and-minimal-permissions',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T13:34:00+00:00',
+    title: 'Set native mobile icons and limit Android permissions',
+    summary: 'Native app configuration now uses icons based on the existing OpenCaster mark and omits unused Android permission requests. Picker imports retain URI-granted access and private encrypted device-key storage is unchanged; Android and iOS runtime validation, signed distribution, moderation and store readiness remain unverified.',
+    changes: [
+      'Configure a square app icon and Android adaptive and monochrome themed-icon assets from the existing OpenCaster mark.',
+      'Exclude unused legacy storage, overlay, vibration and biometric/fingerprint permissions while retaining URI-granted system document-picker access and private encrypted local device-key storage.',
+      'Validate changed native configuration on Android and iOS before distribution; signing, moderation operations and store readiness remain unverified.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/7802a29d605c1eb85009a6ca8a2bc334d0d997a5',
+    tag: 'Security',
+  },
+  {
     id: 'mobile-local-safety-and-conversation-bounds',
     date: '2026-11-02',
     timestamp: '2026-11-02T12:46:57+00:00',
