@@ -32,7 +32,10 @@ export function HomeScreen({ navigation }: Props) {
           <Text accessibilityRole="header" style={styles.heading}>Trending</Text>
           <Text style={styles.subheading}>Public casts available through Hypersnap.</Text>
         </View>
+      </View>
+      <View style={styles.quickActions}>
         <ActionButton label="Find a person" onPress={() => navigation.navigate('Lookup')} secondary />
+        <ActionButton label="Device access" onPress={() => navigation.navigate('DeviceAccess')} secondary />
       </View>
       <View accessibilityRole="tablist" style={styles.windows}>
         {WINDOWS.map(option => (
@@ -122,6 +125,7 @@ const styles = StyleSheet.create({
   headerContent: { gap: 20, paddingBottom: 12, paddingHorizontal: 16, paddingTop: 12 },
   headingRow: { alignItems: 'center', flexDirection: 'row', gap: 12, justifyContent: 'space-between' },
   headingCopy: { flex: 1, gap: 4 },
+  quickActions: { flexDirection: 'row', gap: 10 },
   heading: { color: palette.text, fontSize: 25, fontWeight: '800' },
   subheading: { color: palette.muted, fontSize: 14, lineHeight: 20 },
   windows: {

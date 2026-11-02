@@ -61,8 +61,19 @@ opened, and remote profile/media images are restricted to HTTPS URLs.
 
 This preview displays public feed/profile/conversation data where the existing
 Hypersnap-backed index makes it available. The index may be incomplete or
-unavailable. Sign-in, posting, reactions, messaging, account storage, wallet
-access, and other authenticated features are not included.
+unavailable. It also includes a protected device-authorization flow that uses a
+separate offline signer and custody-approved public request files. The app never
+imports custody wallet keys or recovery phrases, has no in-app wallet transport,
+and does not yet include posting or reaction controls.
+
+The request grants exactly cast/reply creation and reaction add/remove scopes
+(`[1, 3, 4]`) with a 15-minute approval deadline and a seven-day **sliding
+inactivity** window, not a fixed expiry. Device data uses Expo SecureStore with
+device-only keychain accessibility, no biometric prompt, and Android backup
+exclusion; this is protected storage, not a claim of hardware-backed Ed25519
+keys. Locking drops active access, local forgetting does not revoke a network
+key, and network revocation requires its separate custody-approved request and
+confirmed key absence.
 
 ## Feature and validation matrix
 
@@ -73,6 +84,7 @@ access, and other authenticated features are not included.
 | Public profile | Public identity details and paginated casts | Shared API tests and mobile TypeScript check |
 | Conversation | Selected cast and available nested replies, with indentation capped at five levels | Mobile TypeScript check |
 | Native external content | HTTPS links and HTTPS profile/media images | URL-safety tests |
+| Device authorization | Explicit identity review, protected local device state, separate offline-signer request/approval and custody-approved revocation | Core state-machine, protected-storage and bounded-transfer tests |
 | Platform bundles | Metro exports for Android and iOS | `yarn workspace @opencaster/mobile build` |
 
 Automated checks do not constitute visual UI, emulator, device, runtime network,
@@ -85,8 +97,14 @@ Direct runtime dependencies and their declared licenses:
 
 | Dependency | License |
 | --- | --- |
+| `@noble/curves` | MIT |
 | `expo` | MIT |
+| `expo-crypto` | MIT |
 | `expo-dev-client` | MIT |
+| `expo-document-picker` | MIT |
+| `expo-file-system` | MIT |
+| `expo-secure-store` | MIT |
+| `expo-sharing` | MIT |
 | `react` | MIT |
 | `react-native` | MIT |
 | `@react-navigation/native` | MIT |
@@ -94,6 +112,7 @@ Direct runtime dependencies and their declared licenses:
 | `react-native-safe-area-context` | MIT |
 | `react-native-screens` | MIT |
 | `@opencaster/client-core` | AGPL-3.0-only |
+| `@opencaster/protocol` | AGPL-3.0-only |
 
 Direct development tooling uses `@babel/core` (MIT), `@types/react` (MIT),
 and TypeScript (Apache-2.0). Transitive packages are resolved in the root
@@ -129,4 +148,6 @@ milestone.
   workflows: **NOT READY**.
 - Account-specific Google testing eligibility and test-track requirements:
   **NOT READY**.
-- Authentication and all authenticated or write features: **NOT READY**.
+- Posting, reactions, and all other authenticated or write UI: **NOT READY**.
+- Device authorization has no native runtime or visual validation in this
+  workspace check; the separate Android/iOS runtime gate remains required.

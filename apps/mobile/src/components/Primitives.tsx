@@ -57,7 +57,8 @@ export function PublicPreviewNotice() {
       <Text style={styles.noticeEyebrow}>PUBLIC BROWSING PREVIEW</Text>
       <Text style={styles.noticeText}>
         Read-only public data from Hypersnap through Opencaster. The index may be incomplete or unavailable.
-        This preview does not include sign-in, posting, reactions, messaging, wallets, or local account storage.
+        Optional device authorization uses a separate offline signer; posting and reaction controls are not part of this increment.
+        The app never imports custody keys or recovery phrases.
       </Text>
     </View>
   );
