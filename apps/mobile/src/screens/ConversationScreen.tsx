@@ -5,7 +5,10 @@ import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SocialStatus } from '../components/SocialStatus';
 import { CastActions } from '../components/CastActions';
 import { CastCard } from '../components/CastCard';
+import { LocalContentNotice } from '../components/LocalContentNotice';
 import { ActionButton, LoadingMessage, ScreenMessage } from '../components/Primitives';
+import { useLocalContent } from '../lib/LocalContentProvider';
+import { isHiddenTarget } from '../lib/localContent';
 import type { RootStackParamList } from '../navigation';
 import { usePublicRead } from '../lib/usePublicRead';
 import { palette } from '../theme';
@@ -28,10 +31,35 @@ function flattenConversation(root: ConversationNode, maxDepth = 5, maxRows = 100
 }
 
 export function ConversationScreen({ navigation, route }: Props) {
+  const { snapshot: localContentSnapshot } = useLocalContent();
   const { hash } = route.params;
   const read = useCallback((signal: AbortSignal) => getConversation(hash, signal), [hash]);
   const state = usePublicRead(`conversation:${hash}`, read);
-  const rows = useMemo(() => state.phase === 'ready' ? flattenConversation(state.value) : [], [state]);
+  const rows = useMemo(() => (
+    state.phase === 'ready' && localContentSnapshot.phase === 'ready'
+      ? flattenConversation(state.value).filter(({ cast }) => !isHiddenTarget(localContentSnapshot.data, {
+        fid: cast.author.fid,
+        hash: cast.hash,
+      }))
+      : []
+  ), [localContentSnapshot.data, localContentSnapshot.phase, state]);
+  const hiddenRoot = state.phase === 'ready' && localContentSnapshot.phase === 'ready'
+    && isHiddenTarget(localContentSnapshot.data, { fid: state.value.cast.author.fid, hash: state.value.cast.hash });
+
+  if (localContentSnapshot.phase !== 'ready') {
+    return (
+      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
+        <LocalContentNotice onManage={() => navigation.navigate('Safety')} />
+      </SafeAreaView>
+    );
+  }
+  if (hiddenRoot) {
+    return (
+      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
+        <LocalContentNotice hidden onManage={() => navigation.navigate('Safety')} />
+      </SafeAreaView>
+    );
+  }
 
   const header = (
     <View>
