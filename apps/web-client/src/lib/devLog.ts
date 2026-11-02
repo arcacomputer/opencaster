@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'mobile-composer-follows-keyboard-height',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T11:35:14+00:00',
+    title: 'Support changing keyboard heights in the mobile composer',
+    summary: 'The composer is equipped to follow native keyboard-height changes, including expanded emoji panels; native rebuild and runtime validation remain pending.',
+    changes: [
+      'Use the keyboard-controller layout to respond to native keyboard-height changes while composing.',
+      'Android and iOS native rebuilds and runtime verification remain pending.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/244daea23c5d4b3e7bd89aee35538d2d2a220404',
+    tag: 'Reliability',
+  },
+  {
     id: 'mobile-reply-keyboard-reachability',
     date: '2026-11-02',
     timestamp: '2026-11-02T11:10:19+00:00',
