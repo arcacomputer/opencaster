@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'shared-react-runtime-alignment',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T03:38:17+00:00',
+    title: 'Keep native and browser workspaces on one React runtime',
+    summary: 'The native app and existing clients now resolve the same Expo SDK-compatible React runtime across the workspace.',
+    changes: [
+      'Align React and React DOM with Expo SDK 55 and React Native 0.83, avoiding duplicate React runtimes in shared workspace UI.',
+      'Existing browser and signer dependency ranges remain unchanged.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/a4e0f03fadec1ee64a9cdc3cecb06aec98140e59',
+    tag: 'Reliability',
+  },
+  {
     id: 'native-public-browsing-foundation',
     date: '2026-11-02',
     timestamp: '2026-11-02T03:32:10+00:00',
