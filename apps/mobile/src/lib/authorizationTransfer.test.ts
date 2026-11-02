@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     exists: boolean;
     deleted: boolean;
     infoSize: number | null;
+    textCalls: number;
     text: () => Promise<string>;
   }>,
   importInfoSize: 0,
@@ -28,6 +29,7 @@ vi.mock('expo-file-system', () => ({
     exists = false;
     deleted = false;
     infoSize = 0;
+    textCalls = 0;
 
     constructor(...parts: Array<string | { uri: string }>) {
       this.uri = parts.length === 2 && typeof parts[0] !== 'string'
@@ -55,6 +57,7 @@ vi.mock('expo-file-system', () => ({
     }
 
     text(): Promise<string> {
+      this.textCalls++;
       return Promise.resolve(this.content);
     }
 
@@ -116,14 +119,16 @@ describe('public authorization transfer files', () => {
     expect(mocks.files).toHaveLength(0);
   });
 
-  it('rejects oversized metadata before reading the picked file', async () => {
+  it('rejects oversized metadata without reading and removes the copied cache file', async () => {
     mocks.picker.mockResolvedValue({
       canceled: false,
       assets: [{ name: 'approval.json', size: 16_385, uri: 'file:///app/cache/approval.json' }],
     });
 
     await expect(importAuthorizationApproval()).rejects.toThrow(/16 KiB/);
-    expect(mocks.files).toHaveLength(0);
+    expect(mocks.files).toHaveLength(1);
+    expect(mocks.files[0].textCalls).toBe(0);
+    expect(mocks.files[0].deleted).toBe(true);
   });
 
   it('checks actual UTF-8 bytes and cleans up a cache copy', async () => {

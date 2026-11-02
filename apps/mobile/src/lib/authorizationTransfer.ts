@@ -84,10 +84,10 @@ export async function importAuthorizationApproval(): Promise<string | null> {
     if (result.canceled) return null;
     const asset = result.assets[0];
     if (!asset) fail('Choose a public authorization JSON file from the separate signer.');
-    checkOptionalSize(asset.size);
     uri = asset.uri;
     if (!isInCache(uri)) fail('The selected authorization file could not be copied into app storage.');
     file = new File(uri);
+    checkOptionalSize(asset.size);
     if (!file.exists) fail('The selected authorization file could not be read.');
     checkFileSize(file.info().size);
     const text = await file.text();

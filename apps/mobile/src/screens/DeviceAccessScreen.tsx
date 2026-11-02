@@ -2,7 +2,7 @@ import { FARCASTER_EPOCH_SECONDS, hashSignerRequest, type PairingRequest, type R
 import { getUser } from '@opencaster/client-core/api';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { importAuthorizationApproval, shareAuthorizationRequest } from '../lib/authorizationTransfer';
 import {
@@ -174,6 +174,11 @@ export function DeviceAccessScreen({ navigation }: Props) {
         <Text style={styles.body}>
           Permissions are exactly cast/reply creation, reaction addition, and reaction removal. The seven-day window is sliding inactivity, not a fixed expiry. Approval files expire after 15 minutes.
         </Text>
+        {Platform.OS === 'ios' ? (
+          <Text style={styles.body}>
+            iOS Keychain data may remain after uninstall. Forget deletes only local protected storage; custody-approved network revocation is a separate action.
+          </Text>
+        ) : null}
         {snapshot.notice ? <Text style={styles.notice}>{snapshot.notice}</Text> : null}
         {snapshot.error ? <Text accessibilityRole="alert" style={styles.error}>{snapshot.error}</Text> : null}
         {transferError ? <Text accessibilityRole="alert" style={styles.error}>{transferError}</Text> : null}
