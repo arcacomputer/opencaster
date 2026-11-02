@@ -1,7 +1,7 @@
 import { FARCASTER_EPOCH_SECONDS, hashSignerRequest, type PairingRequest, type RevocationRequest } from '@opencaster/client-core/pairing';
 import { getUser } from '@opencaster/client-core/api';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { importAuthorizationApproval, shareAuthorizationRequest } from '../lib/authorizationTransfer';
@@ -62,19 +62,24 @@ export function DeviceAccessScreen({ navigation }: Props) {
   const [identityConsent, setIdentityConsent] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
   const [pendingApproval, setPendingApproval] = useState<{ kind: ApprovalKind; text: string } | null>(null);
+  const readLookup = useCallback((signal: AbortSignal) => {
+    if (!submittedLookup) return Promise.reject(new Error('Enter a username or positive FID.'));
+    const query = parseLookup(submittedLookup);
+    if (!query) return Promise.reject(new Error('Enter a username or positive FID.'));
+    return getUser(query, signal);
+  }, [submittedLookup]);
   const lookup = usePublicRead(
     `device-access:${submittedLookup ?? ''}`,
-    submittedLookup
-      ? signal => {
-          const query = parseLookup(submittedLookup);
-          if (!query) return Promise.reject(new Error('Enter a username or positive FID.'));
-          return getUser(query, signal);
-        }
-      : null,
+    submittedLookup ? readLookup : null,
   );
+  const savedFid = snapshot.request?.fid;
+  const readSavedIdentity = useCallback((signal: AbortSignal) => {
+    if (savedFid === undefined) return Promise.reject(new Error('Unlock the saved device first.'));
+    return getUser({ fid: savedFid }, signal);
+  }, [savedFid]);
   const savedIdentity = usePublicRead(
-    `device-access-record:${snapshot.request?.fid ?? ''}`,
-    snapshot.request ? signal => getUser({ fid: snapshot.request!.fid }, signal) : null,
+    `device-access-record:${savedFid ?? ''}`,
+    savedFid === undefined ? null : readSavedIdentity,
   );
 
   useEffect(() => {
