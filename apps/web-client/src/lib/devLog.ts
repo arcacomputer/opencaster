@@ -22,6 +22,21 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'mobile-device-authorization-safety',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T09:31:48+00:00',
+    title: 'Strengthen mobile device authorization safeguards',
+    summary: 'Native device authorization now verifies reviewed identities more strictly and disposes of its active signing seed when access is locked.',
+    changes: [
+      'Match numeric FIDs and ordinary usernames to the requested identity before consent, while retaining proof-based ENS resolution.',
+      'Keep one mutable active signing-seed buffer and zero it when locking, replacing or deleting local authorization state; immutable protected-storage and bridge copies remain outside JavaScript erasure guarantees.',
+      'Let a pending revocation be canceled without deleting the device key or submitting a network removal, and keep Lock available to stop an in-flight wait.',
+      'Remove oversized authorization files copied into app cache without reading them, and warn iOS users that uninstall may leave Keychain data until it is explicitly forgotten.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/9e6b4c744cfce353873985f8fd27f466f0e39a4c',
+    tag: 'Security',
+  },
+  {
     id: 'mobile-protected-device-authorization',
     date: '2026-11-02',
     timestamp: '2026-11-02T09:18:33+00:00',
