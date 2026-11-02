@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'mobile-lookup-keyboard-access',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T03:47:23+00:00',
+    title: 'Keep mobile profile lookup usable with the keyboard open',
+    summary: 'The public profile lookup form now scrolls with automatic keyboard insets instead of remaining fixed behind the keyboard.',
+    changes: [
+      'Wrap profile lookup content in a native scroll view that adjusts its insets when the keyboard appears.',
+      'Preserve handled taps in the form while typing so existing lookup controls remain actionable.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/69985419c7d3e72b105f50a2335412cae57f6a70',
+    tag: 'Reliability',
+  },
+  {
     id: 'native-embed-link-fallbacks',
     date: '2026-11-02',
     timestamp: '2026-11-02T03:42:46+00:00',
