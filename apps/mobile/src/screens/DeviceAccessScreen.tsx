@@ -1,7 +1,7 @@
 import { FARCASTER_EPOCH_SECONDS, hashSignerRequest, type PairingRequest, type RevocationRequest } from '@opencaster/client-core/pairing';
 import { getUser } from '@opencaster/client-core/api';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { importAuthorizationApproval, shareAuthorizationRequest } from '../lib/authorizationTransfer';
@@ -72,9 +72,16 @@ export function DeviceAccessScreen({ navigation }: Props) {
         }
       : null,
   );
+  const savedIdentity = usePublicRead(
+    `device-access-record:${snapshot.request?.fid ?? ''}`,
+    snapshot.request ? signal => getUser({ fid: snapshot.request!.fid }, signal) : null,
+  );
 
   useEffect(() => {
-    if (snapshot.phase === 'empty') setPendingApproval(null);
+    if (snapshot.phase === 'empty') {
+      setPendingApproval(null);
+      setIdentityConsent(false);
+    }
     if (pendingApproval && (
       (pendingApproval.kind === 'grant' && (snapshot.phase === 'registering' || snapshot.phase === 'registered')) ||
       (pendingApproval.kind === 'revoke' && snapshot.phase === 'revoking')
@@ -84,10 +91,15 @@ export function DeviceAccessScreen({ navigation }: Props) {
   }, [pendingApproval, snapshot.phase]);
 
   const submitLookup = () => {
-    if (!parseLookup(lookupText)) return;
-    setIdentityConsent(false);
+    const normalized = lookupText.trim().replace(/^@/, '');
+    if (!parseLookup(normalized)) {
+      setTransferError('Enter a username or a valid positive FID.');
+      return;
+    }
     setTransferError(null);
-    setSubmittedLookup(lookupText.trim());
+    setIdentityConsent(false);
+    if (submittedLookup === normalized) lookup.retry();
+    else setSubmittedLookup(normalized);
   };
 
   const prepare = () => {
@@ -169,18 +181,19 @@ export function DeviceAccessScreen({ navigation }: Props) {
         {locked ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Locked</Text>
-            <Text style={styles.body}>The saved device key is not available. Unlock explicitly to inspect or use it. App backgrounding never unlocks or submits a request.</Text>
+            <Text style={styles.body}>The protected device record has not been opened. Unlock explicitly to inspect or use it. App backgrounding never unlocks or submits a request.</Text>
             <ActionButton label="Unlock saved device" onPress={() => void authorization.unlock()} disabled={snapshot.busy} />
             <ActionButton label="Forget saved device (local only)" onPress={forget} secondary disabled={snapshot.busy} />
             {pendingApproval ? <Text style={styles.notice}>A public {pendingApproval.kind} approval is waiting. Unlock, then explicitly submit it.</Text> : null}
           </View>
         ) : null}
 
-        {snapshot.phase === 'empty' ? (
+        {snapshot.phase === 'empty' || locked ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Review the account identity</Text>
             <Text style={styles.body}>Look up the exact username or FID first. Preparing a request stores a new device key only after this identity review and your explicit consent.</Text>
             <TextInput
+              accessibilityLabel="Username or FID"
               autoCapitalize="none"
               autoCorrect={false}
               onChangeText={value => {
@@ -212,7 +225,9 @@ export function DeviceAccessScreen({ navigation }: Props) {
                   onPress={() => setIdentityConsent(value => !value)}
                   secondary={!identityConsent}
                 />
-                <ActionButton label="Prepare device authorization" onPress={prepare} disabled={!identityConsent || snapshot.busy} />
+                {snapshot.phase === 'empty'
+                  ? <ActionButton label="Prepare device authorization" onPress={prepare} disabled={!identityConsent || snapshot.busy} />
+                  : <Text style={styles.notice}>Unlock the saved device before preparing a new authorization.</Text>}
               </View>
             ) : null}
           </View>
@@ -222,6 +237,12 @@ export function DeviceAccessScreen({ navigation }: Props) {
           <>
             {requestDetails(record, snapshot.phase === 'prepared' ? 'Prepared public request' : 'Saved device identity')}
             <View style={styles.card}>
+              <Text style={styles.detailLabel}>Public username</Text>
+              <Text style={styles.body}>
+                {savedIdentity.phase === 'ready'
+                  ? (savedIdentity.value.username ? `@${savedIdentity.value.username}` : '(none)')
+                  : savedIdentity.phase === 'loading' ? 'Looking up the public username…' : 'Username lookup unavailable'}
+              </Text>
               <Text style={styles.detailLabel}>Farcaster identity</Text>
               <Text style={styles.body}>FID {record.fid} · custody {record.custodyAddress}</Text>
               <Text style={styles.detailLabel}>Authorization status</Text>
@@ -248,6 +269,7 @@ export function DeviceAccessScreen({ navigation }: Props) {
               {snapshot.phase === 'revoke-prepared' && revocation ? (
                 <>
                   {requestDetails(revocation, 'Prepared public revocation request')}
+                  <ActionButton label="Prepare a fresh revocation request" onPress={() => void authorization.prepareRevocation()} secondary disabled={snapshot.busy} />
                   <ActionButton label="Share revocation request" onPress={() => shareRequest(revocation)} disabled={snapshot.busy} />
                   <ActionButton label="Import revocation approval file" onPress={() => importApproval('revoke')} secondary disabled={snapshot.busy} />
                   {pendingApproval?.kind === 'revoke' ? (

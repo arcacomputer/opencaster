@@ -148,6 +148,16 @@ describe('public authorization transfer files', () => {
     expect(mocks.files).toHaveLength(0);
   });
 
+  it('rejects cache URIs that escape the app cache directory', async () => {
+    mocks.picker.mockResolvedValue({
+      canceled: false,
+      assets: [{ name: 'approval.json', size: 10, uri: 'file:///app/cache/../outside.json' }],
+    });
+
+    await expect(importAuthorizationApproval()).rejects.toThrow(/copied into app storage/);
+    expect(mocks.files).toHaveLength(0);
+  });
+
   it('returns bounded public text and removes the copied cache file', async () => {
     mocks.importText = '{"kind":"arca.hypersnap.signer.approval"}';
     mocks.importInfoSize = new TextEncoder().encode(mocks.importText).byteLength;

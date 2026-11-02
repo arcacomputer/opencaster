@@ -28,8 +28,15 @@ function checkFileSize(size: number | null | undefined): void {
 }
 
 function isInCache(uri: string): boolean {
-  const cacheUri = Paths.cache.uri.endsWith('/') ? Paths.cache.uri : `${Paths.cache.uri}/`;
-  return uri.startsWith(cacheUri);
+  try {
+    const cacheUri = decodeURIComponent(Paths.cache.uri).replace(/\/+$/, '');
+    const candidate = decodeURIComponent(uri.split(/[?#]/, 1)[0]).replace(/\/+$/, '');
+    const cachePrefix = `${cacheUri}/`;
+    if (!cacheUri.startsWith('file://') || !candidate.startsWith(cachePrefix)) return false;
+    return candidate.slice(cachePrefix.length).split('/').every(segment => segment !== '' && segment !== '.' && segment !== '..');
+  } catch {
+    return false;
+  }
 }
 
 function removeCacheFile(file: File | undefined, uri: string | undefined): void {
