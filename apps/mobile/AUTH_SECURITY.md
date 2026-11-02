@@ -57,8 +57,9 @@ foundation passed Android emulator and iOS simulator validation before this work
   public identity, exact scopes and lifecycle state. No custody secret is stored.
   Do not overwrite an existing saved device silently.
 - Start locked, including after process restart. Backgrounding/locking invalidates
-  in-flight work, zeroes the owned active seed buffer and drops its reference. An explicit unlock reads protected
-  storage and rechecks current custody/signer state before granting write access.
+  in-flight work, zeroes the owned active seed buffer and drops its reference. An
+  explicit unlock reads protected storage and rechecks current custody/signer state
+  before granting write access.
   Do not auto-submit anything on launch, unlock, foreground or network recovery.
 - iOS Keychain data may survive uninstall/reinstall with the same identifier;
   uninstall is not a reliable erasure or revocation action. Explain **Forget this

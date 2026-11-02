@@ -1,19 +1,14 @@
 import { FARCASTER_EPOCH_SECONDS, hashSignerRequest, type PairingRequest, type RevocationRequest } from '@opencaster/client-core/pairing';
-import { getUser } from '@opencaster/client-core/api';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { importAuthorizationApproval, shareAuthorizationRequest } from '../lib/authorizationTransfer';
-import {
-  parseAuthorizationIdentityQuery,
-  validateAuthorizationIdentity,
-  validateSavedAuthorizationIdentity,
-} from '../lib/authorizationIdentity';
+import { parseAuthorizationIdentityQuery } from '../lib/authorizationIdentity';
 import { useAuthorization } from '../lib/AuthorizationProvider';
 import type { AuthorizationSnapshot } from '../lib/deviceAuthorization';
 import type { RootStackParamList } from '../navigation';
-import { usePublicRead } from '../lib/usePublicRead';
+import { useAuthorizationIdentityReads } from '../lib/useAuthorizationIdentityReads';
 import { ActionButton } from '../components/Primitives';
 import { palette } from '../theme';
 
@@ -57,25 +52,8 @@ export function DeviceAccessScreen({ navigation }: Props) {
   const [identityConsent, setIdentityConsent] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
   const [pendingApproval, setPendingApproval] = useState<{ kind: ApprovalKind; text: string } | null>(null);
-  const readLookup = useCallback((signal: AbortSignal) => {
-    if (!submittedLookup) return Promise.reject(new Error('Enter a username or positive FID.'));
-    const query = parseAuthorizationIdentityQuery(submittedLookup);
-    if (!query) return Promise.reject(new Error('Enter a username or positive FID.'));
-    return getUser(query.lookup, signal).then(user => validateAuthorizationIdentity(query, user));
-  }, [submittedLookup]);
-  const lookup = usePublicRead(
-    `device-access:${submittedLookup ?? ''}`,
-    submittedLookup ? readLookup : null,
-  );
   const savedFid = snapshot.request?.fid;
-  const readSavedIdentity = useCallback((signal: AbortSignal) => {
-    if (savedFid === undefined) return Promise.reject(new Error('Unlock the saved device first.'));
-    return getUser({ fid: savedFid }, signal).then(user => validateSavedAuthorizationIdentity(savedFid, user));
-  }, [savedFid]);
-  const savedIdentity = usePublicRead(
-    `device-access-record:${savedFid ?? ''}`,
-    savedFid === undefined ? null : readSavedIdentity,
-  );
+  const { lookup, savedIdentity } = useAuthorizationIdentityReads(submittedLookup, savedFid);
 
   useEffect(() => {
     if (snapshot.phase === 'empty') {
