@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'mobile-scoped-social-actions',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T10:38:50+00:00',
+    title: 'Add scoped posts and reactions to mobile',
+    summary: 'The native preview adds explicitly confirmed text posts, replies, likes and recasts through existing device authorization.',
+    changes: [
+      'Limit social actions to text posts and replies up to 320 UTF-8 bytes and like/recast additions or removals under the existing [1, 3, 4] scopes.',
+      'Persist a public intent receipt before submission; unresolved actions block new writes until read-only status checks confirm the intended result, with no automatic replay.',
+      'Attachments, tagged mentions, follows and deletes are not included. Native social-action runtime validation remains pending.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/75b1eb93ca3f5b4430d882e943b1a0ceae618f13',
+    tag: 'Social',
+  },
+  {
     id: 'mobile-cancelled-setup-key-disposal',
     date: '2026-11-02',
     timestamp: '2026-11-02T09:34:51+00:00',
