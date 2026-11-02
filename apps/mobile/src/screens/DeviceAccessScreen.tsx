@@ -5,6 +5,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { importAuthorizationApproval, shareAuthorizationRequest } from '../lib/authorizationTransfer';
+import {
+  parseAuthorizationIdentityQuery,
+  validateAuthorizationIdentity,
+  validateSavedAuthorizationIdentity,
+} from '../lib/authorizationIdentity';
 import { useAuthorization } from '../lib/AuthorizationProvider';
 import type { AuthorizationSnapshot } from '../lib/deviceAuthorization';
 import type { RootStackParamList } from '../navigation';
@@ -14,16 +19,6 @@ import { palette } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DeviceAccess'>;
 type ApprovalKind = 'grant' | 'revoke';
-
-function parseLookup(value: string): { fid: number } | { username: string } | null {
-  const normalized = value.trim().replace(/^@/, '');
-  if (!normalized) return null;
-  if (/^\d+$/.test(normalized)) {
-    const fid = Number(normalized);
-    return Number.isSafeInteger(fid) && fid > 0 ? { fid } : null;
-  }
-  return { username: normalized };
-}
 
 function dateFor(seconds: number): string {
   return new Date((seconds + FARCASTER_EPOCH_SECONDS) * 1000).toLocaleString();
@@ -64,9 +59,9 @@ export function DeviceAccessScreen({ navigation }: Props) {
   const [pendingApproval, setPendingApproval] = useState<{ kind: ApprovalKind; text: string } | null>(null);
   const readLookup = useCallback((signal: AbortSignal) => {
     if (!submittedLookup) return Promise.reject(new Error('Enter a username or positive FID.'));
-    const query = parseLookup(submittedLookup);
+    const query = parseAuthorizationIdentityQuery(submittedLookup);
     if (!query) return Promise.reject(new Error('Enter a username or positive FID.'));
-    return getUser(query, signal);
+    return getUser(query.lookup, signal).then(user => validateAuthorizationIdentity(query, user));
   }, [submittedLookup]);
   const lookup = usePublicRead(
     `device-access:${submittedLookup ?? ''}`,
@@ -75,7 +70,7 @@ export function DeviceAccessScreen({ navigation }: Props) {
   const savedFid = snapshot.request?.fid;
   const readSavedIdentity = useCallback((signal: AbortSignal) => {
     if (savedFid === undefined) return Promise.reject(new Error('Unlock the saved device first.'));
-    return getUser({ fid: savedFid }, signal);
+    return getUser({ fid: savedFid }, signal).then(user => validateSavedAuthorizationIdentity(savedFid, user));
   }, [savedFid]);
   const savedIdentity = usePublicRead(
     `device-access-record:${savedFid ?? ''}`,
@@ -97,7 +92,7 @@ export function DeviceAccessScreen({ navigation }: Props) {
 
   const submitLookup = () => {
     const normalized = lookupText.trim().replace(/^@/, '');
-    if (!parseLookup(normalized)) {
+    if (!parseAuthorizationIdentityQuery(normalized)) {
       setTransferError('Enter a username or a valid positive FID.');
       return;
     }
