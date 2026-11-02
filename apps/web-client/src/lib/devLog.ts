@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'native-embed-link-fallbacks',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T03:42:46+00:00',
+    title: 'Make mobile cast embeds recoverable',
+    summary: 'Cast embeds that cannot load as images now offer an accessible HTTPS link instead of a blank media block.',
+    changes: [
+      'Show supported HTTPS image embeds with contained, aspect-aware sizing and bound rendered embeds to the protocol limit of two.',
+      'Offer a device link handler when an HTTPS embed is not an image or fails to load; HTTP media and unsupported schemes are not rendered.',
+      'Require HTTPS for remote cast, profile, and lookup images.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/8591c8d8f8a7872459024dc6b4906896797801fc',
+    tag: 'Reliability',
+  },
+  {
     id: 'shared-react-runtime-alignment',
     date: '2026-11-02',
     timestamp: '2026-11-02T03:38:17+00:00',
@@ -42,7 +56,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     summary: 'The first native OpenCaster foundation adds an iOS and Android public-browsing app alongside the existing browser client.',
     changes: [
       'Browse public trending casts, select a time window, look up a profile by username or FID, and open public profiles and available conversation replies.',
-      'Read through Opencaster’s existing Hypersnap-backed API, with cancellable paginated reads and safe HTTPS links and HTTP(S) media.',
+      'Read through Opencaster’s existing Hypersnap-backed API, with cancellable paginated reads and safe HTTPS links and HTTPS media.',
       'This is a public-read foundation only. Authentication, posting, reactions, messaging, signed builds, store assets, and account, moderation, reviewer-access, and store-compliance workflows are not ready; the native app identifiers remain provisional.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/7ccd187461522795b9a0a31c290caec5fd7afd38',
