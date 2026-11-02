@@ -107,5 +107,5 @@ foundation passed Android emulator and iOS simulator validation before this work
 
 References: [Expo SecureStore](https://docs.expo.dev/versions/v55.0.0/sdk/securestore/),
 [Expo Crypto](https://docs.expo.dev/versions/v55.0.0/sdk/crypto/),
-[existing signer contracts](../../web-client/SIGNER.md),
+[existing signer contracts](../web-client/SIGNER.md),
 [`pairing.ts`](../../../packages/client-core/src/pairing.ts).
