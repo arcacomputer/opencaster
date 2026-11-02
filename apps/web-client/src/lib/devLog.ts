@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'mobile-clock-corrected-social-receipts',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T10:43:56+00:00',
+    title: 'Keep pending mobile receipts recoverable after clock changes',
+    summary: 'Pending social-action receipts remain available for read-only checks after a backward device-clock adjustment, while new writes wait for a safe timestamp.',
+    changes: [
+      'Do not treat an otherwise valid persisted receipt as corrupt solely because the device clock moved backward.',
+      'Retain the live-write future-drift guard and monotonic timestamp sequencing.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/220eafe2bd2845fd266cea28e06f0b5bdce0b538',
+    tag: 'Reliability',
+  },
+  {
     id: 'mobile-scoped-social-actions',
     date: '2026-11-02',
     timestamp: '2026-11-02T10:38:50+00:00',
