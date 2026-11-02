@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'mobile-protected-device-authorization',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T09:18:33+00:00',
+    title: 'Protect mobile device authorization',
+    summary: 'The native client can prepare and manage a narrowly scoped device authorization using protected local storage and a separate offline signer.',
+    changes: [
+      'Keep the device seed in native protected storage and transfer only bounded public request and approval files.',
+      'Require custody approval for registration and revocation; remove a local key after fresh node status confirms network absence.',
+      'Limit authorization to cast/reply creation and reaction addition/removal with a seven-day sliding inactivity window; posting and reaction controls remain out of scope.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/8c0ae3e5070ce5a7875d20271d8cf03ffb327c5b',
+    tag: 'Security',
+  },
+  {
     id: 'native-api-cache-query-compatibility',
     date: '2026-11-02',
     timestamp: '2026-11-02T06:55:25+00:00',
