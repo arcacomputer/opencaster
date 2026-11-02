@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'mobile-local-safety-and-conversation-bounds',
+    date: '2026-11-02',
+    timestamp: '2026-11-02T12:46:57+00:00',
+    title: 'Keep local safety filters usable and bound conversation lists',
+    summary: 'Valid local filters remain available after a hide request exceeds the saved-item limit, while hidden replies no longer use up the visible-row allowance. Storage-write failures still fail closed, and native Android and iOS runtime validation remains pending.',
+    changes: [
+      'Keep valid preferences available after validation-limit errors and explain when a local hide is not confirmed; storage-write failures continue to fail closed.',
+      'Filter conversation replies during bounded traversal so hidden replies do not consume the visible-row limit, while allowing visible descendants to remain.',
+      'Bound visible rows, visited nodes, depth and repeated-hash traversal; native Android and iOS runtime validation remains pending.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/b07f553895bd26197fda839ccf40e577a4cc24a8',
+    tag: 'Reliability',
+  },
+  {
     id: 'mobile-local-content-safety',
     date: '2026-11-02',
     timestamp: '2026-11-02T12:37:44+00:00',
