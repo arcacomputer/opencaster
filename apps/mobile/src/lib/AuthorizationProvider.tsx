@@ -1,7 +1,7 @@
 import { getRandomBytesAsync } from 'expo-crypto';
 import { AppState } from 'react-native';
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { getSigners, getUser, submitMessage } from '@opencaster/client-core/api';
+import { getCast, getReactionStatus, getSigners, getUser, submitMessage } from '@opencaster/client-core/api';
 import {
   DeviceAuthorization,
   type AuthorizationSnapshot,
@@ -17,7 +17,7 @@ const AuthorizationContext = createContext<AuthorizationContextValue | null>(nul
 
 export function AuthorizationProvider({ children }: { children: ReactNode }) {
   const [authorization] = useState(() => new DeviceAuthorization({
-    api: { getSigners, getUser, submitMessage },
+    api: { getCast, getReactionStatus, getSigners, getUser, submitMessage },
     randomBytes: () => getRandomBytesAsync(32),
     storage: protectedDeviceStorage,
   }));

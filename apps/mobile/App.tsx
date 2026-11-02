@@ -7,6 +7,7 @@ import { LookupScreen } from './src/screens/LookupScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { ConversationScreen } from './src/screens/ConversationScreen';
 import { DeviceAccessScreen } from './src/screens/DeviceAccessScreen';
+import { ComposerScreen } from './src/screens/ComposerScreen';
 import type { RootStackParamList } from './src/navigation';
 import { palette } from './src/theme';
 import { AuthorizationProvider } from './src/lib/AuthorizationProvider';
@@ -44,6 +45,7 @@ export default function App() {
             <Stack.Screen component={HomeScreen} name="Home" options={{ title: 'OpenCaster' }} />
             <Stack.Screen component={LookupScreen} name="Lookup" options={{ title: 'Find a person' }} />
             <Stack.Screen component={DeviceAccessScreen} name="DeviceAccess" options={{ title: 'Device access' }} />
+            <Stack.Screen component={ComposerScreen} name="Compose" options={{ title: 'Compose' }} />
             <Stack.Screen component={ProfileScreen} name="Profile" options={{ title: 'Public profile' }} />
             <Stack.Screen component={ConversationScreen} name="Conversation" options={{ title: 'Conversation' }} />
           </Stack.Navigator>

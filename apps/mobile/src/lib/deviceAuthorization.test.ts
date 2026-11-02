@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ed25519 } from '@noble/curves/ed25519.js';
-import type { SignersResponse, User } from '@opencaster/client-core/api';
+import type { Cast, SignersResponse, User } from '@opencaster/client-core/api';
+import * as builder from '@opencaster/protocol/messageBuilder';
 import { hashPairingRequest, hashRevocationRequest, type PairingRequest, type RevocationRequest } from '@opencaster/client-core/pairing';
 import { addressFromCustodyPrivateKey, bytesToHex, hexToBytes, keyAddDigest, keyRemoveDigest, signedKeyRequestDigest, signEip712Digest } from '@opencaster/protocol/signedKeyRequest';
 import { DeviceAuthorization, type AuthorizationDependencies } from './deviceAuthorization';
@@ -9,6 +10,7 @@ const CUSTODY = hexToBytes('11'.repeat(32));
 const NOW = 1_793_600_000_000;
 const USER = { fid: 1234, username: 'synthetic', custody_address: addressFromCustodyPrivateKey(CUSTODY) } as User;
 const SCOPES = ['MESSAGE_TYPE_CAST_ADD', 'MESSAGE_TYPE_REACTION_ADD', 'MESSAGE_TYPE_REACTION_REMOVE'];
+afterEach(() => vi.restoreAllMocks());
 
 function approval(request: PairingRequest): string {
   const key = hexToBytes(request.publicKey);
@@ -46,6 +48,8 @@ function setup() {
       getUser: vi.fn(async () => ({ ...USER })),
       getSigners: vi.fn(async () => structuredClone(registry)),
       submitMessage: vi.fn(async () => ({ hash: 'ab'.repeat(20) })),
+      getCast: vi.fn(async hash => ({ hash, author: { ...USER }, text: 'synthetic' } as Cast)),
+      getReactionStatus: vi.fn(async () => false),
     },
   };
   const controller = new DeviceAuthorization(deps);
@@ -243,5 +247,110 @@ describe('native protected device authorization', () => {
     expect(test.registry.signers).toHaveLength(1);
     expect(test.controller.getSnapshot().notice).toMatch(/does not revoke/);
     expect(test.deps.api.submitMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('native scoped social actions', () => {
+  const target = { fid: USER.fid, hash: 'ab'.repeat(20) };
+
+  it.each([false, true])('persists before publishing and confirms exact cast/reply (%s)', async reply => {
+    const test = setup();
+    await test.register();
+    const sign = vi.spyOn(builder, 'buildSignedMessage');
+    vi.mocked(test.deps.api.submitMessage).mockImplementationOnce(async () => {
+      expect(JSON.parse(test.saved()!).action).toMatchObject({ kind: 'cast', status: 'pending' });
+      return {};
+    });
+    await test.controller.publishCast('hello', reply ? target : undefined);
+    expect(sign.mock.calls[0][0]).toMatchObject({ type: builder.MessageType.CAST_ADD, fid: USER.fid,
+      body: { castAddBody: { text: 'hello', ...(reply ? { parent: { castId: { fid: USER.fid, hash: hexToBytes(target.hash) } } } : {}) } } });
+    expect(test.controller.getSnapshot().action).toMatchObject({ kind: 'cast', status: 'confirmed' });
+    expect(JSON.parse(test.saved()!).action).not.toHaveProperty('text');
+    expect(test.deps.api.submitMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps uncertain submissions across restart, blocks new writes and only reads to reconcile', async () => {
+    const test = setup();
+    await test.register();
+    vi.mocked(test.deps.api.submitMessage).mockRejectedValueOnce(new Error('ack lost'));
+    await test.controller.publishCast('hello');
+    const receipt = test.controller.getSnapshot().action!;
+    expect(receipt.status).toBe('pending');
+    const restarted = new DeviceAuthorization(test.deps);
+    await restarted.unlock();
+    expect(restarted.getSnapshot().action).toEqual(receipt);
+    await restarted.publishCast('duplicate');
+    await restarted.react(target, 'like', true);
+    expect(test.deps.api.submitMessage).toHaveBeenCalledTimes(2);
+    vi.mocked(test.deps.api.getCast).mockResolvedValueOnce({ hash: receipt.hash, author: { fid: 9999 } } as Cast);
+    await restarted.checkAction();
+    expect(restarted.getSnapshot().action?.status).toBe('pending');
+    await restarted.checkAction();
+    expect(restarted.getSnapshot().action?.status).toBe('confirmed');
+    expect(test.deps.api.submitMessage).toHaveBeenCalledTimes(2);
+    await restarted.publishCast('a different post');
+    expect(restarted.getSnapshot().action!.timestamp).toBe(receipt.timestamp + 1);
+  });
+
+  it.each(['like', 'recast'] as const)('signs %s add/remove without inferring success from acknowledgement', async reaction => {
+    const test = setup();
+    await test.register();
+    const sign = vi.spyOn(builder, 'buildSignedMessage');
+    await test.controller.react(target, reaction, true);
+    expect(test.controller.getSnapshot().action).toMatchObject({ kind: 'reaction', reaction, desired: true, status: 'pending' });
+    expect(sign.mock.calls[0][0]).toMatchObject({ type: builder.MessageType.REACTION_ADD,
+      body: { reactionBody: { type: reaction === 'like' ? builder.ReactionType.LIKE : builder.ReactionType.RECAST,
+        target: { castId: { fid: target.fid, hash: hexToBytes(target.hash) } } } } });
+    vi.mocked(test.deps.api.getReactionStatus).mockResolvedValue(true);
+    await test.controller.checkAction();
+    expect(test.controller.getSnapshot().action?.status).toBe('confirmed');
+    vi.mocked(test.deps.api.getReactionStatus).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    await test.controller.react(target, reaction, false);
+    expect(sign.mock.calls[1][0].type).toBe(builder.MessageType.REACTION_REMOVE);
+    expect(test.controller.getSnapshot().action).toMatchObject({ desired: false, status: 'confirmed' });
+    expect(test.deps.api.getReactionStatus).toHaveBeenLastCalledWith(USER.fid, target, reaction, expect.any(AbortSignal), { fresh: true });
+  });
+
+  it.each(['custody', 'scope', 'expired', 'storage', 'lock'] as const)('does not post after %s fails', async failure => {
+    const test = setup();
+    await test.register();
+    if (failure === 'custody') vi.mocked(test.deps.api.getUser).mockResolvedValue({ ...USER, custody_address: `0x${'22'.repeat(20)}` });
+    if (failure === 'scope') test.registry.signers[0].scopes = [];
+    if (failure === 'expired') test.registry.signers[0].expiresAt = NOW / 1000;
+    if (failure === 'storage') vi.mocked(test.deps.storage.write).mockRejectedValueOnce(new Error('unavailable'));
+    if (failure === 'lock') {
+      const persist = test.deps.storage.write;
+      vi.mocked(test.deps.storage.write).mockImplementationOnce(async value => {
+        test.controller.lock();
+        await persist(value);
+      });
+    }
+    await test.controller.publishCast('never sent');
+    expect(test.deps.api.submitMessage).toHaveBeenCalledTimes(1);
+    expect(test.controller.getSnapshot().authorized).toBe(false);
+  });
+
+  it('rejects oversize UTF-8 text and wrong reply targets before submission', async () => {
+    const test = setup();
+    await test.register();
+    await test.controller.publishCast('🙂'.repeat(81));
+    vi.mocked(test.deps.api.getCast).mockResolvedValueOnce({ hash: 'cd'.repeat(20), author: USER } as Cast);
+    await test.controller.publishCast('reply', target);
+    expect(test.deps.api.submitMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves unknown social receipts when cancelling a revocation', async () => {
+    const test = setup();
+    await test.register();
+    vi.mocked(test.deps.api.submitMessage).mockRejectedValueOnce(new Error('unknown'));
+    await test.controller.publishCast('hello');
+    const receipt = test.controller.getSnapshot().action;
+    await test.controller.prepareRevocation();
+    await test.controller.cancelRevocation();
+    const restarted = new DeviceAuthorization(test.deps);
+    await restarted.unlock();
+    expect(restarted.getSnapshot().action).toEqual(receipt);
+    await restarted.publishCast('duplicate');
+    expect(test.deps.api.submitMessage).toHaveBeenCalledTimes(2);
   });
 });

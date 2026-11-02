@@ -54,11 +54,12 @@ export function LoadingMessage({ label = 'Loading public data…' }: { label?: s
 export function PublicPreviewNotice() {
   return (
     <View style={styles.notice}>
-      <Text style={styles.noticeEyebrow}>PUBLIC BROWSING PREVIEW</Text>
+      <Text style={styles.noticeEyebrow}>HYPERSNAP MOBILE PREVIEW</Text>
       <Text style={styles.noticeText}>
-        Read-only public data from Hypersnap through Opencaster. The index may be incomplete or unavailable.
-        Optional device authorization uses a separate offline signer; posting and reaction controls are not part of this increment.
+        Public data from Hypersnap through Opencaster. The index may be incomplete or unavailable.
+        Optional device authorization uses a separate offline signer for text posts, replies, likes and recasts.
         The app never imports custody keys or recovery phrases.
+        Moderation and store-readiness work is not complete.
       </Text>
     </View>
   );

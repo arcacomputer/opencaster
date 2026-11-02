@@ -64,7 +64,9 @@ Hypersnap-backed index makes it available. The index may be incomplete or
 unavailable. It also includes a protected device-authorization flow that uses a
 separate offline signer and custody-approved public request files. The app never
 imports custody wallet keys or recovery phrases, has no in-app wallet transport,
-and does not yet include posting or reaction controls.
+and includes text posts, replies, likes and recasts using the existing device
+permissions. Text is limited to 320 UTF-8 bytes; attachments and tagged mentions
+are not included in this increment.
 
 The request grants exactly cast/reply creation and reaction add/remove scopes
 (`[1, 3, 4]`) with a 15-minute approval deadline and a seven-day **sliding
@@ -85,6 +87,7 @@ confirmed key absence.
 | Conversation | Selected cast and available nested replies, with indentation capped at five levels | Mobile TypeScript check |
 | Native external content | HTTPS links and HTTPS profile/media images | URL-safety tests |
 | Device authorization | Explicit identity review, protected local device state, separate offline-signer request/approval and custody-approved revocation | Core state-machine, protected-storage and bounded-transfer tests |
+| Scoped social actions | Text posts/replies and like/recast add/remove; explicit confirmation, fresh authorization checks and protected pending receipts | Synthetic controller tests cover confirmation, uncertain restart recovery, no duplicate submission, scopes and cancellation |
 | Platform bundles | Metro exports for Android and iOS | `yarn workspace @opencaster/mobile build` |
 
 Automated checks do not constitute visual UI, emulator, device, runtime network,
@@ -148,6 +151,19 @@ milestone.
   workflows: **NOT READY**.
 - Account-specific Google testing eligibility and test-track requirements:
   **NOT READY**.
-- Posting, reactions, and all other authenticated or write UI: **NOT READY**.
-- Device authorization has no native runtime or visual validation in this
-  workspace check; the separate Android/iOS runtime gate remains required.
+- Follow/profile editing, deletion, media uploads and expanded permission flows:
+  **NOT INCLUDED** in this increment.
+- Changed social-action code still requires its own Android/iOS native fixture
+  runtime gate. Prior authorization validation is not proof of changed code.
+
+## Submission recovery
+
+A bounded public receipt (hash, timestamp and target/intent, not draft text) is
+saved inside the protected device record before each social submission. A single
+unresolved action blocks further social writes, including after process restart.
+Use **Check submission status** to read the matching cast/FID or current reaction
+state; it never replays the signed message. An HTTP acknowledgement alone is not
+success. Status may remain unknown indefinitely after a lost request, delayed
+indexing, or a subsequently removed cast/reaction. Local forgetting discards
+receipt tracking but cannot retract a potentially submitted message; neither does
+key revocation. There is no automatic retry after lock, relaunch or reconnection.

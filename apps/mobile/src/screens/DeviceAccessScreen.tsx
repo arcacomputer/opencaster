@@ -125,7 +125,7 @@ export function DeviceAccessScreen({ navigation }: Props) {
     const prepared = snapshot.phase === 'prepared' || snapshot.phase === 'revoke-prepared';
     Alert.alert(
       prepared ? 'Cancel this local request?' : 'Forget this device locally?',
-      'This deletes only the saved device key on this phone. It does not revoke a network authorization; use custody-approved network revocation for that.',
+      'This deletes the saved device key and receipt tracking on this phone. It does not revoke network authorization or retract any possibly submitted post/reaction. Use custody-approved network revocation to remove the key from Hypersnap.',
       [
         { text: 'Keep', style: 'cancel' },
         { text: 'Forget locally', style: 'destructive', onPress: () => void authorization.forget() },

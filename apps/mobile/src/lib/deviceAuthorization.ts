@@ -1,5 +1,5 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
-import type { getUser, getSigners, submitMessage, Signer, SignersResponse, User } from '@opencaster/client-core/api';
+import { invalidateReactionStatus, type getCast, type getReactionStatus, type getUser, type getSigners, type submitMessage, type Signer, type SignersResponse, type User } from '@opencaster/client-core/api';
 import { APP_ORIGIN } from '@opencaster/client-core/appOrigins';
 import {
   FARCASTER_EPOCH_SECONDS, PAIRING_SCOPES, PAIRING_TTL_SECONDS, PAIRING_WINDOW_SECONDS,
@@ -7,8 +7,9 @@ import {
   validateRevocationRequest, validateRevocationApproval, verifyRevocationApproval,
   type PairingRequest, type RevocationRequest,
 } from '@opencaster/client-core/pairing';
-import { buildSignedMessage, MessageType, SignatureScheme, type MessageDataInput } from '@opencaster/protocol/messageBuilder';
+import { buildSignedMessage, CastType, farcasterTimestamp, MessageType, ReactionType, SignatureScheme, type MessageDataInput } from '@opencaster/protocol/messageBuilder';
 import { abiEncodeSignedKeyRequestMetadata, bytesToHex, hexToBytes } from '@opencaster/protocol/signedKeyRequest';
+import { castTarget, castText, validateSocialAction, type CastTarget, type ReactionKind, type SocialAction } from './socialAction';
 
 export interface ProtectedDeviceStorage {
   read(): Promise<string | null>;
@@ -19,7 +20,7 @@ export interface ProtectedDeviceStorage {
 export interface AuthorizationDependencies {
   storage: ProtectedDeviceStorage;
   randomBytes(): Promise<Uint8Array>;
-  api: { getUser: typeof getUser; getSigners: typeof getSigners; submitMessage: typeof submitMessage };
+  api: { getUser: typeof getUser; getSigners: typeof getSigners; submitMessage: typeof submitMessage; getCast: typeof getCast; getReactionStatus: typeof getReactionStatus };
   now?: () => number;
 }
 
@@ -29,6 +30,7 @@ interface DeviceRecord {
   request: PairingRequest;
   stage: Stage;
   revocation?: RevocationRequest;
+  action?: SocialAction;
 }
 interface PersistedDeviceRecord extends DeviceRecord { seed: string }
 interface DecodedDeviceRecord { record: DeviceRecord; seed: Uint8Array }
@@ -39,6 +41,7 @@ export interface AuthorizationSnapshot {
   authorized: boolean;
   request?: PairingRequest;
   revocation?: RevocationRequest;
+  action?: SocialAction;
   error: string | null;
   notice: string | null;
 }
@@ -77,7 +80,7 @@ function decodeRecord(text: string, now: number): DecodedDeviceRecord {
   let seed: Uint8Array | undefined;
   try {
     const value = JSON.parse(text) as PersistedDeviceRecord;
-    const keys = Object.keys(value).sort().join(',');
+    const keys = Object.keys(value).filter(key => key !== 'action').sort().join(',');
     if (keys !== 'request,seed,stage,version' && keys !== 'request,revocation,seed,stage,version') throw new Error();
     if (value.version !== 1 || typeof value.seed !== 'string' || !/^[0-9a-f]{64}$/.test(value.seed)
       || !['prepared', 'registering', 'registered', 'revoke-prepared', 'revoking'].includes(value.stage)
@@ -93,8 +96,10 @@ function decodeRecord(text: string, now: number): DecodedDeviceRecord {
     if (revocation && (revocation.fid !== request.fid || revocation.publicKey !== request.publicKey
       || revocation.custodyAddress !== request.custodyAddress || revocation.origin !== APP_ORIGIN
       || revocation.createdAt > Math.floor(now / 1000) + 60)) throw new Error();
+    const action = value.action === undefined ? undefined : validateSocialAction(value.action);
+    if (action && (['prepared', 'registering'].includes(value.stage) || action.timestamp > farcasterTimestamp(now) + 60)) throw new Error();
     return {
-      record: { version: 1, request, stage: value.stage, ...(revocation ? { revocation } : {}) },
+      record: { version: 1, request, stage: value.stage, ...(revocation ? { revocation } : {}), ...(action ? { action } : {}) },
       seed,
     };
   } catch {
@@ -126,7 +131,8 @@ export class DeviceAuthorization {
   }
   private showRecord(record: DeviceRecord, authorized = false): void {
     this.record = record;
-    this.publish({ phase: record.stage, authorized, request: { ...record.request, scopes: [...record.request.scopes] }, revocation: record.revocation ? { ...record.revocation } : undefined });
+    this.publish({ phase: record.stage, authorized, request: { ...record.request, scopes: [...record.request.scopes] }, revocation: record.revocation ? { ...record.revocation } : undefined,
+      action: record.action ? validateSocialAction(record.action) : undefined });
   }
   private check(generation: number): void {
     if (generation !== this.generation || this.controller?.signal.aborted) fail('The operation was cancelled or the app was locked. Unlock to check its status.');
@@ -154,7 +160,7 @@ export class DeviceAuthorization {
     try { await this.dependencies.storage.write(serialized); }
     catch {
       this.lock();
-      this.publish({ error: 'Protected storage could not be updated. No network request was started by this step. Unlock to inspect the saved state.' });
+      this.publish({ error: 'Protected storage could not be updated. Unlock to inspect the saved state; any earlier submission may still have reached Hypersnap.' });
       fail('Protected storage failed.');
     }
     this.check(generation);
@@ -184,11 +190,11 @@ export class DeviceAuthorization {
     const saved = await this.dependencies.storage.read();
     return saved ? decodeRecord(saved, this.now()) : undefined;
   }
-  private async envelope(record: DeviceRecord, data: MessageDataInput, generation: number): Promise<Uint8Array> {
+  private async envelope(record: DeviceRecord, data: MessageDataInput, generation: number): Promise<Awaited<ReturnType<typeof buildSignedMessage>>> {
     this.check(generation);
     const seed = this.seed;
     if (!seed) fail('Unlock the protected device key first.');
-    const { envelope } = await buildSignedMessage(data, {
+    const signed = await buildSignedMessage(data, {
       scheme: SignatureScheme.ED25519,
       publicKey: hexToBytes(record.request.publicKey),
       sign: async digest => {
@@ -197,7 +203,7 @@ export class DeviceAuthorization {
       },
     });
     this.check(generation);
-    return envelope;
+    return signed;
   }
 
   lock = (): void => {
@@ -205,7 +211,7 @@ export class DeviceAuthorization {
     this.controller?.abort();
     this.clearSeed();
     this.record = undefined;
-    this.publish({ phase: 'locked', authorized: false, request: undefined, revocation: undefined, error: null, notice: null });
+    this.publish({ phase: 'locked', authorized: false, request: undefined, revocation: undefined, action: undefined, error: null, notice: null });
   };
 
   unlock = (): Promise<void> => this.operation(async (generation, signal) => {
@@ -218,7 +224,7 @@ export class DeviceAuthorization {
       if (!decoded) {
         this.clearSeed();
         this.record = undefined;
-        this.publish({ phase: 'empty', authorized: false, request: undefined, revocation: undefined });
+        this.publish({ phase: 'empty', authorized: false, request: undefined, revocation: undefined, action: undefined });
         return;
       }
       const { record, seed } = decoded;
@@ -285,7 +291,7 @@ export class DeviceAuthorization {
     this.assertCapacity(registry);
     const request = record.request;
     const metadata = abiEncodeSignedKeyRequestMetadata({ requestFid: request.fid, requestSigner: request.custodyAddress, signature: hexToBytes(approval.requestSignature), deadline: request.deadline });
-    const envelope = await this.envelope(record, {
+    const { envelope } = await this.envelope(record, {
       type: MessageType.KEY_ADD, fid: request.fid,
       body: { keyAddBody: { key: hexToBytes(request.publicKey), custodySignature: hexToBytes(approval.custodySignature),
         deadline: request.deadline, nonce: request.nonce, metadata, scopes: [...PAIRING_SCOPES], ttl: PAIRING_TTL_SECONDS } },
@@ -340,7 +346,7 @@ export class DeviceAuthorization {
     if (record.stage !== 'revoke-prepared' || !record.revocation) {
       fail('Only an unsubmitted revocation request can be canceled. Check submitted revocation status instead.');
     }
-    await this.save({ version: 1, request: record.request, stage: 'registered' }, generation);
+    await this.save({ ...record, stage: 'registered', revocation: undefined }, generation);
     this.publish({
       authorized: false,
       notice: 'No network revocation was sent. The protected device key was retained; check authorization status before using it.',
@@ -359,7 +365,7 @@ export class DeviceAuthorization {
     if (!signer) { await this.finishRevocation(generation); return; }
     if (signer.source !== 'SIGNER_SOURCE_OFFCHAIN' || signer.requestFid !== request.fid) fail('The node returned different signer ownership.');
     if (nonceAfter(registry.currentUserNonce) !== request.nonce) fail('The custody nonce changed. Create a fresh revocation request.');
-    const envelope = await this.envelope(record, {
+    const { envelope } = await this.envelope(record, {
       type: MessageType.KEY_REMOVE, fid: request.fid,
       body: { keyRemoveBody: { key: hexToBytes(request.publicKey), signature: hexToBytes(approval.custodySignature), signatureType: 1, deadline: request.deadline, nonce: request.nonce } },
     }, generation);
@@ -380,7 +386,7 @@ export class DeviceAuthorization {
     this.check(generation);
     this.clearSeed();
     this.record = undefined;
-    this.publish({ phase: 'empty', authorized: false, request: undefined, revocation: undefined, notice: 'The node reports this key absent and its protected local copy was removed.' });
+    this.publish({ phase: 'empty', authorized: false, request: undefined, revocation: undefined, action: undefined, notice: 'The node reports this key absent and its protected local copy was removed. This does not retract any earlier post or reaction.' });
   }
   private async confirmRevocation(generation: number, signal: AbortSignal): Promise<void> {
     const record = this.current();
@@ -393,13 +399,106 @@ export class DeviceAuthorization {
     await this.confirmRevocation(generation, signal);
   });
 
+  private async writable(type: MessageType, generation: number, signal: AbortSignal): Promise<DeviceRecord> {
+    const record = this.current();
+    if (record.stage !== 'registered' || !this.snapshot.authorized) fail('Unlock and check device authorization before publishing.');
+    if (record.action?.status === 'pending') fail('An earlier submission is unresolved. Check its status; no duplicate or new action will be sent.');
+    this.publish({ authorized: false });
+    if (!record.request.scopes.includes(type)) fail('This device does not have permission for that action.');
+    const registry = await this.fresh(record.request, generation, signal);
+    assertSigner(findSigner(registry, record.request.publicKey), record.request, this.now());
+    this.publish({ authorized: true });
+    return record;
+  }
+
+  private async readTarget(target: CastTarget, generation: number, signal: AbortSignal): Promise<void> {
+    const observed = await this.dependencies.api.getCast(target.hash, signal);
+    this.check(generation);
+    if (observed.author?.fid !== target.fid || castTarget({ fid: target.fid, hash: observed.hash }).hash !== target.hash) {
+      fail('The node returned a different cast. Nothing was submitted.');
+    }
+  }
+
+  private nextTimestamp(record: DeviceRecord): number {
+    const now = farcasterTimestamp(this.now());
+    const next = Math.max(now, (record.action?.timestamp ?? -1) + 1);
+    if (!Number.isSafeInteger(next) || next < 0 || next > 0xffffffff || next > now + 60) fail('Wait for the device clock before publishing another action.');
+    return next;
+  }
+
+  private async submitAction(record: DeviceRecord, action: SocialAction, envelope: Uint8Array, generation: number, signal: AbortSignal): Promise<void> {
+    await this.save({ ...record, action }, generation);
+    this.check(generation);
+    this.publish({ authorized: true });
+    if (action.kind === 'reaction') invalidateReactionStatus(record.request.fid, action.target, action.reaction);
+    try { await this.dependencies.api.submitMessage(envelope, signal); }
+    catch { fail('Submission status is unknown. Check status; this action will not be sent again automatically.'); }
+    this.check(generation);
+    await this.confirmAction(generation, signal);
+  }
+
+  publishCast = (text: string, parent?: CastTarget): Promise<void> => this.operation(async (generation, signal) => {
+    let bodyText: string;
+    let target: CastTarget | undefined;
+    try { bodyText = castText(text); target = parent ? castTarget(parent) : undefined; }
+    catch { fail('Choose a valid reply target and enter 1–320 UTF-8 bytes of text.'); }
+    const record = await this.writable(MessageType.CAST_ADD, generation, signal);
+    if (target) await this.readTarget(target, generation, signal);
+    const timestamp = this.nextTimestamp(record);
+    const { envelope, hash } = await this.envelope(record, {
+      type: MessageType.CAST_ADD, fid: record.request.fid, timestamp,
+      body: { castAddBody: { text: bodyText, type: CastType.CAST, ...(target ? { parent: { castId: { fid: target.fid, hash: hexToBytes(target.hash) } } } : {}) } },
+    }, generation);
+    await this.submitAction(record, { kind: 'cast', hash: bytesToHex(hash), timestamp, status: 'pending', ...(target ? { parent: target } : {}) }, envelope, generation, signal);
+  });
+
+  react = (targetInput: CastTarget, reaction: ReactionKind, desired: boolean): Promise<void> => this.operation(async (generation, signal) => {
+    let target: CastTarget;
+    try { target = castTarget(targetInput); }
+    catch { fail('Choose a valid public cast first.'); }
+    if (!['like', 'recast'].includes(reaction) || typeof desired !== 'boolean') fail('Choose a valid reaction.');
+    const type = desired ? MessageType.REACTION_ADD : MessageType.REACTION_REMOVE;
+    const record = await this.writable(type, generation, signal);
+    await this.readTarget(target, generation, signal);
+    const current = await this.dependencies.api.getReactionStatus(record.request.fid, target, reaction, signal, { fresh: true });
+    this.check(generation);
+    if (current === desired) { this.publish({ notice: 'The node already reports that reaction state. No message was submitted.' }); return; }
+    const timestamp = this.nextTimestamp(record);
+    const { envelope, hash } = await this.envelope(record, { type, fid: record.request.fid, timestamp,
+      body: { reactionBody: { type: reaction === 'like' ? ReactionType.LIKE : ReactionType.RECAST, target: { castId: { fid: target.fid, hash: hexToBytes(target.hash) } } } },
+    }, generation);
+    await this.submitAction(record, { kind: 'reaction', target, reaction, desired, hash: bytesToHex(hash), timestamp, status: 'pending' }, envelope, generation, signal);
+  });
+
+  private async confirmAction(generation: number, signal: AbortSignal): Promise<void> {
+    const record = this.current();
+    const action = record.action;
+    if (!action || action.status !== 'pending') fail('No unresolved social action is saved.');
+    const authorized = this.snapshot.authorized;
+    try {
+      if (action.kind === 'cast') await this.readTarget({ fid: record.request.fid, hash: action.hash }, generation, signal);
+      else {
+        const observed = await this.dependencies.api.getReactionStatus(record.request.fid, action.target, action.reaction, signal, { fresh: true });
+        this.check(generation);
+        if (observed !== action.desired) throw new Error();
+      }
+    } catch { fail('The intended result is not confirmed. Status remains unknown; check again later without resubmitting.'); }
+    this.check(generation);
+    await this.save({ ...record, action: { ...action, status: 'confirmed' } }, generation);
+    this.publish({ authorized, notice: action.kind === 'cast'
+      ? 'The node now shows this exact cast for your FID.'
+      : 'The node now shows the intended reaction state. This is a state check, not proof of a particular receipt.' });
+  }
+
+  checkAction = (): Promise<void> => this.operation((generation, signal) => this.confirmAction(generation, signal));
+
   forget = (): Promise<void> => this.operation(async generation => {
     try { await this.dependencies.storage.remove(); }
     catch { fail('Protected storage could not be removed. This device has not been forgotten.'); }
     this.check(generation);
     this.clearSeed();
     this.record = undefined;
-    this.publish({ phase: 'empty', authorized: false, request: undefined, revocation: undefined,
-      notice: 'Local device credentials were removed. This does not revoke a submitted or registered key on Hypersnap.' });
+    this.publish({ phase: 'empty', authorized: false, request: undefined, revocation: undefined, action: undefined,
+      notice: 'Local device credentials and receipt tracking were removed. This does not revoke a submitted or registered key, or retract any post or reaction on Hypersnap.' });
   });
 }
