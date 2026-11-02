@@ -26,11 +26,12 @@ export interface AuthorizationDependencies {
 type Stage = 'prepared' | 'registering' | 'registered' | 'revoke-prepared' | 'revoking';
 interface DeviceRecord {
   version: 1;
-  seed: string;
   request: PairingRequest;
   stage: Stage;
   revocation?: RevocationRequest;
 }
+interface PersistedDeviceRecord extends DeviceRecord { seed: string }
+interface DecodedDeviceRecord { record: DeviceRecord; seed: Uint8Array }
 
 export interface AuthorizationSnapshot {
   phase: 'locked' | 'empty' | Stage;
@@ -71,10 +72,11 @@ function parseApproval(text: string): unknown {
   if (new TextEncoder().encode(text).length > MAX_APPROVAL_BYTES) fail('Approval files must be at most 16 KiB.');
   try { return JSON.parse(text); } catch { fail('Choose a public approval JSON file from the separate signer.'); }
 }
-function decodeRecord(text: string, now: number): DeviceRecord {
+function decodeRecord(text: string, now: number): DecodedDeviceRecord {
   if (new TextEncoder().encode(text).length > MAX_RECORD_BYTES) fail('The protected device record is invalid. Forget it before reconnecting.');
+  let seed: Uint8Array | undefined;
   try {
-    const value = JSON.parse(text) as DeviceRecord;
+    const value = JSON.parse(text) as PersistedDeviceRecord;
     const keys = Object.keys(value).sort().join(',');
     if (keys !== 'request,seed,stage,version' && keys !== 'request,revocation,seed,stage,version') throw new Error();
     if (value.version !== 1 || typeof value.seed !== 'string' || !/^[0-9a-f]{64}$/.test(value.seed)
@@ -83,21 +85,27 @@ function decodeRecord(text: string, now: number): DeviceRecord {
     // Historical requests remain inspectable after expiry; submission revalidates against now.
     const request = validatePairingRequest(value.request, value.request.createdAt * 1000);
     if (request.origin !== APP_ORIGIN || request.fid > 0xffffffff || request.scopes.join(',') !== PAIRING_SCOPES.join(',')) throw new Error();
-    const seed = hexToBytes(value.seed);
-    try { if (bytesToHex(ed25519.getPublicKey(seed)) !== request.publicKey) throw new Error(); }
-    finally { seed.fill(0); }
+    seed = hexToBytes(value.seed);
+    if (bytesToHex(ed25519.getPublicKey(seed)) !== request.publicKey) throw new Error();
     const removing = value.stage === 'revoke-prepared' || value.stage === 'revoking';
     if (removing !== (value.revocation !== undefined)) throw new Error();
     const revocation = removing ? validateRevocationRequest(value.revocation, value.revocation!.createdAt * 1000) : undefined;
     if (revocation && (revocation.fid !== request.fid || revocation.publicKey !== request.publicKey
       || revocation.custodyAddress !== request.custodyAddress || revocation.origin !== APP_ORIGIN
       || revocation.createdAt > Math.floor(now / 1000) + 60)) throw new Error();
-    return { version: 1, seed: value.seed, request, stage: value.stage, ...(revocation ? { revocation } : {}) };
-  } catch { fail('The protected device record is invalid. Forget it before reconnecting.'); }
+    return {
+      record: { version: 1, request, stage: value.stage, ...(revocation ? { revocation } : {}) },
+      seed,
+    };
+  } catch {
+    seed?.fill(0);
+    fail('The protected device record is invalid. Forget it before reconnecting.');
+  }
 }
 
 export class DeviceAuthorization {
   private record: DeviceRecord | undefined;
+  private seed: Uint8Array | undefined;
   private generation = 0;
   private controller: AbortController | undefined;
   private listeners = new Set<() => void>();
@@ -111,6 +119,10 @@ export class DeviceAuthorization {
   private publish(update: Partial<AuthorizationSnapshot>): void {
     this.snapshot = { ...this.snapshot, ...update };
     for (const listener of this.listeners) listener();
+  }
+  private clearSeed(): void {
+    this.seed?.fill(0);
+    this.seed = undefined;
   }
   private showRecord(record: DeviceRecord, authorized = false): void {
     this.record = record;
@@ -135,7 +147,9 @@ export class DeviceAuthorization {
   }
   private async save(record: DeviceRecord, generation: number): Promise<void> {
     this.check(generation);
-    const serialized = JSON.stringify(record);
+    if (!this.seed) fail('Unlock the protected device key first.');
+    const persisted: PersistedDeviceRecord = { ...record, seed: bytesToHex(this.seed) };
+    const serialized = JSON.stringify(persisted);
     if (new TextEncoder().encode(serialized).length > MAX_RECORD_BYTES) fail('This device record exceeds the protected storage limit.');
     try { await this.dependencies.storage.write(serialized); }
     catch {
@@ -166,34 +180,57 @@ export class DeviceAuthorization {
     if (!this.record) fail('Unlock the saved device first.');
     return this.record;
   }
-  private async envelope(record: DeviceRecord, data: MessageDataInput): Promise<Uint8Array> {
-    const seed = hexToBytes(record.seed);
-    try {
-      const { envelope } = await buildSignedMessage(data, {
-        scheme: SignatureScheme.ED25519, publicKey: hexToBytes(record.request.publicKey),
-        sign: async digest => ed25519.sign(digest, seed),
-      });
-      return envelope;
-    } finally { seed.fill(0); }
+  private async readStoredRecord(): Promise<DecodedDeviceRecord | undefined> {
+    const saved = await this.dependencies.storage.read();
+    return saved ? decodeRecord(saved, this.now()) : undefined;
+  }
+  private async envelope(record: DeviceRecord, data: MessageDataInput, generation: number): Promise<Uint8Array> {
+    this.check(generation);
+    const seed = this.seed;
+    if (!seed) fail('Unlock the protected device key first.');
+    const { envelope } = await buildSignedMessage(data, {
+      scheme: SignatureScheme.ED25519,
+      publicKey: hexToBytes(record.request.publicKey),
+      sign: async digest => {
+        this.check(generation);
+        return ed25519.sign(digest, seed);
+      },
+    });
+    this.check(generation);
+    return envelope;
   }
 
   lock = (): void => {
     this.generation++;
     this.controller?.abort();
+    this.clearSeed();
     this.record = undefined;
     this.publish({ phase: 'locked', authorized: false, request: undefined, revocation: undefined, error: null, notice: null });
   };
 
   unlock = (): Promise<void> => this.operation(async (generation, signal) => {
-    const saved = await this.dependencies.storage.read();
-    this.check(generation);
-    if (!saved) { this.record = undefined; this.publish({ phase: 'empty', authorized: false, request: undefined, revocation: undefined }); return; }
-    const record = decodeRecord(saved, this.now());
-    this.showRecord(record);
-    const registry = await this.fresh(record.request, generation, signal);
-    if (record.stage === 'registered') {
-      assertSigner(findSigner(registry, record.request.publicKey), record.request, this.now());
-      this.publish({ authorized: true });
+    const decoded = await this.readStoredRecord();
+    let adopted = false;
+    try {
+      this.check(generation);
+      if (!decoded) {
+        this.clearSeed();
+        this.record = undefined;
+        this.publish({ phase: 'empty', authorized: false, request: undefined, revocation: undefined });
+        return;
+      }
+      const { record, seed } = decoded;
+      this.clearSeed();
+      this.seed = seed;
+      adopted = true;
+      this.showRecord(record);
+      const registry = await this.fresh(record.request, generation, signal);
+      if (record.stage === 'registered') {
+        assertSigner(findSigner(registry, record.request.publicKey), record.request, this.now());
+        this.publish({ authorized: true });
+      }
+    } finally {
+      if (decoded && !adopted) decoded.seed.fill(0);
     }
   });
 
@@ -208,6 +245,7 @@ export class DeviceAuthorization {
     this.assertCapacity(registry);
     const nonce = nonceAfter(registry.currentUserNonce);
     const seed = await this.dependencies.randomBytes();
+    let adopted = false;
     try {
       this.check(generation);
       if (!(seed instanceof Uint8Array) || seed.length !== 32) fail('Native secure randomness is unavailable.');
@@ -221,8 +259,14 @@ export class DeviceAuthorization {
         publicKey: bytesToHex(ed25519.getPublicKey(seed)), scopes: [...PAIRING_SCOPES], ttl: PAIRING_TTL_SECONDS,
         nonce, deadline: createdAt - FARCASTER_EPOCH_SECONDS + PAIRING_WINDOW_SECONDS,
       }, this.now());
-      await this.save({ version: 1, seed: bytesToHex(seed), request, stage: 'prepared' }, generation);
-    } finally { seed.fill(0); }
+      const record: DeviceRecord = { version: 1, request, stage: 'prepared' };
+      this.clearSeed();
+      this.seed = seed;
+      adopted = true;
+      await this.save(record, generation);
+    } finally {
+      if (!adopted || this.seed !== seed) seed.fill(0);
+    }
   });
 
   approve = (text: string): Promise<void> => this.operation(async (generation, signal) => {
@@ -240,7 +284,7 @@ export class DeviceAuthorization {
       type: MessageType.KEY_ADD, fid: request.fid,
       body: { keyAddBody: { key: hexToBytes(request.publicKey), custodySignature: hexToBytes(approval.custodySignature),
         deadline: request.deadline, nonce: request.nonce, metadata, scopes: [...PAIRING_SCOPES], ttl: PAIRING_TTL_SECONDS } },
-    });
+    }, generation);
     this.check(generation);
     verifyPairingApproval(request, approval, this.now());
     await this.save({ ...record, stage: 'registering' }, generation);
@@ -301,7 +345,7 @@ export class DeviceAuthorization {
     const envelope = await this.envelope(record, {
       type: MessageType.KEY_REMOVE, fid: request.fid,
       body: { keyRemoveBody: { key: hexToBytes(request.publicKey), signature: hexToBytes(approval.custodySignature), signatureType: 1, deadline: request.deadline, nonce: request.nonce } },
-    });
+    }, generation);
     this.check(generation);
     verifyRevocationApproval(request, approval, this.now());
     await this.save({ ...record, stage: 'revoking' }, generation);
@@ -317,6 +361,7 @@ export class DeviceAuthorization {
     try { await this.dependencies.storage.remove(); }
     catch { fail('The node reports this key absent, but protected local storage could not be cleared. Retry status checking to finish cleanup.'); }
     this.check(generation);
+    this.clearSeed();
     this.record = undefined;
     this.publish({ phase: 'empty', authorized: false, request: undefined, revocation: undefined, notice: 'The node reports this key absent and its protected local copy was removed.' });
   }
@@ -335,6 +380,7 @@ export class DeviceAuthorization {
     try { await this.dependencies.storage.remove(); }
     catch { fail('Protected storage could not be removed. This device has not been forgotten.'); }
     this.check(generation);
+    this.clearSeed();
     this.record = undefined;
     this.publish({ phase: 'empty', authorized: false, request: undefined, revocation: undefined,
       notice: 'Local device credentials were removed. This does not revoke a submitted or registered key on Hypersnap.' });

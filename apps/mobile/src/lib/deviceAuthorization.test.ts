@@ -28,10 +28,15 @@ function setup() {
   let saved: string | null = null;
   let now = NOW;
   let randomValue = 23;
+  const randomValues: Uint8Array[] = [];
   const registry: SignersResponse = { signers: [], currentUserNonce: 7 };
   const deps: AuthorizationDependencies = {
     now: () => now,
-    randomBytes: vi.fn(async () => new Uint8Array(32).fill(randomValue++)),
+    randomBytes: vi.fn(async () => {
+      const value = new Uint8Array(32).fill(randomValue++);
+      randomValues.push(value);
+      return value;
+    }),
     storage: {
       read: vi.fn(async () => saved),
       write: vi.fn(async value => { saved = value; }),
@@ -60,7 +65,7 @@ function setup() {
     expect(controller.getSnapshot().authorized).toBe(true);
     return request;
   };
-  return { deps, controller, registry, prepare, confirm, register, saved: () => saved, advance: (ms: number) => { now += ms; } };
+  return { deps, controller, registry, randomValues, prepare, confirm, register, saved: () => saved, advance: (ms: number) => { now += ms; } };
 }
 
 describe('native protected device authorization', () => {
@@ -144,6 +149,25 @@ describe('native protected device authorization', () => {
     test.controller.lock();
     finish();
     await pending;
+    expect(test.deps.api.submitMessage).not.toHaveBeenCalled();
+    expect(test.controller.getSnapshot()).toMatchObject({ phase: 'locked', authorized: false, busy: false });
+  });
+
+  it('zeroes the active seed immediately when locked during an approval read', async () => {
+    const test = setup();
+    const request = await test.prepare();
+    const seed = test.randomValues[0];
+    expect([...seed]).toEqual(new Array(32).fill(23));
+    let finish!: (value: User) => void;
+    vi.mocked(test.deps.api.getUser).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+
+    const pending = test.controller.approve(approval(request));
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+    test.controller.lock();
+    expect([...seed]).toEqual(new Array(32).fill(0));
+    finish({ ...USER });
+    await pending;
+
     expect(test.deps.api.submitMessage).not.toHaveBeenCalled();
     expect(test.controller.getSnapshot()).toMatchObject({ phase: 'locked', authorized: false, busy: false });
   });

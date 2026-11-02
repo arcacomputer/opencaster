@@ -47,15 +47,17 @@ foundation passed Android emulator and iOS simulator validation before this work
   Keystore-encrypted app storage. Exclude secure data from Android backup. Never
   fall back to ordinary preferences, files, clipboard, logs or telemetry for seeds.
 - The protection is encryption at rest, not a claim of hardware-backed Ed25519
-  signing or biometric approval. Signing briefly uses seed bytes in JavaScript
-  memory. Best-effort zeroization cannot erase every immutable string/runtime copy.
-  A compromised operating system or running application is outside this boundary.
+  signing or biometric approval. While unlocked, the controller owns one mutable
+  seed byte buffer and zeroes it on lock, replacement or successful deletion.
+  Protected-storage serialization and native bridges still create immutable
+  strings/runtime copies that JavaScript cannot reliably erase. A compromised
+  operating system or running application is outside this boundary.
 - Require explicit consent to save this device key before creating the persistent
   request. Keep a single versioned, bounded protected record containing the seed,
   public identity, exact scopes and lifecycle state. No custody secret is stored.
   Do not overwrite an existing saved device silently.
 - Start locked, including after process restart. Backgrounding/locking invalidates
-  in-flight work and drops active seed references. An explicit unlock reads protected
+  in-flight work, zeroes the owned active seed buffer and drops its reference. An explicit unlock reads protected
   storage and rechecks current custody/signer state before granting write access.
   Do not auto-submit anything on launch, unlock, foreground or network recovery.
 - iOS Keychain data may survive uninstall/reinstall with the same identifier;
