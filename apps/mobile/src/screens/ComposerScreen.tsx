@@ -1,4 +1,5 @@
 import { getCast } from '@opencaster/client-core/api';
+import { useHeaderHeight } from '@react-navigation/elements';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
@@ -15,6 +16,7 @@ import { palette } from '../theme';
 type Props = NativeStackScreenProps<RootStackParamList, 'Compose'>;
 
 export function ComposerScreen({ navigation, route }: Props) {
+  const headerHeight = useHeaderHeight();
   const parent = route.params?.parent;
   const { authorization, snapshot } = useAuthorization();
   const [text, setText] = useState('');
@@ -52,7 +54,7 @@ export function ComposerScreen({ navigation, route }: Props) {
   };
   return (
     <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
-      <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
+      <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={headerHeight}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
           <SocialStatus onDeviceAccess={() => navigation.navigate('DeviceAccess')} onOpenCast={hash => navigation.navigate('Conversation', { hash })} />
           <Text accessibilityRole="header" style={styles.title}>{parent ? 'Reply' : 'New post'}</Text>
