@@ -112,6 +112,10 @@ Direct runtime dependencies and their declared licenses:
 | `react-native` | MIT |
 | `@react-navigation/native` | MIT |
 | `@react-navigation/native-stack` | MIT |
+| `@react-navigation/elements` | MIT |
+| `react-native-keyboard-controller` | MIT |
+| `react-native-reanimated` | MIT |
+| `react-native-worklets` | MIT |
 | `react-native-safe-area-context` | MIT |
 | `react-native-screens` | MIT |
 | `@opencaster/client-core` | AGPL-3.0-only |
@@ -121,6 +125,13 @@ Direct development tooling uses `@babel/core` (MIT), `@types/react` (MIT),
 and TypeScript (Apache-2.0). Transitive packages are resolved in the root
 `yarn.lock` and should be reviewed as part of any future redistribution or
 licensing review.
+
+The composer uses Expo SDK-compatible Keyboard Controller with Reanimated and
+Worklets to follow native keyboard height changes, including switching to a
+taller emoji panel. `KeyboardProvider` is mounted without automatic keyboard
+preloading. Adding or changing these native dependencies requires rebuilding
+both Android and iOS; a Metro reload alone is insufficient. Expo's Babel preset
+configures the Worklets plugin automatically.
 
 ## Future account and store setup — manual work only
 

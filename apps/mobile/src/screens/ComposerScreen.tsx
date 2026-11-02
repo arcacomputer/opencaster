@@ -2,7 +2,8 @@ import { getCast } from '@opencaster/client-core/api';
 import { useHeaderHeight } from '@react-navigation/elements';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActionButton, LoadingMessage, ScreenMessage } from '../components/Primitives';
 import { CastCard } from '../components/CastCard';
@@ -54,7 +55,7 @@ export function ComposerScreen({ navigation, route }: Props) {
   };
   return (
     <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
-      <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={headerHeight}>
+      <KeyboardAvoidingView style={styles.screen} behavior="padding" keyboardVerticalOffset={headerHeight}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
           <SocialStatus onDeviceAccess={() => navigation.navigate('DeviceAccess')} onOpenCast={hash => navigation.navigate('Conversation', { hash })} />
           <Text accessibilityRole="header" style={styles.title}>{parent ? 'Reply' : 'New post'}</Text>
