@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'in-app-browser-edges',
+    date: '2026-11-03',
+    timestamp: '2026-11-03T02:20:36+00:00',
+    title: 'Cleaner edges in in-app browsers',
+    summary: 'In browsers that draw floating bars over the page, such as Telegram’s on iOS, the space behind those bars now shows the app background instead of casts scrolling underneath.',
+    changes: [
+      'Fill the areas behind the status bar and browser controls with the current theme’s surface color, and extend the mobile navigation background beneath the bottom bar.',
+      'Keep the browser theme color in sync with the light or dark theme.',
+      'The host app still draws its own controls over the page, and each in-app browser decides how much of the screen they cover. Standard browsers look the same as before.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/c44dbb8ee40a7f3d784f4c0b4849152ac8e49feb',
+    tag: 'Social',
+  },
+  {
     id: 'portable-timeline-continuations',
     date: '2026-11-01',
     timestamp: '2026-11-01T03:34:19Z',
