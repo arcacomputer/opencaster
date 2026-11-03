@@ -129,3 +129,13 @@ footer { display: flex; flex-wrap: wrap; gap: .85rem; font-size: .53rem; margin-
 @media (max-width: 1030px) { .compact-tools { display: block; padding: .8rem 1.2rem 0; }.compact-tools .search { margin-bottom: .3rem; }.compact-tools .channel-chips { display: none; } }
 @media (max-width: 700px) { .compact-tools .channel-chips { display: flex; flex-direction: row; gap: .2rem; overflow-x: auto; padding-bottom: .5rem; }.channel-chips .button { font-size: .6rem; padding: .3rem .5rem; min-height: 1.8rem; }.channel-chips .active { color: var(--accent-300); background: var(--soft-accent); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+/* Some in-app browsers, including Telegram's on iOS, overlay translucent bars on
+   the page. They also render page content outside the layout viewport, behind
+   those bars. These fixed caps sit entirely outside the viewport and paint the
+   app surface into that area, so casts no longer scroll behind the status bar
+   and browser controls. Ordinary browsers never show them. */
+body::before, body::after { content: ""; position: fixed; left: 0; right: 0; height: 100vh; background: var(--surface-00); pointer-events: none; z-index: 3; }
+body::before { bottom: 100%; }
+body::after { top: 100%; }
+@media (max-width: 700px) { .mobile-nav::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: var(--surface-0); pointer-events: none; } }
+@media print { body::before, body::after { display: none; } }
