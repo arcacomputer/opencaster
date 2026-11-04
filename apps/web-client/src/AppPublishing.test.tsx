@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { ApiError, getCast, getChannels, getConversation, getFeed, getFollowStatus, getInfo, getProfileFeed, getReactionStatus, getSuggestedUsers, getChannelMembers, getCastQuotes, getUser, resolveCastAlias, searchCasts, searchUsers, type Cast, type FeedResponse, type User } from '@opencaster/client-core/api';
-import type { WalletSession } from './lib/auth';
+import { deleteSavedSession, type WalletSession } from './lib/auth';
 import { FULL_CLIENT_SCOPES } from '@opencaster/client-core/pairing';
 import { encodeFeed, type FeedDefinition } from '@opencaster/client-core/customFeeds';
 import { readCustomFeed } from './lib/customFeedReader';
@@ -13,6 +13,11 @@ const wallet = vi.hoisted(() => ({ next: null as WalletSession | null }));
 vi.mock('./components/ConnectAccount', () => ({
   default: ({ onConnect, onClose }: { onConnect(value: WalletSession): void; onClose(): void }) => <main><button onClick={() => { if (wallet.next) onConnect(wallet.next); }}>Approve synthetic wallet</button><button onClick={onClose}>Cancel synthetic wallet</button></main>,
   DeviceSettings: () => <div>Synthetic device settings</div>,
+}));
+vi.mock('./lib/auth', () => ({
+  deleteSavedSession: vi.fn().mockResolvedValue(undefined),
+  getSavedSessionMethod: vi.fn().mockResolvedValue(undefined),
+  restoreRememberedSession: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('@opencaster/client-core/media', () => ({ uploadMedia: vi.fn() }));
 vi.mock('./lib/customFeedReader', () => ({ readCustomFeed: vi.fn() }));
@@ -51,6 +56,7 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); localStorage.clear(); sessionStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 async function start(path = '/') {
   history.replaceState(null, '', path); await act(async () => root.render(<App />));
+  await vi.waitFor(() => expect(container.textContent).not.toContain('Restoring your session…'));
   // The public picker is a lazy module; wait for its visible result rather than
   // assuming an import finishes within the fixed ten-millisecond settle helper.
   if (path.startsWith('/following')) await vi.waitFor(async () => { await settle(); expect(container.querySelector('.public-following-picker')).toBeTruthy(); });
@@ -219,11 +225,24 @@ describe('publishing feedback in the application', () => {
   it('drops pending state on lock and keeps a late receipt out of a newly connected account', async () => {
     const account = session(); const receipt = deferred<{ hash: string }>(); vi.mocked(account.cast).mockReturnValue(receipt.promise);
     await start(); await connect(account); await type(published.text); await click(button('Cast', container.querySelector('.home-composer')!)); expect(pending()).not.toBeNull();
-    await click(button('My profile')); await settle(); await click(button('Lock this tab'));
+    await click(button('My profile')); await settle(); await click(button('Sign out'));
     expect(pending()).toBeNull(); expect(account.dispose).toHaveBeenCalledOnce();
     await connect(session(11, '2')); await click(button('Discover'));
     await act(async () => receipt.resolve({ hash: published.hash }));
     expect(pending()).toBeNull(); expect(base().querySelector('.feed')?.textContent).not.toContain(published.text);
+  });
+
+  it('clears pending publication state when saved-key removal fails on sign-out', async () => {
+    const account = session(); const receipt = deferred<{ hash: string }>(); vi.mocked(account.cast).mockReturnValue(receipt.promise);
+    await start(); await connect(account); await type(published.text); await click(button('Cast', container.querySelector('.home-composer')!));
+    expect(pending()).not.toBeNull();
+    vi.mocked(deleteSavedSession).mockRejectedValueOnce(new Error('IndexedDB unavailable.'));
+    await click(button('My profile')); await settle(); await click(button('Sign out'));
+    expect(account.dispose).toHaveBeenCalledOnce();
+    expect(pending()).toBeNull();
+    expect(container.querySelector('.toast')?.textContent).toContain('Your active session has ended, but the saved key could not be removed.');
+    await act(async () => receipt.resolve({ hash: published.hash }));
+    expect(pending()).toBeNull();
   });
 
   it('shows a reply in its conversation and own Replies tab without injecting it into unrelated feeds or threads', async () => {

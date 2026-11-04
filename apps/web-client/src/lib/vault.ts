@@ -40,8 +40,17 @@ export interface PasskeySignerVault {
   cipher: { name: 'AES-GCM'; length: 256; iv: string; tagLength: 128 };
   ciphertext: string;
 }
-export type StoredSignerVault = SignerVault | PasskeySignerVault;
-export type SavedSessionMethod = 'password' | 'passkey';
+export interface BrowserSignerVault {
+  kind: typeof KIND;
+  version: 3;
+  metadata: VaultMetadata;
+  wrapperId: string;
+  key: CryptoKey;
+  cipher: { name: 'AES-GCM'; length: 256; iv: string; tagLength: 128 };
+  ciphertext: string;
+}
+export type StoredSignerVault = SignerVault | PasskeySignerVault | BrowserSignerVault;
+export type SavedSessionMethod = 'password' | 'passkey' | 'browser';
 
 function object(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -87,6 +96,22 @@ function validateVault(value: unknown): SignerVault {
 
 export function validateSignerVault(value: unknown): StoredSignerVault {
   if (object(value) && value.version === 1) return validateVault(value);
+  if (object(value) && value.version === 3) {
+    if (!exact(value, ['kind', 'version', 'metadata', 'wrapperId', 'key', 'cipher', 'ciphertext']) ||
+      value.kind !== KIND || !object(value.cipher) ||
+      !exact(value.cipher, ['name', 'length', 'iv', 'tagLength']) ||
+      value.cipher.name !== 'AES-GCM' || value.cipher.length !== 256 || value.cipher.tagLength !== 128 ||
+      typeof value.wrapperId !== 'string' || !/^[0-9a-f]{64}$/.test(value.wrapperId) ||
+      typeof value.cipher.iv !== 'string' || !/^[0-9a-f]{24}$/.test(value.cipher.iv) ||
+      typeof value.ciphertext !== 'string' || !/^[0-9a-f]{96}$/.test(value.ciphertext)) {
+      throw new Error('The saved browser device vault is invalid. You can forget it and authorize a new device.');
+    }
+    return {
+      kind: KIND, version: 3, metadata: validateMetadata(value.metadata), wrapperId: value.wrapperId,
+      key: validateBrowserKey(value.key),
+      cipher: { name: 'AES-GCM', length: 256, iv: value.cipher.iv, tagLength: 128 }, ciphertext: value.ciphertext,
+    };
+  }
   if (!object(value) || !exact(value, ['kind', 'version', 'metadata', 'passkey', 'kdf', 'cipher', 'ciphertext']) || value.kind !== KIND || value.version !== 2
     || !object(value.kdf) || !exact(value.kdf, ['name', 'hash', 'salt']) || value.kdf.name !== 'HKDF' || value.kdf.hash !== 'SHA-256'
     || typeof value.kdf.salt !== 'string' || !/^[0-9a-f]{64}$/.test(value.kdf.salt)
@@ -100,10 +125,14 @@ export function validateSignerVault(value: unknown): StoredSignerVault {
   };
 }
 
-export function savedVaultMethod(value: unknown): SavedSessionMethod { return validateSignerVault(value).version === 1 ? 'password' : 'passkey'; }
+export function savedVaultMethod(value: unknown): SavedSessionMethod {
+  const version = validateSignerVault(value).version;
+  return version === 1 ? 'password' : version === 2 ? 'passkey' : 'browser';
+}
 
 export function passkeyVault(value: unknown, metadataOrigin: string, actualOrigin: string): PasskeySignerVault {
   const vault = validateSignerVault(value);
+  if (vault.version === 3) throw new Error('This device vault uses browser-profile protection. No password or passkey is required.');
   if (vault.version !== 2) throw new Error('This device vault uses a password. Choose password unlock.');
   if (vault.metadata.origin !== metadataOrigin) throw new Error('This device vault belongs to a different website.');
   validatePasskeyDescriptor(vault.passkey, actualOrigin);
@@ -119,6 +148,16 @@ function cryptoProvider(): Crypto {
   return globalThis.crypto;
 }
 
+function validateBrowserKey(value: unknown): CryptoKey {
+  if (typeof CryptoKey === 'undefined' || !(value instanceof CryptoKey) ||
+    value.type !== 'secret' || value.extractable !== false ||
+    value.algorithm.name !== 'AES-GCM' || !('length' in value.algorithm) || value.algorithm.length !== 256 ||
+    value.usages.length !== 2 || !value.usages.includes('encrypt') || !value.usages.includes('decrypt')) {
+    throw new Error('The saved browser device vault has an invalid encryption key. You can forget it and authorize a new device.');
+  }
+  return value;
+}
+
 function aad(vault: Omit<SignerVault, 'ciphertext'>): ArrayBuffer {
   // Reconstructed, fixed-order metadata authenticates account, permissions,
   // origin, algorithm choices, salt and IV alongside the encrypted key.
@@ -128,6 +167,55 @@ function aad(vault: Omit<SignerVault, 'ciphertext'>): ArrayBuffer {
     kdf: { name: vault.kdf.name, hash: vault.kdf.hash, iterations: vault.kdf.iterations, salt: vault.kdf.salt },
     cipher: { name: vault.cipher.name, length: vault.cipher.length, iv: vault.cipher.iv, tagLength: vault.cipher.tagLength },
   })).buffer;
+}
+
+function browserHeader(vault: Omit<BrowserSignerVault, 'ciphertext' | 'key'>): Omit<BrowserSignerVault, 'ciphertext' | 'key'> {
+  return {
+    kind: KIND, version: 3, metadata: validateMetadata(vault.metadata), wrapperId: vault.wrapperId,
+    cipher: { name: 'AES-GCM', length: 256, iv: vault.cipher.iv, tagLength: 128 },
+  };
+}
+
+function browserAad(vault: Omit<BrowserSignerVault, 'ciphertext' | 'key'>): ArrayBuffer {
+  return new TextEncoder().encode(JSON.stringify(browserHeader(vault))).buffer;
+}
+
+/** Encrypt exactly one existing 32-byte app signer with a browser-profile key. */
+export async function encryptSignerVaultForBrowser(privateKey: Uint8Array, metadata: VaultMetadata): Promise<BrowserSignerVault> {
+  const checked = validateMetadata(metadata);
+  if (privateKey.length !== 32 || bytesToHex(ed25519.getPublicKey(privateKey)) !== checked.publicKey) throw new Error('The device signer does not match its public key.');
+  const crypto = cryptoProvider();
+  const header: Omit<BrowserSignerVault, 'ciphertext' | 'key'> = {
+    kind: KIND, version: 3, metadata: checked,
+    wrapperId: bytesToHex(crypto.getRandomValues(new Uint8Array(32))),
+    cipher: { name: 'AES-GCM', length: 256, iv: bytesToHex(crypto.getRandomValues(new Uint8Array(12))), tagLength: 128 },
+  };
+  const plaintext = new Uint8Array(privateKey);
+  try {
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    const encrypted = await crypto.subtle.encrypt({
+      name: 'AES-GCM', iv: hexToBytes(header.cipher.iv).buffer as ArrayBuffer, tagLength: 128, additionalData: browserAad(header),
+    }, key, plaintext.buffer);
+    return { ...header, key, ciphertext: bytesToHex(new Uint8Array(encrypted)) };
+  } finally { plaintext.fill(0); }
+}
+
+export async function decryptSignerVaultForBrowser(value: unknown, origin: string): Promise<{ metadata: VaultMetadata; privateKey: Uint8Array }> {
+  const vault = validateSignerVault(value);
+  if (vault.version !== 3) throw new Error('This device vault does not use browser-profile protection.');
+  if (vault.metadata.origin !== origin) throw new Error('This device vault belongs to a different website.');
+  let plaintext: Uint8Array | undefined;
+  try {
+    const decrypted = await cryptoProvider().subtle.decrypt({
+      name: 'AES-GCM', iv: hexToBytes(vault.cipher.iv).buffer as ArrayBuffer, tagLength: 128, additionalData: browserAad(vault),
+    }, validateBrowserKey(vault.key), hexToBytes(vault.ciphertext).buffer as ArrayBuffer);
+    plaintext = new Uint8Array(decrypted);
+    if (plaintext.length !== 32 || bytesToHex(ed25519.getPublicKey(plaintext)) !== vault.metadata.publicKey) throw new Error('Invalid signer.');
+    return { metadata: vault.metadata, privateKey: plaintext };
+  } catch {
+    plaintext?.fill(0);
+    throw new Error('Could not restore the remembered browser session. Forget this vault and authorize the device again.');
+  }
 }
 
 async function passwordKey(password: string, salt: string): Promise<CryptoKey> {
@@ -161,7 +249,10 @@ export async function encryptSignerVault(privateKey: Uint8Array, metadata: Vault
 
 export async function decryptSignerVault(value: unknown, password: string, origin: string): Promise<{ metadata: VaultMetadata; privateKey: Uint8Array }> {
   validateVaultPassword(password);
-  const vault = validateVault(value);
+  const checked = validateSignerVault(value);
+  if (checked.version === 3) throw new Error('This device vault uses browser-profile protection. No password is required.');
+  if (checked.version === 2) throw new Error('This device vault uses a passkey. Choose passkey unlock.');
+  const vault = validateVault(checked);
   if (vault.metadata.origin !== origin) throw new Error('This device vault belongs to a different website.');
   const key = await passwordKey(password, vault.kdf.salt);
   let plaintext: Uint8Array | undefined;
