@@ -29,7 +29,7 @@ describe('browser session persistence preference', () => {
     expect(() => writeSessionPersistence('tab')).toThrow('Could not save this session preference');
   });
 
-  it('broadcasts only a random event id and does not notify its own document', () => {
+  it('broadcasts a random invalidation id and kind without notifying its own document', () => {
     class FakeBroadcastChannel {
       static channels: FakeBroadcastChannel[] = [];
       readonly listeners = new Set<(event: MessageEvent) => void>();
@@ -50,7 +50,13 @@ describe('browser session persistence preference', () => {
     remote.addEventListener('message', event => { observed = event.data; });
     notifySessionChange();
     expect(ownChanges).not.toHaveBeenCalled();
-    expect(observed).toEqual({ id: expect.stringMatching(/^[0-9a-f]{32}$/) });
+    expect(observed).toEqual({ id: expect.stringMatching(/^[0-9a-f]{32}$/), kind: 'vault' });
+    expect(Object.keys(observed as object).sort()).toEqual(['id', 'kind']);
+    remote.postMessage({ id: 'b'.repeat(32), kind: 'sign-out' });
+    expect(ownChanges).toHaveBeenCalledWith('sign-out');
+    remote.postMessage({ id: 'c'.repeat(32), kind: 'unknown' });
+    remote.postMessage({ id: 'd'.repeat(32), kind: 'sign-out', secret: 'not-allowed' });
+    expect(ownChanges).toHaveBeenCalledOnce();
     unsubscribe();
   });
 
@@ -71,10 +77,13 @@ describe('browser session persistence preference', () => {
     persistence.notifySessionChange();
     expect(changed).not.toHaveBeenCalled();
     const storage = callbacks.get('storage')!;
-    storage({ key: 'arca.hypersnap.session-change', newValue: JSON.stringify({ id: 'a'.repeat(32) }) } as StorageEvent);
-    storage({ key: 'arca.hypersnap.session-change', newValue: JSON.stringify({ id: 'a'.repeat(32) }) } as StorageEvent);
+    storage({ key: 'arca.hypersnap.session-change', newValue: JSON.stringify({ id: 'a'.repeat(32), kind: 'vault' }) } as StorageEvent);
+    storage({ key: 'arca.hypersnap.session-change', newValue: JSON.stringify({ id: 'a'.repeat(32), kind: 'vault' }) } as StorageEvent);
+    storage({ key: 'arca.hypersnap.session-change', newValue: JSON.stringify({ id: 'b'.repeat(32), kind: 'sign-out' }) } as StorageEvent);
     storage({ key: 'arca.hypersnap.session-change', newValue: JSON.stringify({ token: 'not-an-event-id' }) } as StorageEvent);
-    expect(changed).toHaveBeenCalledOnce();
+    storage({ key: 'arca.hypersnap.session-change', newValue: JSON.stringify({ id: 'c'.repeat(32), kind: 'unknown' }) } as StorageEvent);
+    storage({ key: 'arca.hypersnap.session-change', newValue: JSON.stringify({ id: 'd'.repeat(32), kind: 'vault', secret: 'not-allowed' }) } as StorageEvent);
+    expect(changed.mock.calls).toEqual([['vault'], ['sign-out']]);
     unsubscribe();
   });
 });

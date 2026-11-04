@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { getCast, getCastReactionPeople, getChannelMembers, getChannels, getConversation, getFeed, getFollowStatus, getInfo, getProfileFeed, getReactionStatus, getSuggestedUsers, getUser, searchCasts, searchUsers, type Cast, type FeedResponse, type User } from '@opencaster/client-core/api';
-import type { WalletSession } from './lib/auth';
+import { deleteSavedSession, type WalletSession } from './lib/auth';
 import { BOOKMARK_STORAGE_KEY, LEGACY_BOOKMARK_STORAGE_KEY } from './lib/bookmarks';
 import { contentPreferencesKey, emptyContentPreferences, readContentPreferences } from './lib/contentPreferences';
 import { FULL_CLIENT_SCOPES } from '@opencaster/client-core/pairing';
@@ -128,6 +128,17 @@ describe('isolated familiar-client App integration', () => {
     for (const value of [alice, bob]) {
       expect(value.cast).not.toHaveBeenCalled(); expect(value.react).not.toHaveBeenCalled(); expect(value.follow).not.toHaveBeenCalled();
     }
+  });
+
+  it('ends the active session and closes device settings when saved-key removal fails', async () => {
+    const alice = session(10, '1');
+    await start(); await connect(alice);
+    vi.mocked(deleteSavedSession).mockRejectedValueOnce(new Error('IndexedDB unavailable.'));
+    await signOut();
+    expect(alice.dispose).toHaveBeenCalledOnce();
+    expect(deleteSavedSession).toHaveBeenCalledWith(alice.publicKey, { notify: false });
+    expect(container.textContent).toContain('Your active session has ended, but the saved key could not be removed.');
+    expect(button('Sign out isolated wallet')).toBeUndefined();
   });
 
   it('keeps tab-only muted authors in memory through account switches when preference storage fails', async () => {

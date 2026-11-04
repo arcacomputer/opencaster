@@ -248,9 +248,9 @@ export async function getSavedSessionMethod(publicKey?: string): Promise<SavedSe
   if (publicKey && vault.metadata.publicKey !== publicKey) return undefined;
   return savedVaultMethod(vault);
 }
-export async function deleteSavedSession(publicKey?: string): Promise<void> {
+export async function deleteSavedSession(publicKey?: string, options: { notify?: boolean } = {}): Promise<void> {
   await deleteSavedVault(publicKey);
-  notifySessionChange();
+  if (options.notify !== false) notifySessionChange();
 }
 export async function unlockSavedSession(password: string, options: ConnectOptions & { origin?: string } = {}): Promise<WalletSession> {
   assertActive(options.signal);

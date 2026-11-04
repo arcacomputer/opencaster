@@ -688,17 +688,25 @@ export default function App() {
     return () => controller.abort();
   }, [conversationHash, refresh, postRefresh, castLink]);
 
+  function clearSignedOutAppState(expectedSession: WalletSession) {
+    if (currentSession.current && currentSession.current.publicKey !== expectedSession.publicKey) return false;
+    currentSession.current = null; setPublications(() => []); setDeviceSettings(false);
+    return true;
+  }
   function lockSession(expectedSession = session, revoked = false) {
     if (!expectedSession || currentSession.current?.publicKey !== expectedSession.publicKey) return;
     if (revoked) {
       expectedSession.dispose(); currentSession.current = null; setSession(null); setPublications(() => []); setDeviceSettings(false);
       return;
     }
-    void signOut(expectedSession).then(() => {
-      if (currentSession.current && currentSession.current.publicKey !== expectedSession.publicKey) return;
-      currentSession.current = null; setPublications(() => []); setDeviceSettings(false);
+    const pending = signOut(expectedSession);
+    clearSignedOutAppState(expectedSession);
+    void pending.then(() => {
+      if (!clearSignedOutAppState(expectedSession)) return;
       notify('Signed out of this browser. The saved key was removed; network authorization remains active until revoked.');
-    }).catch(error => notify(message(error)));
+    }).catch(error => {
+      if (clearSignedOutAppState(expectedSession)) notify(message(error));
+    });
   }
   function save(cast: Cast) {
     try {

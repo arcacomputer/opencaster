@@ -1,9 +1,10 @@
 export type SessionPersistence = 'remember' | 'tab';
+export type SessionChangeKind = 'vault' | 'sign-out';
 
 const PREFERENCE_KEY = 'arca.hypersnap.session-persistence';
 const CHANNEL_NAME = 'arca.hypersnap.session-changes';
 const STORAGE_EVENT_KEY = 'arca.hypersnap.session-change';
-const listeners = new Set<() => void>();
+const listeners = new Set<(kind: SessionChangeKind) => void>();
 const seenEvents = new Set<string>();
 let channel: BroadcastChannel | undefined;
 let storageListenerInstalled = false;
@@ -17,26 +18,31 @@ function randomEventId(): string {
   }
 }
 
-function notifyListeners(id: unknown): void {
-  if (typeof id !== 'string' || !/^[0-9a-f]{32}$/.test(id) || seenEvents.has(id)) return;
-  seenEvents.add(id);
+function sessionChange(value: unknown): { id: string; kind: SessionChangeKind } | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length !== 2) return undefined;
+  const { id, kind } = value as Record<string, unknown>;
+  if (typeof id !== 'string' || !/^[0-9a-f]{32}$/.test(id) || (kind !== 'vault' && kind !== 'sign-out')) return undefined;
+  return { id, kind };
+}
+
+function notifyListeners(value: unknown): void {
+  const change = sessionChange(value);
+  if (!change || seenEvents.has(change.id)) return;
+  seenEvents.add(change.id);
   if (seenEvents.size > 64) seenEvents.delete(seenEvents.values().next().value!);
   for (const listener of listeners) {
-    try { listener(); } catch { /* One subscriber must not block other tabs' listeners. */ }
+    try { listener(change.kind); } catch { /* One subscriber must not block other tabs' listeners. */ }
   }
 }
 
 function receiveBroadcast(event: MessageEvent): void {
-  const value: unknown = event.data;
-  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length !== 1 || !('id' in value)) return;
-  notifyListeners(value.id);
+  notifyListeners(event.data);
 }
 
 function receiveStorage(event: StorageEvent): void {
   if (event.key !== STORAGE_EVENT_KEY || !event.newValue) return;
   try {
-    const value: unknown = JSON.parse(event.newValue);
-    if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 1 && 'id' in value) notifyListeners(value.id);
+    notifyListeners(JSON.parse(event.newValue) as unknown);
   } catch { /* Ignore unrelated or malformed storage events. */ }
 }
 
@@ -72,19 +78,21 @@ export function writeSessionPersistence(mode: SessionPersistence): void {
   catch { throw new Error('Could not save this session preference in browser storage. Check your browser storage settings and try again.'); }
 }
 
-export function subscribeSessionChanges(listener: () => void): () => void {
+export function subscribeSessionChanges(listener: (kind: SessionChangeKind) => void): () => void {
   listeners.add(listener);
   openChannel();
   installStorageListener();
   return () => { listeners.delete(listener); };
 }
 
-export function notifySessionChange(): void {
+export function notifySessionChange(kind: SessionChangeKind = 'vault'): void {
+  if (kind !== 'vault' && kind !== 'sign-out') return;
   const id = randomEventId();
-  try { openChannel()?.postMessage({ id }); }
+  const change = { id, kind };
+  try { openChannel()?.postMessage(change); }
   catch { /* The storage event remains available when BroadcastChannel is denied. */ }
   try {
-    globalThis.localStorage.setItem(STORAGE_EVENT_KEY, JSON.stringify({ id }));
+    globalThis.localStorage.setItem(STORAGE_EVENT_KEY, JSON.stringify(change));
     globalThis.localStorage.removeItem(STORAGE_EVENT_KEY);
   } catch { /* BroadcastChannel remains available when local storage is denied. */ }
 }

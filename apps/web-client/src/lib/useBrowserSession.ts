@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react';
 import type { WalletSession } from './auth';
-import { readSessionPersistence, subscribeSessionChanges } from './sessionPersistence';
+import { notifySessionChange, readSessionPersistence, subscribeSessionChanges, type SessionChangeKind } from './sessionPersistence';
 
 export function useBrowserSession() {
   const [session, updateSession] = useState<WalletSession | null>(null);
@@ -53,10 +53,19 @@ export function useBrowserSession() {
     }
   }, []);
 
+  const handleSessionChange = useCallback((kind: SessionChangeKind) => {
+    if (kind === 'sign-out') {
+      active.current?.dispose();
+      setSession(null);
+      return;
+    }
+    void retryRestore();
+  }, [retryRestore, setSession]);
+
   useEffect(() => {
     mounted.current = true;
     void retryRestore();
-    const unsubscribe = subscribeSessionChanges(() => { void retryRestore(); });
+    const unsubscribe = subscribeSessionChanges(handleSessionChange);
     return () => {
       mounted.current = false;
       generation.current += 1;
@@ -65,17 +74,19 @@ export function useBrowserSession() {
       active.current?.dispose();
       active.current = null;
     };
-  }, [retryRestore]);
+  }, [handleSessionChange, retryRestore]);
 
   const signOut = useCallback(async (expected: WalletSession) => {
     if (active.current?.publicKey !== expected.publicKey) return;
-    generation.current += 1;
-    controller.current?.abort();
-    const { deleteSavedSession } = await import('./auth');
-    await deleteSavedSession(expected.publicKey);
-    if (active.current?.publicKey !== expected.publicKey) return;
     expected.dispose();
     setSession(null);
+    notifySessionChange('sign-out');
+    try {
+      const { deleteSavedSession } = await import('./auth');
+      await deleteSavedSession(expected.publicKey, { notify: false });
+    } catch {
+      throw new Error('Your active session has ended, but the saved key could not be removed. Clear this site’s data before leaving this shared browser.');
+    }
   }, [setSession]);
 
   return { session, setSession, restoring, restoreError, retryRestore, signOut };

@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { ApiError, getCast, getChannels, getConversation, getFeed, getFollowStatus, getInfo, getProfileFeed, getReactionStatus, getSuggestedUsers, getChannelMembers, getCastQuotes, getUser, resolveCastAlias, searchCasts, searchUsers, type Cast, type FeedResponse, type User } from '@opencaster/client-core/api';
-import type { WalletSession } from './lib/auth';
+import { deleteSavedSession, type WalletSession } from './lib/auth';
 import { FULL_CLIENT_SCOPES } from '@opencaster/client-core/pairing';
 import { encodeFeed, type FeedDefinition } from '@opencaster/client-core/customFeeds';
 import { readCustomFeed } from './lib/customFeedReader';
@@ -230,6 +230,19 @@ describe('publishing feedback in the application', () => {
     await connect(session(11, '2')); await click(button('Discover'));
     await act(async () => receipt.resolve({ hash: published.hash }));
     expect(pending()).toBeNull(); expect(base().querySelector('.feed')?.textContent).not.toContain(published.text);
+  });
+
+  it('clears pending publication state when saved-key removal fails on sign-out', async () => {
+    const account = session(); const receipt = deferred<{ hash: string }>(); vi.mocked(account.cast).mockReturnValue(receipt.promise);
+    await start(); await connect(account); await type(published.text); await click(button('Cast', container.querySelector('.home-composer')!));
+    expect(pending()).not.toBeNull();
+    vi.mocked(deleteSavedSession).mockRejectedValueOnce(new Error('IndexedDB unavailable.'));
+    await click(button('My profile')); await settle(); await click(button('Sign out'));
+    expect(account.dispose).toHaveBeenCalledOnce();
+    expect(pending()).toBeNull();
+    expect(container.querySelector('.toast')?.textContent).toContain('Your active session has ended, but the saved key could not be removed.');
+    await act(async () => receipt.resolve({ hash: published.hash }));
+    expect(pending()).toBeNull();
   });
 
   it('shows a reply in its conversation and own Replies tab without injecting it into unrelated feeds or threads', async () => {
