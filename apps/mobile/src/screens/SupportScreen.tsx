@@ -44,7 +44,7 @@ export function SupportScreen({ route }: Props) {
       await Linking.openURL(draft.url);
       setMessage('Email app requested. You must send the email there. OpenCaster cannot confirm that it was sent or received.');
     } catch {
-      setMessage('Could not open an email app. Nothing was sent by OpenCaster. Select and copy the address, subject and message below into an email app or webmail.');
+      setMessage('Could not open an email app. Nothing was sent by OpenCaster. Select and copy the address, subject and message on this screen into an email app or webmail.');
     } finally {
       opening.current = false;
       setBusy(false);

@@ -75,6 +75,7 @@ it('preserves the reviewed email and provides manual fallback when handoff fails
   await act(async () => button('Review email').click());
   await act(async () => button('Open email draft').click());
   expect(container.textContent).toContain('Could not open an email app. Nothing was sent by OpenCaster.');
+  expect(container.textContent).toContain('Select and copy the address, subject and message on this screen');
   expect(container.textContent).toContain('Please review this user.');
   expect(container.textContent).toContain('Subject: OpenCaster user report');
   expect(button('Edit draft').disabled).toBe(false);
