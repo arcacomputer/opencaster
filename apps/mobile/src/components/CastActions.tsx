@@ -7,7 +7,7 @@ import { usePublicRead } from '../lib/usePublicRead';
 import { palette } from '../theme';
 import { ActionButton, LoadingMessage, ScreenMessage } from './Primitives';
 
-export function CastActions({ target, onReply }: { target: CastTarget; onReply: () => void }) {
+export function CastActions({ target, onReply, intent, onDeviceAccess }: { target: CastTarget; onReply: () => void; intent?: ReactionKind; onDeviceAccess: () => void }) {
   const { authorization, snapshot } = useAuthorization();
   const fid = snapshot.request?.fid;
   const read = useCallback(async (signal: AbortSignal) => {
@@ -28,11 +28,18 @@ export function CastActions({ target, onReply }: { target: CastTarget; onReply: 
   );
   return (
     <View style={styles.panel}>
-      <Text style={styles.title}>Actions on the selected cast</Text>
-      <ActionButton label="Reply to this cast" onPress={onReply} disabled={disabled} />
+      <Text style={styles.title}>{snapshot.authorized ? 'Review your public reaction' : 'Connect to join the conversation'}</Text>
+      {!snapshot.authorized ? <ActionButton label="Connect your account" onPress={onDeviceAccess} /> : null}
+      {snapshot.action?.status === 'pending' ? <>
+        <Text style={styles.detail}>A submission is unresolved. New actions are blocked; checking status never resubmits.</Text>
+        <ActionButton label="Check submission status" onPress={() => void authorization.checkAction()} disabled={snapshot.busy} />
+      </> : null}
+      {snapshot.error ? <Text accessibilityRole="alert" style={styles.detail}>{snapshot.error}</Text> : null}
+      {snapshot.notice ? <Text accessibilityLiveRegion="polite" style={styles.detail}>{snapshot.notice}</Text> : null}
+      {!intent ? <ActionButton label="Reply" onPress={onReply} disabled={disabled} /> : null}
       {state.phase === 'loading' ? <LoadingMessage label="Checking your reaction state…" /> : null}
       {state.phase === 'error' ? <ScreenMessage title="Reaction state unavailable" detail={state.error} action={<ActionButton label="Retry reaction status" onPress={state.retry} disabled={snapshot.busy} secondary />} /> : null}
-      {state.phase === 'ready' ? (['like', 'recast'] as const).map(reaction => (
+      {state.phase === 'ready' ? (intent ? [intent] : ['like', 'recast'] as const).map(reaction => (
         <ActionButton key={reaction} label={state.value[reaction] ? `Remove ${reaction}` : `Add ${reaction}`}
           disabled={disabled} secondary onPress={() => confirm(reaction, !state.value[reaction])} />
       )) : null}
@@ -43,4 +50,5 @@ export function CastActions({ target, onReply }: { target: CastTarget; onReply: 
 const styles = StyleSheet.create({
   panel: { gap: 10, padding: 18 },
   title: { color: palette.text, fontWeight: '700', fontSize: 15 },
+  detail: { color: palette.muted, fontSize: 14, lineHeight: 21 },
 });

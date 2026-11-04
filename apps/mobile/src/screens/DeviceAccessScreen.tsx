@@ -283,7 +283,7 @@ export function DeviceAccessScreen({ navigation }: Props) {
             <Text style={styles.body}>The imported text is public only and was retained while the app locked. Unlock explicitly and submit only against the current request.</Text>
           </View>
         ) : null}
-        <ActionButton label="Back to public home" onPress={() => navigation.navigate('Home')} secondary />
+        <ActionButton label="Back to public home" onPress={() => navigation.navigate('Home', { screen: 'Feed' })} secondary />
       </ScrollView>
     </SafeAreaView>
   );

@@ -4,8 +4,9 @@ import { StatusBar, StyleSheet } from 'react-native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LocalContentProvider } from './src/lib/LocalContentProvider';
-import { HomeScreen } from './src/screens/HomeScreen';
-import { LookupScreen } from './src/screens/LookupScreen';
+import { MainTabs } from './src/MainTabs';
+import { IconButton } from './src/components/IconButton';
+import { StackBackButton } from './src/components/StackBackButton';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { ConversationScreen } from './src/screens/ConversationScreen';
 import { DeviceAccessScreen } from './src/screens/DeviceAccessScreen';
@@ -40,18 +41,19 @@ export default function App() {
             >
               <Stack.Navigator
                 initialRouteName="Home"
-                screenOptions={{
+                screenOptions={({ navigation }) => ({
                   contentStyle: styles.screen,
                   headerStyle: styles.header,
                   headerTintColor: palette.cyan,
                   headerTitleStyle: styles.headerTitle,
-                  headerBackTitle: 'Back',
-                }}
+                  headerBackVisible: false,
+                  headerLeft: () => <StackBackButton navigation={navigation} />,
+                  headerShadowVisible: false,
+                })}
               >
-                <Stack.Screen component={HomeScreen} name="Home" options={{ title: 'OpenCaster' }} />
-                <Stack.Screen component={LookupScreen} name="Lookup" options={{ title: 'Find a person' }} />
+                <Stack.Screen component={MainTabs} name="Home" options={{ headerShown: false }} />
                 <Stack.Screen component={DeviceAccessScreen} name="DeviceAccess" options={{ title: 'Device access' }} />
-                <Stack.Screen component={ComposerScreen} name="Compose" options={{ title: 'Compose' }} />
+                <Stack.Screen component={ComposerScreen} name="Compose" options={({ navigation, route }) => ({ title: route.params?.parent ? 'Reply' : 'New post', presentation: 'modal', headerLeft: () => <IconButton icon="x" label="Close composer" onPress={() => navigation.goBack()} /> })} />
                 <Stack.Screen component={ProfileScreen} name="Profile" options={{ title: 'Public profile' }} />
                 <Stack.Screen component={ConversationScreen} name="Conversation" options={{ title: 'Conversation' }} />
                 <Stack.Screen component={SafetyScreen} name="Safety" options={{ title: 'Safety and data' }} />

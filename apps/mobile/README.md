@@ -235,6 +235,20 @@ build has been started for this milestone.
 - Changed social-action code still requires its own Android/iOS native fixture
   runtime gate. Prior authorization validation is not proof of changed code.
 
+## Navigation and post controls
+
+The native app opens into **Home**, with **Search** (exact username/FID lookup)
+and **You** tabs. You holds account access, local safety/data controls, support
+and the detailed preview disclosures. Home keeps a public trending feed rather
+than implying a personalized Following feed, notifications or messaging.
+
+Post rows expose reply, recast and like affordances. Reactions load current
+state only when their sheet is opened and retain explicit public-write
+confirmation. Locked devices are directed to account access. The overflow menu
+contains email reporting and device-local hiding; neither is network blocking.
+Long text can be expanded. The compose button opens a modal with a discard-draft
+confirmation; text limits, review and uncertain-submission recovery are unchanged.
+
 ## Submission recovery
 
 A bounded public receipt (hash, timestamp and target/intent, not draft text) is
