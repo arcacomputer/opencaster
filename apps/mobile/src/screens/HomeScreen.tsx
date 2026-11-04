@@ -141,6 +141,7 @@ export function HomeScreen({ navigation }: Props) {
         renderItem={({ item }) => (
           <CastCard
             cast={item}
+            onReport={() => navigation.push('Support', { kind: 'post', fid: item.author.fid, hash: item.hash })}
             onAuthorPress={fid => navigation.navigate('Profile', { fid })}
             onThreadPress={hash => navigation.navigate('Conversation', { hash })}
           />

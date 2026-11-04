@@ -51,6 +51,20 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Wallets',
   },
   {
+    id: 'mobile-email-reports-and-support',
+    date: '2026-11-04',
+    timestamp: '2026-11-04T11:06:28+00:00',
+    title: 'Review mobile reports and support emails before sending',
+    summary: 'Mobile users can review email drafts for public posts, users or support before handing them to the configured operator. OpenCaster does not send email or confirm delivery; this is not network enforcement or store-ready moderation, and Android and iOS runtime validation remains pending.',
+    changes: [
+      'Prepare bounded, fixed-recipient drafts for post reports, user reports and general support, with public identifiers and the user-provided description available for review.',
+      'Open the user’s email app only after explicit review; selectable address, subject and message support manual copying into webmail if handoff fails or no app is configured.',
+      'Do not claim delivery, network blocking, moderation enforcement or store readiness; Android and iOS runtime validation remains pending.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/9816b22266d48d7010bdd67953481e578b17e9fd',
+    tag: 'Social',
+  },
+  {
     id: 'mobile-native-icons-and-minimal-permissions',
     date: '2026-11-02',
     timestamp: '2026-11-02T13:34:00+00:00',

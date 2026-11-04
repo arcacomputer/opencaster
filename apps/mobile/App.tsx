@@ -11,6 +11,7 @@ import { ConversationScreen } from './src/screens/ConversationScreen';
 import { DeviceAccessScreen } from './src/screens/DeviceAccessScreen';
 import { ComposerScreen } from './src/screens/ComposerScreen';
 import { SafetyScreen } from './src/screens/SafetyScreen';
+import { SupportScreen } from './src/screens/SupportScreen';
 import type { RootStackParamList } from './src/navigation';
 import { palette } from './src/theme';
 import { AuthorizationProvider } from './src/lib/AuthorizationProvider';
@@ -54,6 +55,7 @@ export default function App() {
                 <Stack.Screen component={ProfileScreen} name="Profile" options={{ title: 'Public profile' }} />
                 <Stack.Screen component={ConversationScreen} name="Conversation" options={{ title: 'Conversation' }} />
                 <Stack.Screen component={SafetyScreen} name="Safety" options={{ title: 'Safety and data' }} />
+                <Stack.Screen component={SupportScreen} name="Support" options={{ title: 'Reports and support' }} />
               </Stack.Navigator>
             </NavigationContainer>
           </KeyboardProvider>

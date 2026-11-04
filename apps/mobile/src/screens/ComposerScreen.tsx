@@ -85,7 +85,7 @@ export function ComposerScreen({ navigation, route }: Props) {
           <Text style={styles.detail}>Public Hypersnap text, up to {MAX_CAST_BYTES} UTF-8 bytes. No attachments or tagged mentions in this increment. Drafts stay on this screen only; leaving it may discard them.</Text>
           {parentState.phase === 'loading' ? <LoadingMessage label="Loading reply target…" /> : null}
           {parentState.phase === 'error' ? <ScreenMessage title="Reply target unavailable" detail={parentState.error} action={<ActionButton label="Retry reply target" onPress={parentState.retry} />} /> : null}
-          {parentState.phase === 'ready' ? <CastCard cast={parentState.value} onAuthorPress={fid => navigation.navigate('Profile', { fid })} onThreadPress={hash => navigation.navigate('Conversation', { hash })} /> : null}
+          {parentState.phase === 'ready' ? <CastCard cast={parentState.value} onReport={() => navigation.push('Support', { kind: 'post', fid: parentState.value.author.fid, hash: parentState.value.hash })} onAuthorPress={fid => navigation.navigate('Profile', { fid })} onThreadPress={hash => navigation.navigate('Conversation', { hash })} /> : null}
           <TextInput accessibilityLabel={parent ? 'Reply text' : 'Post text'} multiline value={text} onChangeText={setText}
             editable={!snapshot.busy && snapshot.action?.status !== 'pending'} placeholder="What would you like to share?" placeholderTextColor={palette.muted}
             style={styles.input} textAlignVertical="top" />
