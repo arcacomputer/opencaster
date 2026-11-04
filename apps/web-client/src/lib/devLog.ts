@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'safe-sign-out-storage-failures',
+    date: '2026-11-04',
+    timestamp: '2026-11-04T11:33:29Z',
+    title: 'Sign out safely when browser storage fails',
+    summary: 'Active sessions end across receiving tabs before saved-key cleanup, and storage failures no longer hide the limits of sign-out or tab-only mode.',
+    changes: [
+      'Send typed sign-out invalidations before attempting saved-key deletion, so tabs receiving them clear active credentials without trying to restore a key that may still exist.',
+      'Persist tab-only first and keep the current tab usable if saved-key removal fails. Warn that the encrypted key may remain and advise clearing this site’s data before leaving a shared browser profile.',
+      'Avoid invalidating other tabs when a guest only chooses remembered sign-in. Cross-tab messages carry only a random invalidation ID and kind, never credentials.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/209e666336fb49763c16abb4b228cecd5e485209',
+    tag: 'Reliability',
+  },
+  {
     id: 'remember-browser-sessions',
     date: '2026-11-04',
     timestamp: '2026-11-04T11:20:10Z',
