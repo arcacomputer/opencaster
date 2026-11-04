@@ -26,14 +26,23 @@ export default function SessionSettings({ session }: { session: WalletSession | 
     controller.current = new AbortController();
     setBusy(true); setError(''); setNotice('');
     try {
-      if (session) {
-        if (next === 'remember') await session.rememberOnDevice({ signal: controller.current.signal });
-        else await deleteSavedSession(session.publicKey);
-      } else if (next === 'tab') await deleteSavedSession();
-      if (run !== generation.current) return;
       writeSessionPersistence(next);
-      notifySessionChange();
-      setMode(next); setRemembered(next === 'remember' && !!session);
+      setMode(next);
+      if (next === 'tab') {
+        notifySessionChange('sign-out');
+        try { await deleteSavedSession(session?.publicKey, { notify: false }); }
+        catch {
+          if (run === generation.current) setError('Tab-only is selected, so automatic sign-in is disabled, but the saved key could not be removed. Clear this site’s data before leaving this shared browser profile.');
+          return;
+        }
+        if (run !== generation.current) return;
+        setRemembered(false);
+      } else if (session) {
+        setRemembered(false);
+        await session.rememberOnDevice({ signal: controller.current.signal });
+      }
+      if (run !== generation.current) return;
+      setRemembered(next === 'remember' && !!session);
       setNotice(next === 'remember'
         ? session ? 'This account will stay signed in after you close and reopen your browser.' : 'Your next sign-in will be remembered on this browser.'
         : 'Sessions are now tab-only. Closing or reloading the tab ends its session. Other tabs have been signed out.');
