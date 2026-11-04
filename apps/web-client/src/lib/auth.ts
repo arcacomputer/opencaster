@@ -3,8 +3,9 @@ import { ApiError, clearReactionStatusCache, getCast, getFollowStatus, getReacti
 import { PAIRING_SCOPES, PAIRING_TTL_SECONDS, validatePairingRequest, validatePairingScopes, verifyPairingApproval, validateRevocationRequest, verifyRevocationApproval, type PairingApproval, type PairingRequest, type RevocationRequest, type RevocationApproval } from '@opencaster/client-core/pairing';
 import { buildSignedMessage, CastType, farcasterTimestamp, MessageType, ReactionType, SignatureScheme, type MessageDataInput } from '@opencaster/protocol/messageBuilder';
 import { abiEncodeSignedKeyRequestMetadata, bytesToHex, hexToBytes } from '@opencaster/protocol/signedKeyRequest';
-import { compareAndSwapSavedVault, decryptSignerVault, decryptSignerVaultWithPasskey, deleteSavedVault, encryptSignerVault, encryptSignerVaultWithPasskey, passkeyVault, readSavedVault, savedVaultMethod, validateSignerVault, type SavedSessionMethod, type StoredSignerVault, type VaultMetadata } from './vault';
+import { compareAndSwapSavedVault, decryptSignerVault, decryptSignerVaultForBrowser, decryptSignerVaultWithPasskey, deleteSavedVault, encryptSignerVault, encryptSignerVaultForBrowser, encryptSignerVaultWithPasskey, passkeyVault, readSavedVault, savedVaultMethod, validateSignerVault, type SavedSessionMethod, type StoredSignerVault, type VaultMetadata } from './vault';
 import { enrollPasskey, evaluatePasskey } from './passkey';
+import { notifySessionChange } from './sessionPersistence';
 import { profileChanges, type ProfileField, type ProfilePatch, type ProfileUpdateResult } from './social';
 import { createMediaUploadGrant, type MediaUploadInput, type MediaUploadGrant } from '@opencaster/client-core/media';
 import { APP_ORIGIN } from '@opencaster/client-core/appOrigins';
@@ -58,6 +59,8 @@ export interface WalletSession {
   saveToDevice(password: string, options?: ConnectOptions): Promise<void>;
   /** Explicit local wrapping only; this never grants new network permissions. */
   saveToDeviceWithPasskey(options?: ConnectOptions): Promise<void>;
+  /** Remember this existing signer in the current browser profile without a prompt. */
+  rememberOnDevice(options?: ConnectOptions): Promise<void>;
   /** Offline custody approval works even when the node omits app nonces. */
   prepareRevocation(options?: ConnectOptions): Promise<PendingRevocation>;
   /** Self-revoke on Hypersnap, confirm removal, then clear local signer/vault. */
@@ -245,14 +248,17 @@ export async function getSavedSessionMethod(publicKey?: string): Promise<SavedSe
   if (publicKey && vault.metadata.publicKey !== publicKey) return undefined;
   return savedVaultMethod(vault);
 }
-export async function deleteSavedSession(publicKey?: string): Promise<void> {
+export async function deleteSavedSession(publicKey?: string, options: { notify?: boolean } = {}): Promise<void> {
   await deleteSavedVault(publicKey);
+  if (options.notify !== false) notifySessionChange();
 }
 export async function unlockSavedSession(password: string, options: ConnectOptions & { origin?: string } = {}): Promise<WalletSession> {
   assertActive(options.signal);
   const saved = await readSavedVault();
   if (saved === undefined) throw new Error('There is no saved device signer. Authorize this device first.');
-  if (validateSignerVault(saved).version !== 1) throw new Error('This device vault uses a passkey. Choose passkey unlock.');
+  const vault = validateSignerVault(saved);
+  if (vault.version === 3) throw new Error('This device vault uses browser-profile protection. No password is required.');
+  if (vault.version !== 1) throw new Error('This device vault uses a passkey. Choose passkey unlock.');
   const origin = options.origin ?? globalThis.location?.origin;
   if (!origin) throw new Error('Could not determine this website’s origin.');
   const { privateKey, metadata } = await decryptSignerVault(saved, password, clientOrigin(origin));
@@ -263,6 +269,37 @@ export async function unlockSavedSession(password: string, options: ConnectOptio
     assertActive(options.signal);
     if (user.fid !== metadata.fid || custodyAddress(user) !== metadata.custodyAddress) throw new Error('Account custody changed. Forget this vault and authorize a new device signer.');
     if (!usableSigner(signerIn(registry, metadata.publicKey), metadata.fid, metadata.scopes)) throw new Error('This device signer is expired or revoked. Forget this vault and authorize the device again.');
+    const session = createSession(user, privateKey, metadata, true);
+    transferred = true;
+    return session;
+  } finally { if (!transferred) privateKey.fill(0); }
+}
+
+export async function restoreRememberedSession(options: ConnectOptions & { origin?: string } = {}): Promise<WalletSession | null> {
+  assertActive(options.signal);
+  const saved = await readSavedVault();
+  assertActive(options.signal);
+  if (saved === undefined) return null;
+  const vault = validateSignerVault(saved);
+  if (vault.version !== 3) return null;
+  const origin = options.origin ?? globalThis.location?.origin;
+  if (!origin) throw new Error('Could not determine this website’s origin.');
+  const { privateKey, metadata } = await decryptSignerVaultForBrowser(vault, clientOrigin(origin));
+  let transferred = false;
+  try {
+    assertActive(options.signal);
+    options.onProgress?.('Checking current custody and remembered signer authorization…');
+    const [user, registry] = await Promise.all([
+      getUser({ fid: metadata.fid }, options.signal),
+      getSigners(metadata.fid, options.signal),
+    ]);
+    assertActive(options.signal);
+    if (user.fid !== metadata.fid || custodyAddress(user) !== metadata.custodyAddress) throw new Error('Account custody changed. Reconnect with the current custody wallet.');
+    if (!usableSigner(signerIn(registry, metadata.publicKey), metadata.fid, metadata.scopes)) throw new Error('This device signer is expired or revoked. Forget this vault and authorize the device again.');
+    const current = await readSavedVault();
+    assertActive(options.signal);
+    const latest = current === undefined ? undefined : validateSignerVault(current);
+    if (latest?.version !== 3 || latest.wrapperId !== vault.wrapperId) throw new Error('The remembered device changed while it was being restored. Try again.');
     const session = createSession(user, privateKey, metadata, true);
     transferred = true;
     return session;
@@ -351,6 +388,7 @@ function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetada
           persisted = !restored || previous?.metadata.publicKey === metadata.publicKey;
           throw cause;
         }
+        notifySessionChange();
       } catch (cause) {
         controller.abort();
         throw cause;
@@ -643,6 +681,15 @@ function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetada
           assertSession(); assertActive(signal);
           return vault;
         } finally { secret?.fill(0); }
+      }, options);
+    },
+    async rememberOnDevice(options = {}) {
+      await saveWrappedVault(async signal => {
+        const vault = await encryptSignerVaultForBrowser(privateKey, metadata);
+        options.onProgress?.('Checking current custody and device authorization before remembering this browser…');
+        await assertAuthorized(MessageType.CAST_ADD, signal);
+        assertSession(); assertActive(signal);
+        return vault;
       }, options);
     },
     async prepareRevocation(options = {}) {

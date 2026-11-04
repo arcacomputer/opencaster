@@ -3,20 +3,21 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import ConnectAccount, { DeviceSettings } from './ConnectAccount';
-import { deleteSavedSession, getSavedSessionMethod, preparePairing, unlockSavedSession, unlockSavedSessionWithPasskey, type PendingPairing, type PendingRevocation, type WalletSession } from '../lib/auth';
+import { deleteSavedSession, getSavedSessionMethod, preparePairing, restoreRememberedSession, unlockSavedSession, unlockSavedSessionWithPasskey, type PendingPairing, type PendingRevocation, type WalletSession } from '../lib/auth';
 import { approvePairingWithWallet, approveRevocationWithWallet, discoverInjectedWallets, type InjectedWallet } from '../lib/wallet';
 import type { PairingApproval, PairingRequest, RevocationApproval, RevocationRequest } from '@opencaster/client-core/pairing';
 import { ApiError, getUser, type User } from '@opencaster/client-core/api';
+import { writeSessionPersistence } from '../lib/sessionPersistence';
 import { passkeysAvailable } from '../lib/passkey';
 
-vi.mock('../lib/auth', () => ({ deleteSavedSession: vi.fn(), getSavedSessionMethod: vi.fn(), preparePairing: vi.fn(), unlockSavedSession: vi.fn(), unlockSavedSessionWithPasskey: vi.fn() }));
+vi.mock('../lib/auth', () => ({ deleteSavedSession: vi.fn(), getSavedSessionMethod: vi.fn(), preparePairing: vi.fn(), restoreRememberedSession: vi.fn(), unlockSavedSession: vi.fn(), unlockSavedSessionWithPasskey: vi.fn() }));
 vi.mock('../lib/wallet', () => ({ approvePairingWithWallet: vi.fn(), approveRevocationWithWallet: vi.fn(), discoverInjectedWallets: vi.fn() }));
 vi.mock('../lib/passkey', () => ({ passkeysAvailable: vi.fn() }));
 vi.mock('@opencaster/client-core/api', async original => ({ ...await original<typeof import('@opencaster/client-core/api')>(), getUser: vi.fn() }));
 vi.mock('@opencaster/client-core/pairing', async original => ({ ...await original<typeof import('@opencaster/client-core/pairing')>(), validatePairingApproval: (value: unknown) => value, verifyPairingApproval: vi.fn(), hashPairingRequest: () => 'synthetic-public-checksum', validateRevocationApproval: (value: unknown) => value, verifyRevocationApproval: vi.fn(), hashRevocationRequest: () => 'synthetic-revocation-checksum' }));
 
 const user: User = { fid: 10, username: 'isolated', custody_address: `0x${'1'.repeat(40)}`, profile: { bio: { text: '' } }, follower_count: 0, following_count: 0 };
-function makeSession(): WalletSession { return { fid: user.fid, user, custodyAddress: user.custody_address, publicKey: 'a'.repeat(64), scopes: [1, 3, 4], saveToDevice: vi.fn().mockResolvedValue(undefined), saveToDeviceWithPasskey: vi.fn().mockResolvedValue(undefined), dispose: vi.fn(), prepareRevocation: vi.fn() } as unknown as WalletSession; }
+function makeSession(): WalletSession { return { fid: user.fid, user, custodyAddress: user.custody_address, publicKey: 'a'.repeat(64), scopes: [1, 3, 4], rememberOnDevice: vi.fn().mockResolvedValue(undefined), saveToDevice: vi.fn().mockResolvedValue(undefined), saveToDeviceWithPasskey: vi.fn().mockResolvedValue(undefined), dispose: vi.fn(), prepareRevocation: vi.fn() } as unknown as WalletSession; }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(value => { resolve = value; }); return { promise, resolve }; }
 let container: HTMLDivElement;
 let root: Root;
@@ -26,7 +27,7 @@ let walletApproval: PairingApproval;
 let onConnect: Mock<(session: WalletSession) => void>;
 let onClose: Mock<() => void>;
 beforeEach(() => {
-  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.resetAllMocks();
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.resetAllMocks(); localStorage.clear();
   vi.mocked(passkeysAvailable).mockReturnValue(true);
   vi.stubGlobal('isSecureContext', true); vi.stubGlobal('PublicKeyCredential', class {});
   Object.defineProperty(navigator, 'credentials', { configurable: true, value: { create: vi.fn(), get: vi.fn() } });
@@ -59,7 +60,7 @@ async function reviewAccount() { await click(button('Find my account')); await c
 async function approve({ remember = true } = {}) {
   await reviewAccount();
   await click(button('Connect Rainbow extension & approve'));
-  if (remember) await click(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+  if (!remember) writeSessionPersistence('tab');
   await click(button('Submit approved device key'));
 }
 
@@ -83,54 +84,61 @@ describe('explicit passkey device storage UI', () => {
     expect(onConnect).toHaveBeenCalledWith(session); expect(session.saveToDeviceWithPasskey).not.toHaveBeenCalled();
   });
 
-  it('waits for a separate save click after authorization instead of automatically creating a passkey', async () => {
+  it('remembers a new sign-in by default without a passkey or extra save step', async () => {
     await render(); await approve();
     expect(pending.complete).toHaveBeenCalledOnce();
-    expect(onConnect).not.toHaveBeenCalled(); expect(session.saveToDeviceWithPasskey).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('Hypersnap confirmed this device');
-    await click(button('Save with a passkey'));
-    expect(session.saveToDeviceWithPasskey).toHaveBeenCalledOnce(); expect(onConnect).toHaveBeenCalledWith(session);
+    expect(session.rememberOnDevice).toHaveBeenCalledOnce();
+    expect(onConnect).toHaveBeenCalledWith(session);
+    expect(session.saveToDeviceWithPasskey).not.toHaveBeenCalled();
     expect(session.saveToDevice).not.toHaveBeenCalled();
+    expect(container.querySelector('input[type="checkbox"]')).toBeNull();
   });
 
-  it('keeps new sign-in in memory when remembering the device was not selected', async () => {
+  it('keeps new sign-in in memory when tab-only was selected in settings', async () => {
     await render(); await approve({ remember: false });
-    expect(onConnect).toHaveBeenCalledWith(session); expect(session.saveToDeviceWithPasskey).not.toHaveBeenCalled(); expect(session.saveToDevice).not.toHaveBeenCalled();
+    expect(onConnect).toHaveBeenCalledWith(session);
+    expect(session.rememberOnDevice).not.toHaveBeenCalled();
   });
 
-  it('keeps the authorized session available after unsupported passkey encryption and requires an explicit password fallback', async () => {
-    vi.mocked(session.saveToDeviceWithPasskey).mockRejectedValue(new Error('This passkey does not support secure key encryption.'));
-    await render(); await approve(); await click(button('Save with a passkey'));
-    expect(onConnect).not.toHaveBeenCalled(); expect(session.dispose).not.toHaveBeenCalled(); expect(deleteSavedSession).not.toHaveBeenCalled(); expect(session.saveToDevice).not.toHaveBeenCalled();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('does not support');
-    await click(button('Use a password instead')); await fill('new-device-password', 'new secure password'); await fill('confirm-device-password', 'new secure password'); await click(button('Save with a password'));
-    expect(session.saveToDevice).toHaveBeenCalledWith('new secure password', expect.objectContaining({ signal: expect.any(AbortSignal) })); expect(onConnect).toHaveBeenCalledWith(session);
-  });
-
-  it('allows continuing in this tab after cancelled passkey creation without saving anything else', async () => {
-    vi.mocked(session.saveToDeviceWithPasskey).mockRejectedValue(new DOMException('Passkey creation cancelled.', 'NotAllowedError'));
-    await render(); await approve(); await click(button('Save with a passkey'));
-    await click(button('Continue for this tab without saving'));
-    expect(onConnect).toHaveBeenCalledWith(session); expect(session.saveToDevice).not.toHaveBeenCalled(); expect(deleteSavedSession).not.toHaveBeenCalled();
-  });
-
-  it('offers explicit password or tab choices when basic WebAuthn support is unavailable', async () => {
-    vi.mocked(passkeysAvailable).mockReturnValue(false);
+  it('retries storage without submitting another wallet authorization', async () => {
+    vi.mocked(session.rememberOnDevice).mockRejectedValueOnce(new Error('Device storage unavailable.'));
     await render(); await approve();
-    expect(button('Save with a passkey').disabled).toBe(true);
-    expect(container.textContent).toContain('Passkeys are unavailable in this browser');
-    expect(session.saveToDeviceWithPasskey).not.toHaveBeenCalled(); expect(session.saveToDevice).not.toHaveBeenCalled();
-    await click(button('Continue for this tab without saving')); expect(onConnect).toHaveBeenCalledWith(session);
+    expect(onConnect).not.toHaveBeenCalled();
+    expect(session.dispose).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('storage unavailable');
+    await click(button('Retry saving this session'));
+    expect(session.rememberOnDevice).toHaveBeenCalledTimes(2);
+    expect(pending.complete).toHaveBeenCalledOnce();
+    expect(onConnect).toHaveBeenCalledWith(session);
   });
 
-  it('cancels a pending passkey save when closed and rejects its late session handoff', async () => {
-    const saving = deferred<void>(); vi.mocked(session.saveToDeviceWithPasskey).mockReturnValue(saving.promise);
-    await render(); await approve(); await click(button('Save with a passkey'));
-    const options = vi.mocked(session.saveToDeviceWithPasskey).mock.calls[0][0]!;
+  it('offers an honest temporary session when browser storage fails', async () => {
+    vi.mocked(session.rememberOnDevice).mockRejectedValue(new Error('Device storage unavailable.'));
+    await render(); await approve();
+    await click(button('Continue for this tab without saving'));
+    expect(onConnect).toHaveBeenCalledWith(session);
+    expect(deleteSavedSession).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pending browser save when closed and rejects its late handoff', async () => {
+    const saving = deferred<void>(); vi.mocked(session.rememberOnDevice).mockReturnValue(saving.promise);
+    await render(); await approve();
+    const options = vi.mocked(session.rememberOnDevice).mock.calls[0][0]!;
     await click(container.querySelector<HTMLButtonElement>('button[aria-label="Cancel sign-in"]')!);
     expect(options.signal?.aborted).toBe(true); expect(onClose).toHaveBeenCalledOnce();
     await act(async () => saving.resolve());
     expect(onConnect).not.toHaveBeenCalled(); expect(session.dispose).toHaveBeenCalled();
+  });
+
+  it('continues an already remembered browser session without wallet or unlock prompts', async () => {
+    vi.mocked(getSavedSessionMethod).mockResolvedValue('browser');
+    vi.mocked(restoreRememberedSession).mockResolvedValue(session);
+    await render(); await click(button('Continue signed in'));
+    expect(restoreRememberedSession).toHaveBeenCalledOnce();
+    expect(onConnect).toHaveBeenCalledWith(session);
+    expect(preparePairing).not.toHaveBeenCalled();
+    expect(unlockSavedSessionWithPasskey).not.toHaveBeenCalled();
+    expect(container.querySelector('input[type="password"]')).toBeNull();
   });
 
   it('does not reconnect from a passkey unlock that finishes after the dialog was closed', async () => {
@@ -172,17 +180,6 @@ describe('explicit passkey device storage UI', () => {
     await act(async () => storage.resolve('password'));
     expect(container.textContent).toContain('Encrypted key saved with a passkey');
     expect(container.textContent).not.toContain('Encrypted key saved with a password');
-  });
-
-  it('aborts password saving when the authorization dialog closes and rejects the late session handoff', async () => {
-    const saving = deferred<void>(); vi.mocked(session.saveToDevice).mockReturnValue(saving.promise);
-    await render(); await approve(); await click(button('Use a password instead'));
-    await fill('new-device-password', 'new secure password'); await fill('confirm-device-password', 'new secure password'); await click(button('Save with a password'));
-    const options = vi.mocked(session.saveToDevice).mock.calls[0][1]!;
-    await click(container.querySelector<HTMLButtonElement>('button[aria-label="Cancel sign-in"]')!);
-    expect(options.signal?.aborted).toBe(true);
-    await act(async () => saving.resolve());
-    expect(onConnect).not.toHaveBeenCalled(); expect(session.dispose).toHaveBeenCalled();
   });
 
   it('aborts password saving when device settings closes while keeping the active session connected', async () => {
@@ -233,11 +230,11 @@ describe('explicit passkey device storage UI', () => {
     await render(<DeviceSettings session={replacement} onClose={onClose} onLock={onLock} notify={notify} />);
     expect(oldSignal?.aborted).toBe(true);
     expect(container.textContent).toContain('@replacement-device'); expect(container.textContent).toContain('Key held only in this tab');
-    expect(container.querySelector('#settings-device-password')).toBeNull(); expect(button('Lock').disabled).toBe(false); expect(button('Save with a passkey').disabled).toBe(false); expect(button('Revoke').disabled).toBe(false);
+    expect(container.querySelector('#settings-device-password')).toBeNull(); expect(button('Sign out').disabled).toBe(false); expect(button('Save with a passkey').disabled).toBe(false); expect(button('Revoke').disabled).toBe(false);
     await act(async () => saving.resolve());
     expect(notify).not.toHaveBeenCalled(); expect(container.textContent).not.toContain('Encrypted key saved with a passkey');
     expect(button('Save with a passkey').disabled).toBe(false);
-    await click(button('Lock')); expect(onLock).toHaveBeenCalledOnce();
+    await click(button('Sign out')); expect(onLock).toHaveBeenCalledOnce();
   });
 });
 

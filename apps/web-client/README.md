@@ -62,7 +62,7 @@ Every feature/fix release must include a new milestone; the [release checklist](
 
 Public links from `quorum.arca.computer` redirect to the same path and query on the new canonical domain. Legacy media URLs retain their content hash and existing R2 bucket. Legacy write requests return `409 site_moved` before reading a body or reaching Hypersnap, so signed bytes are never forwarded across an origin-changing redirect. Reopen the new site and reconnect your existing wallet.
 
-Saved device keys/passkeys and other local browser data are bound to the original origin and cannot transfer automatically. New-domain saving is optional and requires a fresh setup after connection. Protocol signing labels, device scopes, upstream endpoints and existing network authorizations are unchanged. The Worker service name and storage bindings remain stable to preserve media and quota state.
+Saved device keys/passkeys and other local browser data are bound to the original origin and cannot transfer automatically. The new domain requires fresh wallet authorization. New sign-ins are remembered in encrypted browser storage by default; Settings → Sign-in offers tab-only sessions. Existing password/passkey vaults still require unlocking and are not silently converted. Protocol signing labels, device scopes, upstream endpoints and existing network authorizations are unchanged. The Worker service name and storage bindings remain stable to preserve media and quota state.
 
 ## Release notes
 
