@@ -24,7 +24,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'operator-managed-gateway-visibility-moderation',
     date: '2026-11-04',
-    timestamp: '2026-11-04T14:43:22+00:00',
+    timestamp: '2026-11-04T14:43:22Z',
     title: 'Add operator-managed gateway content visibility',
     summary: 'The gateway can apply a private operator-managed visibility policy to content reads, previews and hosted media without changing Hypersnap data or signed writes.',
     changes: [
