@@ -2,7 +2,9 @@ import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState, type C
 import { IconArrowDown, IconArrowLeft, IconArrowUpRight, IconCheck, IconCode, IconDeviceDesktop, IconFileCheck, IconKey, IconLock, IconRefresh, IconShieldLock, IconTrash, IconWallet } from '@tabler/icons-react';
 import { Button, Input, Modal } from './ui';
 import WalletConnectLogo from './WalletConnectLogo';
-import { deleteSavedSession, getSavedSessionMethod, preparePairing, unlockSavedSession, unlockSavedSessionWithPasskey, type PendingPairing, type PendingRevocation, type WalletSession } from '../lib/auth';
+import { deleteSavedSession, getSavedSessionMethod, preparePairing, restoreRememberedSession, unlockSavedSession, unlockSavedSessionWithPasskey, type PendingPairing, type PendingRevocation, type WalletSession } from '../lib/auth';
+import { readSessionPersistence } from '../lib/sessionPersistence';
+import type { SavedSessionMethod } from '../lib/vault';
 import { PAIRING_SCOPES, hashPairingRequest, hashRevocationRequest, validatePairingScopes, validatePairingApproval, verifyPairingApproval, validateRevocationApproval, verifyRevocationApproval, type PairingApproval, type PairingRequest, type RevocationApproval, type RevocationRequest } from '@opencaster/client-core/pairing';
 import { approvePairingWithWallet, approveRevocationWithWallet, discoverInjectedWallets, type InjectedWallet } from '../lib/wallet';
 import { passkeysAvailable } from '../lib/passkey';
@@ -151,15 +153,11 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState('');
   const [error, setError] = useState('');
-  const [savedMethod, setSavedMethod] = useState<'password' | 'passkey' | undefined>();
+  const [savedMethod, setSavedMethod] = useState<SavedSessionMethod | undefined>();
   const [storageUnreadable, setStorageUnreadable] = useState(false);
   const saved = savedMethod !== undefined;
   const [unlock, setUnlock] = useState(false);
-  const [remember, setRemember] = useState(false);
-  const [storageMethod, setStorageMethod] = useState<'passkey' | 'password'>('passkey');
-  const [canUsePasskeys] = useState(passkeysAvailable);
   const [password, setPassword] = useState('');
-  const [confirmation, setConfirmation] = useState('');
   const [attempted, setAttempted] = useState(false);
   const [connected, setConnected] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -170,7 +168,7 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
   const fileInput = useRef<HTMLInputElement>(null);
   const fileReadGeneration = useRef(0);
   const stepHeading = useRef<HTMLHeadingElement>(null);
-  const currentStep = connected ? 4 : request && identityAccepted ? 3 : identity ? 2 : 1;
+  const currentStep = request && identityAccepted ? 3 : identity ? 2 : 1;
   const previousStage = useRef({ step: currentStep, unlock });
 
   useEffect(() => {
@@ -185,7 +183,6 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
     return () => clearInterval(timer);
   }, [request]);
   const expired = request !== null && Math.floor(now / 1000) >= request.deadline + 1609459200;
-  const passwordValid = password.length >= 12 && password === confirmation;
   useEffect(() => {
     const previous = previousStage.current; previousStage.current = { step: currentStep, unlock };
     if (presentation === 'page' && (currentStep > 1 || previous.step !== currentStep || previous.unlock !== unlock)) stepHeading.current?.focus();
@@ -196,14 +193,14 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
     controller.current?.abort(); pending.current?.dispose(); pending.current = null;
     provisionalSession.current?.dispose(); provisionalSession.current = null;
     setRequest(null); setApproval(null); setApprovalName(''); setAttempted(false); setConnected(false);
-    setIdentity(null); setIdentityAccepted(false); setIdentityChanged(false); setRemember(false); setLookupEnsName(''); setEnsNotFound(false);
-    setPassword(''); setConfirmation(''); setStorageMethod('passkey'); setError(''); setStage(''); setBusy(false);
+    setIdentity(null); setIdentityAccepted(false); setIdentityChanged(false); setLookupEnsName(''); setEnsNotFound(false);
+    setPassword(''); setError(''); setStage(''); setBusy(false);
   }
   function close() { reset(); onClose(); }
   function acceptSession(session: WalletSession, run: number) {
     if (run !== generation.current) { session.dispose(); return; }
     provisionalSession.current = null;
-    setPassword(''); setConfirmation(''); onConnect(session);
+    setPassword(''); onConnect(session);
   }
   async function findAccount(event: FormEvent) {
     event.preventDefault();
@@ -273,40 +270,33 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
       const session = provisionalSession.current ?? await pending.current.complete(approval, { signal: controller.current.signal, onProgress: text => { if (run === generation.current) setStage(text); } });
       if (run !== generation.current) { session.dispose(); return; }
       provisionalSession.current = session; setConnected(true);
-      // A separate click starts WebAuthn after authorization has completed,
-      // preserving fresh browser activation and an explicit storage choice.
-      if (remember) return;
+      if (readSessionPersistence() === 'remember') {
+        setStage('Remembering this browser…');
+        await session.rememberOnDevice({ signal: controller.current.signal });
+      }
       acceptSession(session, run);
     } catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
-    finally { if (run === generation.current) { setAttempted(pending.current?.submitted ?? false); setBusy(false); setStage(''); setPassword(''); setConfirmation(''); } }
+    finally { if (run === generation.current) { setAttempted(pending.current?.submitted ?? false); setBusy(false); setStage(''); setPassword(''); } }
   }
-  async function saveConfirmedWithPasskey() {
+  async function retryRemember() {
     const session = provisionalSession.current;
-    if (busy || !connected || !session || !canUsePasskeys) return;
+    if (busy || !connected || !session) return;
     const run = generation.current;
-    controller.current = new AbortController(); setBusy(true); setError(''); setStage('Check your device to create a passkey…');
+    controller.current = new AbortController(); setBusy(true); setError(''); setStage('Remembering this browser…');
     try {
-      await session.saveToDeviceWithPasskey({ signal: controller.current.signal, onProgress: text => { if (run === generation.current) setStage(text); } });
+      await session.rememberOnDevice({ signal: controller.current.signal });
       acceptSession(session, run);
     } catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
     finally { if (run === generation.current) { setBusy(false); setStage(''); } }
   }
-  async function saveConfirmedWithPassword(event: FormEvent) {
-    event.preventDefault();
-    const session = provisionalSession.current;
-    if (busy || !connected || !session || storageMethod !== 'password' || !passwordValid) return;
-    const run = generation.current; controller.current = new AbortController(); setBusy(true); setError(''); setStage('Encrypting this device’s posting key…');
-    try { await session.saveToDevice(password, { signal: controller.current.signal, onProgress: text => { if (run === generation.current) setStage(text); } }); acceptSession(session, run); }
-    catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
-    finally { if (run === generation.current) { setBusy(false); setStage(''); setPassword(''); setConfirmation(''); } }
-  }
   async function unlockDevice(event: FormEvent) {
-    event.preventDefault(); if (busy || (savedMethod !== 'passkey' && !password)) return;
+    event.preventDefault(); if (busy || (savedMethod === 'password' && !password)) return;
     const run = ++generation.current;
     controller.current = new AbortController(); setBusy(true); setError(''); setStage('Unlocking your device key…');
     try {
       const options = { signal: controller.current.signal, onProgress: (text: string) => { if (run === generation.current) setStage(text); } };
-      const session = savedMethod === 'passkey' ? await unlockSavedSessionWithPasskey(options) : await unlockSavedSession(password, options);
+      const session = savedMethod === 'browser' ? await restoreRememberedSession(options) : savedMethod === 'passkey' ? await unlockSavedSessionWithPasskey(options) : await unlockSavedSession(password, options);
+      if (!session) throw new Error('The saved session changed. Reconnect your account.');
       acceptSession(session, run);
     }
     catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
@@ -325,15 +315,16 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
     <div className="pairing-hero"><span className="pairing-symbol"><IconShieldLock size={27} /></span><div><strong>Your recovery phrase stays out of this website.</strong><p>Approve a separate device key in your own wallet app.</p></div></div>
     {socialApproval && <p className="pairing-copy">Approve a new device key with permission to {deletionApproval ? 'delete your own casts, ' : ''}follow and unfollow accounts and edit your profile, alongside casts and reactions. {deletionApproval && 'Cast deletion cannot be undone. '}Previous keys retain their original network permissions; switching does not revoke them. The app switches only after Hypersnap confirms the new approval.</p>}
     {unlock ? <form onSubmit={unlockDevice}>
-      <h2 ref={stepHeading} tabIndex={-1}>Unlock your saved device</h2>
-      <p className="pairing-copy">{savedMethod === 'passkey' ? 'Your posting key is encrypted in this browser. Use your passkey and device verification to unlock it.' : 'Your posting key is encrypted on this device. Unlock it to reconnect; your custody wallet is not needed.'}</p>
-      {savedMethod === 'passkey' ? <p className="fine-print">Your saved encrypted key must still be present in this browser. A synced passkey alone does not copy it to another device. If you cleared browser data, reconnect with your custody wallet.</p> : <><label className="field-label" htmlFor="device-password">Device vault password</label><Input id="device-password" type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" disabled={busy} required /></>}
+      <h2 ref={stepHeading} tabIndex={-1}>{savedMethod === 'browser' ? 'Continue your session' : 'Unlock your saved device'}</h2>
+      <p className="pairing-copy">{savedMethod === 'browser' ? 'This browser remembers your account. Continue without another wallet approval.' : savedMethod === 'passkey' ? 'Your posting key is encrypted in this browser. Use your passkey and device verification to unlock it.' : 'Your posting key is encrypted on this device. Unlock it to reconnect; your custody wallet is not needed.'}</p>
+      {savedMethod === 'passkey' && <p className="fine-print">Your saved encrypted key must still be present in this browser. A synced passkey alone does not copy it to another device. If you cleared browser data, reconnect with your custody wallet.</p>}
+      {savedMethod === 'password' && <><label className="field-label" htmlFor="device-password">Device vault password</label><Input id="device-password" type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" disabled={busy} required /></>}
       {error && <p className="error" role="alert">{error}</p>}
-      <Button type="submit" className="full-width pairing-submit" disabled={busy || (savedMethod !== 'passkey' && !password)}>{busy ? <><IconRefresh size={17} className="spin" />{stage}</> : <><IconLock size={17} />{savedMethod === 'passkey' ? 'Unlock with a passkey' : 'Unlock this device'}</>}</Button>
+      <Button type="submit" className="full-width pairing-submit" disabled={busy || (savedMethod === 'password' && !password)}>{busy ? <><IconRefresh size={17} className="spin" />{stage}</> : <><IconLock size={17} />{savedMethod === 'browser' ? 'Continue signed in' : savedMethod === 'passkey' ? 'Unlock with a passkey' : 'Unlock this device'}</>}</Button>
       <div className="pairing-actions"><Button variant="ghost" disabled={busy} onClick={() => { reset(); setUnlock(false); }}>Connect another account</Button><Button variant="ghost" disabled={busy} onClick={() => void forget()}><IconTrash size={15} />Forget saved key</Button></div>
       <p className="fine-print">Forgetting deletes this browser’s encrypted key. It does not revoke its network authorization. Unlock first to revoke this device.</p>
     </form> : <>
-      <ol className="onboarding-steps" aria-label="Connection steps">{['Find account', 'Review identity', 'Approve wallet', 'Save device'].map((label, index) => <li key={label} className={currentStep === index + 1 ? 'active' : currentStep > index + 1 ? 'complete' : ''} aria-current={currentStep === index + 1 ? 'step' : undefined}><span>{currentStep > index + 1 ? <IconCheck size={14} /> : index + 1}</span><div>{label}{index === 3 && <small>Optional</small>}</div></li>)}</ol>
+      <ol className="onboarding-steps" aria-label="Connection steps">{['Find account', 'Review identity', 'Approve wallet'].map((label, index) => <li key={label} className={currentStep === index + 1 ? 'active' : currentStep > index + 1 ? 'complete' : ''} aria-current={currentStep === index + 1 ? 'step' : undefined}><span>{currentStep > index + 1 ? <IconCheck size={14} /> : index + 1}</span><div>{label}</div></li>)}</ol>
       {!request ? !identity ? <form onSubmit={findAccount} className="onboarding-find">
         <h2 ref={stepHeading} tabIndex={-1}>Find your public account</h2>
         <p className="pairing-copy">Enter your public username, ENS name, FID, or custody wallet address. We’ll show the full account details for you to review before creating a device key.</p>
@@ -347,7 +338,7 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
         <Button type="submit" className="full-width" disabled={busy || !identifier.trim()}>{busy ? <><IconRefresh size={17} className="spin" />{stage}</> : <>Find my account <IconArrowUpRight size={17} /></>}</Button>
         {saved && !socialApproval && <Button className="full-width pairing-back" variant="ghost" disabled={busy} onClick={() => { reset(); setUnlock(true); }}><IconLock size={16} />Unlock saved device instead</Button>}
       </form> : <section className="onboarding-review" aria-label="Review account identity"><h2 ref={stepHeading} tabIndex={-1}>Is this your account?</h2><IdentitySummary identity={identity} ensName={lookupEnsName} /><p className="pairing-copy">Check the username, FID, and full custody address. This is the account your wallet will authorize; a different verified wallet address does not grant access.</p>{error && <p className="error" role="alert">{error}</p>}<Button className="full-width" disabled={busy} onClick={() => void prepareReviewedAccount()}>{busy ? <><IconRefresh size={17} className="spin" />{stage}</> : <>Use this account <IconArrowUpRight size={17} /></>}</Button><Button variant="ghost" className="pairing-back" disabled={busy} onClick={reset}><IconArrowLeft size={16} />Use another account</Button></section> : <>
-        <h2 ref={stepHeading} tabIndex={-1} className="onboarding-section-title">{!identityAccepted ? 'Review the updated account' : connected ? 'Choose how to keep this device connected' : 'Approve this device in your wallet'}</h2>
+        <h2 ref={stepHeading} tabIndex={-1} className="onboarding-section-title">{!identityAccepted ? 'Review the updated account' : connected ? 'Remember this browser' : 'Approve this device in your wallet'}</h2>
         {identity && <IdentitySummary identity={identity} />}
         {!identityAccepted ? <section className="onboarding-review" aria-label="Review updated account identity">{identityChanged && <p className="onboarding-change" role="alert">The account details changed while preparing this device. Review the updated username, FID, and custody wallet above before continuing.</p>}<AccountFacts request={request} /><Button className="full-width" disabled={busy || expired} onClick={() => { setIdentityAccepted(true); setIdentityChanged(false); setError(''); }}>Use updated account <IconArrowUpRight size={17} /></Button></section> : <>
         <AccountFacts request={request} />
@@ -363,11 +354,11 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
           <Button className="full-width pairing-import" variant="secondary" onClick={() => fileInput.current?.click()} disabled={busy || expired}><IconFileCheck size={17} />Import offline public approval JSON</Button>
           <p className="pairing-release">Only the signer’s public approval JSON belongs here. It contains signatures, never recovery words or a private key.</p>
         </details>}
-        <form onSubmit={connected ? saveConfirmedWithPassword : complete}>
-          {!attempted && <label className="pairing-remember"><Input type="checkbox" checked={remember} onChange={event => { setRemember(event.target.checked); setPassword(''); setConfirmation(''); }} disabled={busy || storageUnreadable} /><span><strong>Remember this device</strong><small>After authorization, choose a passkey or password to encrypt only this device’s posting key. Saving replaces a previous vault in this browser if one exists; its network authorization remains active.{storageUnreadable && ' Forget the unreadable vault before saving another key.'}</small></span></label>}
-          {connected && <section className="pairing-storage" aria-label="Save this device key"><div className="wallet-approved" role="status"><IconCheck size={18} /><span>Hypersnap confirmed this device’s authorization. Choose how to keep its encrypted key.</span></div><div className="pairing-storage__choices"><Button variant={storageMethod === 'passkey' ? 'secondary' : 'ghost'} aria-pressed={storageMethod === 'passkey'} disabled={busy} onClick={() => { setStorageMethod('passkey'); setPassword(''); setConfirmation(''); setError(''); }}><IconKey size={17} />Passkey{canUsePasskeys && <small>Recommended</small>}</Button><Button variant={storageMethod === 'password' ? 'secondary' : 'ghost'} aria-pressed={storageMethod === 'password'} disabled={busy} onClick={() => { setStorageMethod('password'); setError(''); }}>Use a password instead</Button></div>
-            {storageMethod === 'passkey' ? <><p className="pairing-copy">Protect this browser’s encrypted posting key with your device unlock or security key. Your passkey must support secure key encryption; support varies by browser and authenticator.</p>{!canUsePasskeys && <p className="fine-print">Passkeys are unavailable in this browser. Choose password encryption or continue for this tab.</p>}<Button className="full-width pairing-submit" disabled={busy || !canUsePasskeys} onClick={() => void saveConfirmedWithPasskey()}><IconKey size={17} />{busy ? stage || 'Saving…' : 'Save with a passkey'}</Button></> : <div className="pairing-passwords"><label className="field-label" htmlFor="new-device-password">New device vault password · at least 12 characters</label><Input id="new-device-password" type="password" autoComplete="new-password" value={password} minLength={12} onChange={event => setPassword(event.target.value)} disabled={busy} required /><label className="field-label" htmlFor="confirm-device-password">Confirm password</label><Input id="confirm-device-password" type="password" autoComplete="new-password" value={confirmation} onChange={event => setConfirmation(event.target.value)} disabled={busy} required />{confirmation && password !== confirmation && <p className="error">Passwords do not match.</p>}<p className="fine-print">Keep this password somewhere safe. It cannot be recovered. Anyone who can unlock this vault can post as you until you revoke this key.</p><Button className="full-width pairing-submit" type="submit" disabled={busy || !passwordValid}>{busy ? stage || 'Saving…' : 'Save with a password'}</Button></div>}
-            <p className="fine-print">The encrypted key stays in this browser on this website. Syncing a passkey does not copy this vault to another device. Clearing browser data requires reconnecting with your custody wallet.</p>
+        <form onSubmit={complete}>
+          {!attempted && <p className="fine-print">{readSessionPersistence() === 'remember' ? 'You’ll stay signed in on this browser, including after closing it. Anyone using this browser profile can use your account. Change this to tab-only in Settings. This replaces any previous saved device key or password/passkey protection in this browser.' : 'Your settings keep this session in this tab only. Closing or reloading the tab ends the session.'}</p>}
+          {connected && <section className="pairing-storage" aria-label="Remember this browser">
+            <p role="status">{busy ? stage || 'Remembering this browser…' : 'You’re connected, but this browser could not save your session. Retry saving or continue temporarily in this tab.'}</p>
+            <Button className="full-width" disabled={busy} onClick={() => void retryRemember()}>Retry saving this session</Button>
           </section>}
           {expired && !attempted && <p className="error" role="alert">This request expired. Start again for a fresh device key and approval.</p>}
           {error && <p className="error" role="alert">{error}</p>}
@@ -388,7 +379,7 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
 export function DeviceSettings({ session, onClose, onLock, notify }: { session: WalletSession; onClose(): void; onLock(revoked?: boolean): void; notify(text: string): void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [savedMethod, setSavedMethod] = useState<'password' | 'passkey' | undefined>();
+  const [savedMethod, setSavedMethod] = useState<SavedSessionMethod | undefined>();
   const [storageUnreadable, setStorageUnreadable] = useState(false);
   const saved = savedMethod !== undefined;
   const [canUsePasskeys] = useState(passkeysAvailable);
@@ -509,13 +500,13 @@ export function DeviceSettings({ session, onClose, onLock, notify }: { session: 
   }
   return <Modal title="This device’s access" onClose={close}>
     <div className="pairing-hero"><span className="pairing-symbol"><IconKey size={27} /></span><div><strong>@{session.user.username || session.fid}</strong><p>FID {session.fid} · {session.scopes.includes(2) ? 'casts, deletion, reactions, follows, and profile edits' : session.scopes.includes(11) ? 'casts, reactions, follows, and profile edits' : 'casting and reactions'}</p></div></div>
-    <dl className="pairing-facts"><div><dt>Device key fingerprint</dt><dd className="pairing-mono">{fingerprint(session.publicKey)}</dd></div><div><dt>Storage</dt><dd>{storageUnreadable ? 'Saved vault could not be read; active key stays in this tab' : savedMethod === 'passkey' ? 'Encrypted key saved with a passkey in this browser' : savedMethod === 'password' ? 'Encrypted key saved with a password in this browser' : 'Key held only in this tab'}</dd></div><div><dt>Inactivity expiry</dt><dd>7 days, renewed by signing activity</dd></div></dl>
+    <dl className="pairing-facts"><div><dt>Device key fingerprint</dt><dd className="pairing-mono">{fingerprint(session.publicKey)}</dd></div><div><dt>Storage</dt><dd>{storageUnreadable ? 'Saved vault could not be read; active key stays in this tab' : savedMethod === 'browser' ? 'Signed in across tabs and browser restarts' : savedMethod === 'passkey' ? 'Encrypted key saved with a passkey in this browser' : savedMethod === 'password' ? 'Encrypted key saved with a password in this browser' : 'Key held only in this tab'}</dd></div><div><dt>Inactivity expiry</dt><dd>7 days, renewed by signing activity</dd></div></dl>
     {!request && <>
       {storageUnreadable && <section className="pairing-storage"><p className="fine-print">The unreadable vault’s account cannot be verified. Forgetting deletes that local encrypted record only; this tab stays connected and no network permissions are revoked.</p><Button variant="secondary" disabled={busy} onClick={() => void forgetUnreadableVault()}><IconTrash size={15} />Forget unreadable vault</Button></section>}
       {!storageUnreadable && savedMethod !== 'passkey' && <section className="pairing-storage" aria-label="Remember this device"><div className="device-action"><div><strong>Save with a passkey{canUsePasskeys && <span className="pairing-storage__recommended">Recommended when supported</span>}</strong><p>{savedMethod === 'password' ? 'Replace this browser’s password vault after passkey encryption succeeds. Your active posting key and network permissions stay the same.' : 'Encrypt this active posting key using your device unlock or security key. This creates no new Hypersnap authorization.'} Saving replaces any previously saved vault in this browser; it does not revoke that key.</p></div><Button variant="secondary" disabled={busy || !canUsePasskeys} onClick={() => void saveWithPasskey()}><IconKey size={16} />Save with a passkey</Button></div>{!canUsePasskeys && <p className="fine-print">Passkeys are unavailable in this browser. You can use password encryption or keep this key only in the active tab.</p>}<p className="fine-print">The passkey must support secure key encryption. If setup is cancelled or unsupported, your existing saved key stays unchanged.</p><Button variant="ghost" disabled={busy} onClick={() => { setPasswordSaving(value => !value); setPassword(''); setConfirmation(''); }}>{passwordSaving ? 'Cancel password saving' : 'Use password encryption instead'}</Button></section>}
       {passwordSaving && <form className="pairing-passwords" onSubmit={saveWithPassword}><label className="field-label" htmlFor="settings-device-password">New device vault password · at least 12 characters</label><Input id="settings-device-password" type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} disabled={busy} minLength={12} required /><label className="field-label" htmlFor="settings-confirm-password">Confirm password</label><Input id="settings-confirm-password" type="password" autoComplete="new-password" value={confirmation} onChange={event => setConfirmation(event.target.value)} disabled={busy} required />{confirmation && password !== confirmation && <p className="error">Passwords do not match.</p>}<p className="fine-print">Saving replaces this browser’s previous encrypted vault. The password cannot be recovered.</p><Button type="submit" variant="secondary" disabled={busy || password.length < 12 || password !== confirmation}>Save with a password</Button></form>}
       {saved && <p className="fine-print">The encrypted key stays in this browser on this website. A synced passkey does not copy the vault to another device. Clearing browser data requires reconnecting with your custody wallet.</p>}
-      <div className="device-action"><div><strong>Lock this tab</strong><p>Clear its active signing key. A saved vault can be unlocked again. Network authorization remains active.</p></div><Button variant="secondary" onClick={() => onLock()} disabled={busy}><IconLock size={16} />Lock</Button></div>
+      <div className="device-action"><div><strong>Sign out of this browser</strong><p>Remove the saved key and end active sessions in other tabs. Network authorization remains active until revoked.</p></div><Button variant="secondary" onClick={() => onLock()} disabled={busy}><IconLock size={16} />Sign out</Button></div>
       {saved && <div className="device-action"><div><strong>Forget saved key</strong><p>Delete this browser’s encrypted copy. This tab stays connected; network authorization remains active.</p></div><Button variant="secondary" onClick={() => void forget()} disabled={busy}><IconTrash size={16} />Forget</Button></div>}
       <div className="device-action device-action--revoke"><div><strong>Revoke this device</strong><p>Approve its removal in your custody wallet. We confirm removal on Hypersnap before clearing this key. Other device keys and legacy beta keys are unaffected.</p></div><Button variant="secondary" disabled={busy} onClick={() => void prepareRevocation()}>{busy ? <IconRefresh size={16} className="spin" /> : <IconShieldLock size={16} />}Revoke</Button></div>
     </>}
