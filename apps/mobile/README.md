@@ -74,8 +74,31 @@ the protected device-key store; operating-system backup and restore behavior
 can vary. Unreadable or corrupt filters fail closed until retry or explicit
 reset, and file writes are not atomic. These filters only change this app's
 display; they do not send reports, block network interactions, or delete
-content or accounts. Reporting/support destinations and operator policies are
-not configured.
+content or accounts.
+
+### Reports and support by email
+
+Post cards and profiles offer email reports; Safety and data offers general
+support. The recipient is `support@opencaster.org`, with Luis Felipe Abarca as
+the responsible operator. The owner confirmed that the inbox receives mail
+and will be monitored; this work does not independently establish delivery or
+response times.
+
+Users enter a bounded description, review the recipient, subject and public
+FID/cast identifiers, and explicitly open their email app. No email is sent
+automatically. A successful OS handoff is not a sent/received confirmation.
+Selectable review text supports manual copying into webmail when no mail
+handler is configured or opening fails. OpenCaster adds no credential, approval
+file, account snapshot, log or attachment. The user's description can contain
+personal information; the UI warns against secrets and unnecessary private data.
+Sending discloses the sender's email address and message to email providers and
+the operator. Draft text stays in screen memory, not OpenCaster persistence;
+the email client may retain its own draft.
+
+Email contact does not implement network blocking, moderation enforcement,
+delivery tracking or an emergency service. Report handling, retention, appeals,
+community guidelines and applicable data-request policies still require owner
+decisions. Do not call this a completed store-compliant moderation system.
 
 The request grants exactly cast/reply creation and reaction add/remove scopes
 (`[1, 3, 4]`) with a 15-minute approval deadline and a seven-day **sliding
@@ -202,8 +225,9 @@ build has been started for this milestone.
 
 - Signed Android or iOS builds, store registration, and store metadata/assets:
   **NOT READY**.
-- Moderation, reporting, blocking, data-management, or reviewer-access
-  workflows: **NOT READY**.
+- Store-compliant moderation/report handling, network blocking, data-management
+  and reviewer-access workflows: **NOT READY**. Email report/support drafts
+  alone do not satisfy these requirements.
 - Account-specific Google testing eligibility and test-track requirements:
   **NOT READY**.
 - Follow/profile editing, deletion, media uploads and expanded permission flows:

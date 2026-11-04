@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActionButton, LoadingMessage } from '../components/Primitives';
 import { useLocalContent } from '../lib/LocalContentProvider';
 import { MAX_HIDDEN_ITEMS } from '../lib/localContent';
+import { SUPPORT_EMAIL, SUPPORT_OPERATOR } from '../lib/support';
 import type { RootStackParamList } from '../navigation';
 import { palette } from '../theme';
 
@@ -48,8 +49,10 @@ export function SafetyScreen({ navigation }: Props) {
       <Text style={styles.text}>Draft text stays on its composer screen and may be lost when you leave or the process ends. Public submission receipts contain identifiers and status, not draft text. There is no promise to remove server logs, network copies or browser data from this screen.</Text>
 
       <Text accessibilityRole="header" style={styles.heading}>Reporting, support and community rules</Text>
-      <Text style={styles.text}>A monitored private reporting/support destination and published operator policies are not configured yet. Hiding content does not send a report. Do not put private abuse reports, credentials or recovery phrases in public repository issues.</Text>
-      <Text style={styles.text}>Community guidelines, report handling, moderation operations and applicable data-request procedures still require owner decisions. This preview is not store-ready and does not claim moderation compliance. No report-submission control is presented as functional until those dependencies are in place.</Text>
+      <Text selectable style={styles.text}>Reports and support: {SUPPORT_EMAIL}. Responsible operator: {SUPPORT_OPERATOR}. Report a public post or user from its card or profile, or describe a support issue below. The owner has confirmed that this inbox is active and monitored.</Text>
+      <ActionButton label="Contact support by email" onPress={() => navigation.push('Support', { kind: 'support' })} secondary />
+      <Text style={styles.text}>You review an email draft before opening your email app and sending it yourself. Opening the draft is not confirmation of delivery or action. Hiding content does not send a report. Do not put private abuse reports, credentials or recovery phrases in public repository issues.</Text>
+      <Text style={styles.text}>Community guidelines, report handling, moderation operations and applicable data-request procedures still require owner decisions. Email contact is not network blocking or a completed moderation system. This preview is not store-ready and does not claim moderation compliance.</Text>
     </ScrollView>
   </SafeAreaView>;
 }

@@ -49,11 +49,13 @@ export function CastCard({
   depth = 0,
   onAuthorPress,
   onThreadPress,
+  onReport,
 }: {
   cast: Cast;
   depth?: number;
   onAuthorPress: (fid: number) => void;
   onThreadPress: (hash: string) => void;
+  onReport: () => void;
 }) {
   const { localContent, snapshot } = useLocalContent();
   if (snapshot.phase !== 'ready' || isHiddenTarget(snapshot.data, { fid: cast.author.fid, hash: cast.hash })) return null;
@@ -125,6 +127,7 @@ export function CastCard({
         onPress={showContentOptions}
         secondary
       />
+      <ActionButton label="Report post by email" accessibilityLabel={`Report post ${cast.hash} by FID ${cast.author.fid} by email`} onPress={onReport} secondary />
     </View>
   );
 }

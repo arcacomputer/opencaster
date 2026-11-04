@@ -93,6 +93,7 @@ export function ProfileScreen({ navigation, route }: Props) {
         disabled={snapshot.busy}
         secondary
       />
+      <ActionButton label={`Report user FID ${profileTargetFid} by email`} onPress={() => navigation.push('Support', { kind: 'user', fid: profileTargetFid })} secondary />
       <Text accessibilityRole="header" style={styles.feedHeading}>Public casts</Text>
       {feed.error && feed.retryKind === 'refresh'
         ? (
@@ -104,7 +105,7 @@ export function ProfileScreen({ navigation, route }: Props) {
         )
         : null}
     </View>
-  ), [confirmHideUser, feed.error, feed.retry, feed.retryKind, profile, profileTargetFid, snapshot.busy]);
+  ), [confirmHideUser, feed.error, feed.retry, feed.retryKind, navigation, profile, profileTargetFid, snapshot.busy]);
 
   const allLoadedCastsHidden = feed.casts.length > 0 && visibleCasts.length === 0;
   const emptyState = allLoadedCastsHidden
@@ -178,6 +179,7 @@ export function ProfileScreen({ navigation, route }: Props) {
         renderItem={({ item }) => (
           <CastCard
             cast={item}
+            onReport={() => navigation.push('Support', { kind: 'post', fid: item.author.fid, hash: item.hash })}
             onAuthorPress={authorFid => navigation.push('Profile', { fid: authorFid })}
             onThreadPress={hash => navigation.push('Conversation', { hash })}
           />
