@@ -28,6 +28,7 @@ import { NODE_SUPPORT_URL } from './lib/nodeSupport';
 import { readBookmarks, saveBookmarks, toggleBookmark, filterBookmarks, bookmarkHash, type BookmarkSort } from './lib/bookmarks';
 import { contentPreferencesKey, emptyContentPreferences, readContentPreferences, writeContentPreferences, getContentFilterReason, hideCast, muteAccount, type ContentPreferences } from './lib/contentPreferences';
 import { useNavigationShortcuts } from './lib/useNavigationShortcuts';
+import { useBrowserSession } from './lib/useBrowserSession';
 import { textLinks } from './lib/textLinks';
 import { quorumSocialPath } from './lib/socialLinks';
 import { trackPageView } from './lib/analytics';
@@ -42,6 +43,7 @@ import './feeds.scss';
 
 const ContentSettings = lazy(() => import('./components/ContentSettings'));
 const AnalyticsSettings = lazy(() => import('./components/AnalyticsSettings'));
+const SessionSettings = lazy(() => import('./components/SessionSettings'));
 const CastReactionPeople = lazy(() => import('./components/CastReactionPeople'));
 const Composer = lazy(() => import('./components/Composer'));
 const EditProfileDialog = lazy(() => import('./components/EditProfileDialog'));
@@ -324,7 +326,7 @@ export default function App() {
   const [channelError, setChannelError] = useState('');
   const channelCache = useRef(new Map<string, Channel>());
   const profileIdentifier = base.kind === 'profile' ? base.identifier : undefined;
-  const [session, setSession] = useState<WalletSession | null>(null);
+  const { session, setSession, restoring, restoreError, retryRestore, signOut } = useBrowserSession();
   const followingFid = base.kind === 'following' ? base.fid ?? session?.fid : undefined;
   const connectFlow = useRef<ConnectFlow | null>(null);
   const connectGeneration = useRef(0);
@@ -688,8 +690,15 @@ export default function App() {
 
   function lockSession(expectedSession = session, revoked = false) {
     if (!expectedSession || currentSession.current?.publicKey !== expectedSession.publicKey) return;
-    expectedSession.dispose(); currentSession.current = null; setSession(null); setPublications(() => []); setDeviceSettings(false);
-    if (!revoked) notify('This tab is locked. Network authorization remains active; unlock a saved vault or approve a new device key to reconnect.');
+    if (revoked) {
+      expectedSession.dispose(); currentSession.current = null; setSession(null); setPublications(() => []); setDeviceSettings(false);
+      return;
+    }
+    void signOut(expectedSession).then(() => {
+      if (currentSession.current && currentSession.current.publicKey !== expectedSession.publicKey) return;
+      currentSession.current = null; setPublications(() => []); setDeviceSettings(false);
+      notify('Signed out of this browser. The saved key was removed; network authorization remains active until revoked.');
+    }).catch(error => notify(message(error)));
   }
   function save(cast: Cast) {
     try {
@@ -768,6 +777,8 @@ export default function App() {
   const filteredCount = feedCandidates.length - visibleCasts.length;
   useNavigationShortcuts({ onSearch() { if (!signIn) { navigate('/search'); setSearchFocus(value => value + 1); } }, onHelp() { if (!signIn) setShortcutHelp(true); } });
   const connectVersion = connectGeneration.current;
+  const restoreNotice = restoreError && <section className="guest-prompt" role="alert"><p>Could not restore your session: {restoreError}</p><Button variant="secondary" onClick={() => void retryRestore()}>Retry sign-in</Button></section>;
+  if (restoring) return <main className="onboarding-loading"><p role="status">Restoring your session…</p><Button variant="ghost" onClick={() => setSession(null)}>Continue browsing</Button></main>;
   if (signIn) return <Suspense fallback={<main className="onboarding-loading"><p role="status">Loading device sign-in…</p><Button variant="ghost" onClick={returnFromConnect}>Cancel</Button></main>}>
     {connectError && <p className="error" role="alert">{connectError}</p>}
     <ConnectAccount key={connectVersion} presentation="page" requestedScopes={connectFlow.current?.scopes} initialFid={connectFlow.current?.initialFid} onClose={returnFromConnect} onConnect={value => {
@@ -800,7 +811,7 @@ export default function App() {
   });
   const pendingReplies = pending.filter(item => activeThread && item.parent?.fid === activeThread.author.fid && bookmarkHash(item.parent.hash) === bookmarkHash(activeThread.hash));
   const pendingCard = (publication: CastPublication) => <PendingCastCard key={publication.id} publication={publication} onDismiss={() => setPublications(current => current.filter(item => item.id !== publication.id))} />;
-  if (!session && !exploring && route.kind === 'discover') return <Landing onSignIn={() => requestSignIn()} onExplore={() => { try { localStorage.setItem(exploreKey, '1'); } catch { /* Exploring still works for this tab. */ } setExploring(true); }} onNavigate={path => navigate(path)} />;
+  if (!session && !exploring && route.kind === 'discover') return <>{restoreNotice}<Landing onSignIn={() => requestSignIn()} onExplore={() => { try { localStorage.setItem(exploreKey, '1'); } catch { /* Exploring still works for this tab. */ } setExploring(true); }} onNavigate={path => navigate(path)} /></>;
   return <ParentCastRead.Provider value={parentReader.read}><ContentControls.Provider value={controls}><div className={`app ${threadOpen ? 'app--conversation' : ''}`}>
     <aside className={`sidebar ${pinnedFeeds.length ? 'sidebar--feeds' : ''}`}>
       <a data-analytics="nav-discover" href="/" onClick={event => localClick(event, () => navigate('/'))} className="wordmark"><img src="/opencaster-symbol.svg" alt="" />Opencaster</a>
@@ -827,6 +838,7 @@ export default function App() {
       <div className="sidebar__bottom"><div className="sidebar-links"><Button data-analytics="theme-toggle" variant="ghost" aria-label={dark ? 'Use light theme' : 'Use dark theme'} onClick={() => setDark(!dark)}>{dark ? <IconSun size={19} /> : <IconMoon size={19} />}</Button><a data-analytics="nav-devlog" href="/devlog" aria-current={view === 'devlog' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/devlog'))}>Dev log</a><a data-analytics="source-open" href={sourceUrl} target="_blank" rel="noopener noreferrer">Source</a><a data-analytics="hypersnap-open" href="https://hypersnap.org" target="_blank" rel="noopener noreferrer">Hypersnap</a><a data-analytics="node-support-open" href={NODE_SUPPORT_URL} target="_blank" rel="noopener noreferrer" aria-label="Support the node (opens Stripe in a new tab)">Support the node</a></div>{session ? <div className="session-card"><Button data-analytics="nav-profile" variant="ghost" className="session-user" onClick={() => navigate('/profile')}><Avatar user={session.user} /><span><strong>{session.user.display_name || session.user.username}</strong><small>@{session.user.username}</small></span></Button><Button data-analytics="device-access-open" variant="ghost" aria-label="Manage this device’s signing access" onClick={() => setDeviceSettings(true)}><IconShieldLock size={19} /></Button></div> : <Button data-analytics="connect-open" className="full-width sidebar-signin" onClick={() => requestSignIn()}>Sign in</Button>}<p className="sidebar-foot">OPEN PROTOCOL. OPEN POSSIBILITIES.</p></div>
     </aside>
     <main className="main">
+      {restoreNotice}
       <div className="main-base" hidden={threadOpen}>
       <header className={`page-header ${view === 'feed' ? 'page-header--feed' : ''}`}><a data-analytics="nav-discover" className="page-header__logo" href="/" aria-label="Opencaster home" onClick={event => localClick(event, () => navigate('/'))}><img src="/opencaster-symbol.svg" alt="" /></a>{(view === 'profile' || view === 'channel') && <Button variant="ghost" className="page-header__back" aria-label={view === 'channel' ? 'Back to channels' : 'Back to discover'} onClick={() => navigate(view === 'channel' ? '/channels' : '/')}><IconArrowLeft size={20} /></Button>}<h1>{activeTitle}<span className="title-star">✳</span></h1><div className="header-actions">{networkError && <span className="live-pill"><span className="status-dot status-dot--offline" />Node unavailable</span>}{view !== 'devlog' && view !== 'settings' && <Button data-analytics="feed-refresh" variant="ghost" aria-label="Refresh feed" onClick={refreshPage}><IconRefresh size={19} className={loading ? 'spin' : ''} /></Button>}<a data-analytics="nav-bookmarks" className="button button--ghost header-bookmarks" href="/bookmarks" aria-label="Bookmarks" aria-current={view === 'bookmarks' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/bookmarks'))}><IconBookmark size={19} /></a><Button data-analytics="nav-settings" variant="ghost" className="header-content-settings" aria-label="Settings" onClick={() => navigate('/settings')}><IconSettings size={19} /></Button><Button data-analytics={session ? 'nav-profile' : 'connect-open'} className="mobile-connect" variant="secondary" onClick={() => session ? navigate('/profile') : requestSignIn()}>{session ? 'My profile' : 'Sign in'}</Button></div></header>
       {view !== 'devlog' && view !== 'settings' && view !== 'profile' && <div className="compact-tools"><SearchForm draft={searchDraft} onSearch={search} /><nav className="channel-chips" aria-label="Explore channels">{channels.map(item => <Button data-analytics="nav-channel" key={item.id} variant="ghost" className={view === 'channel' && channel === item.id ? 'active' : ''} onClick={() => navigate(`/channel/${item.id}`)}>/{item.id}</Button>)}<Button data-analytics="nav-channels" variant="ghost" onClick={() => navigate('/channels')}>All channels</Button></nav></div>}
@@ -844,7 +856,7 @@ export default function App() {
         <div className="profile__counts"><Button data-analytics="profile-following-open" variant="ghost" onClick={() => setFollowList('following')}><strong>{short(profile.following_count)}</strong> following</Button><Button data-analytics="profile-followers-open" variant="ghost" onClick={() => setFollowList('followers')}><strong>{short(profile.follower_count)}</strong> followers</Button></div>
         <a href={followingPath(profile.fid)} onClick={event => localClick(event, () => navigate(followingPath(profile.fid)))}>Browse this account’s public Following feed</a>
         {session?.fid !== profile.fid && followError && <div className="profile-follow"><p className="error" role="alert">{followError}</p><Button variant="secondary" onClick={() => setFollowRefresh(value => value + 1)}>Check follow status</Button></div>}
-        {session?.fid === profile.fid && <div className="profile-device-actions"><Button data-analytics="device-access-open" variant="secondary" className="profile-signout" onClick={() => setDeviceSettings(true)}><IconShieldLock size={17} />Device access</Button><Button data-analytics="session-lock" variant="ghost" className="profile-signout" onClick={() => lockSession()}><IconLock size={17} />Lock this tab</Button></div>}
+        {session?.fid === profile.fid && <div className="profile-device-actions"><Button data-analytics="device-access-open" variant="secondary" className="profile-signout" onClick={() => setDeviceSettings(true)}><IconShieldLock size={17} />Device access</Button><Button data-analytics="session-lock" variant="ghost" className="profile-signout" onClick={() => lockSession()}><IconLock size={17} />Sign out</Button></div>}
         {session && ![5, 6, 11].every(scope => session.scopes.includes(scope)) && <p className="profile-upgrade">Follows and profile editing require additional device permissions. Your wallet will show the permissions before you approve a new key.</p>}
         {profileError && <p className="error" role="alert">{profileError}</p>}
       </section>}
@@ -854,7 +866,7 @@ export default function App() {
       {view === 'channel' && channelInfo && session && composeParentUrl && <Suspense fallback={<p className="devlog-loading" role="status">Loading the composer…</p>}><Composer key={`${session?.publicKey ?? 'guest'}:${channel}`} session={session} onPublication={onPublication} onSignIn={() => requestSignIn()} parentUrl={composeParentUrl} notify={notify} /></Suspense>}
       {view === 'search' && base.kind === 'search' && <SearchView key={refresh} query={base.query} kind={base.searchKind} focusRequest={searchFocus} onSearch={(query, kind) => navigate(searchPath(query, kind))} onProfile={openProfile} renderCast={card} />}
       {view === 'notifications' && <NotificationsView key={refresh} isActivityFiltered={item => item.actors.some(actor => preferences.mutedAccounts.some(person => person.fid === actor.fid)) || Boolean(item.cast && getContentFilterReason(item.cast, preferences)) || Boolean(item.targetHash && preferences.hiddenCasts.includes(item.targetHash.replace(/^0x/, '').toLowerCase()))} fid={session?.fid} onConnect={() => requestSignIn()} onProfile={openProfile} onCast={hash => navigate(castPath(hash))} />}
-      {view === 'settings' && <><Suspense fallback={<p className="devlog-loading" role="status">Loading content controls…</p>}><ContentSettings key={preferenceScope} fid={session?.fid} preferences={preferences} onChange={updatePreferences} /></Suspense><Suspense fallback={null}><AnalyticsSettings /></Suspense><section className="settings-shortcuts"><h2>Quick navigation</h2><p><kbd>⌘ / Ctrl</kbd> + <kbd>K</kbd> or <kbd>/</kbd> opens search. Press <kbd>?</kbd> for shortcuts.</p><Button data-analytics="shortcuts-open" variant="secondary" onClick={() => setShortcutHelp(true)}><IconKeyboard size={17} />Keyboard shortcuts</Button></section><section className="settings-shortcuts"><h2>Appearance</h2><p>Theme is saved on this browser.</p><Button data-analytics="theme-toggle" variant="secondary" onClick={() => setDark(!dark)}>{dark ? <IconSun size={17} /> : <IconMoon size={17} />}{dark ? 'Use light theme' : 'Use dark theme'}</Button></section></>}
+      {view === 'settings' && <><Suspense fallback={<p role="status">Loading sign-in settings…</p>}><SessionSettings session={session} /></Suspense>{session && <section className="settings-shortcuts"><Button variant="secondary" onClick={() => lockSession()}>Sign out of this browser</Button></section>}<Suspense fallback={<p className="devlog-loading" role="status">Loading content controls…</p>}><ContentSettings key={preferenceScope} fid={session?.fid} preferences={preferences} onChange={updatePreferences} /></Suspense><Suspense fallback={null}><AnalyticsSettings /></Suspense><section className="settings-shortcuts"><h2>Quick navigation</h2><p><kbd>⌘ / Ctrl</kbd> + <kbd>K</kbd> or <kbd>/</kbd> opens search. Press <kbd>?</kbd> for shortcuts.</p><Button data-analytics="shortcuts-open" variant="secondary" onClick={() => setShortcutHelp(true)}><IconKeyboard size={17} />Keyboard shortcuts</Button></section><section className="settings-shortcuts"><h2>Appearance</h2><p>Theme is saved on this browser.</p><Button data-analytics="theme-toggle" variant="secondary" onClick={() => setDark(!dark)}>{dark ? <IconSun size={17} /> : <IconMoon size={17} />}{dark ? 'Use light theme' : 'Use dark theme'}</Button></section></>}
       {view === 'devlog' && <Suspense fallback={<p className="devlog-loading" role="status">Loading the project story…</p>}><DevLog /></Suspense>}
       {view === 'channels' && <ChannelsView key={refresh} onChannel={openChannel} savedChannels={savedChannels} onToggleSave={toggleSavedChannel} />}
       {!featureView && <>

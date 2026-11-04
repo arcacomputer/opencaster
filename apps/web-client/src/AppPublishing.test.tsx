@@ -14,6 +14,11 @@ vi.mock('./components/ConnectAccount', () => ({
   default: ({ onConnect, onClose }: { onConnect(value: WalletSession): void; onClose(): void }) => <main><button onClick={() => { if (wallet.next) onConnect(wallet.next); }}>Approve synthetic wallet</button><button onClick={onClose}>Cancel synthetic wallet</button></main>,
   DeviceSettings: () => <div>Synthetic device settings</div>,
 }));
+vi.mock('./lib/auth', () => ({
+  deleteSavedSession: vi.fn().mockResolvedValue(undefined),
+  getSavedSessionMethod: vi.fn().mockResolvedValue(undefined),
+  restoreRememberedSession: vi.fn().mockResolvedValue(null),
+}));
 vi.mock('@opencaster/client-core/media', () => ({ uploadMedia: vi.fn() }));
 vi.mock('./lib/customFeedReader', () => ({ readCustomFeed: vi.fn() }));
 vi.mock('@opencaster/client-core/api', async original => ({ ...await original<typeof import('@opencaster/client-core/api')>(), getCast: vi.fn(), getChannel: vi.fn(), getChannels: vi.fn(), getConversation: vi.fn(), getFeed: vi.fn(), getFollowStatus: vi.fn(), getInfo: vi.fn(), getProfileFeed: vi.fn(), getReactionStatus: vi.fn(), getSuggestedUsers: vi.fn(), getChannelMembers: vi.fn(), getCastQuotes: vi.fn(), getUser: vi.fn(), resolveCastAlias: vi.fn(), searchCasts: vi.fn(), searchUsers: vi.fn() }));
@@ -51,6 +56,7 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); localStorage.clear(); sessionStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 async function start(path = '/') {
   history.replaceState(null, '', path); await act(async () => root.render(<App />));
+  await vi.waitFor(() => expect(container.textContent).not.toContain('Restoring your session…'));
   // The public picker is a lazy module; wait for its visible result rather than
   // assuming an import finishes within the fixed ten-millisecond settle helper.
   if (path.startsWith('/following')) await vi.waitFor(async () => { await settle(); expect(container.querySelector('.public-following-picker')).toBeTruthy(); });
@@ -219,7 +225,7 @@ describe('publishing feedback in the application', () => {
   it('drops pending state on lock and keeps a late receipt out of a newly connected account', async () => {
     const account = session(); const receipt = deferred<{ hash: string }>(); vi.mocked(account.cast).mockReturnValue(receipt.promise);
     await start(); await connect(account); await type(published.text); await click(button('Cast', container.querySelector('.home-composer')!)); expect(pending()).not.toBeNull();
-    await click(button('My profile')); await settle(); await click(button('Lock this tab'));
+    await click(button('My profile')); await settle(); await click(button('Sign out'));
     expect(pending()).toBeNull(); expect(account.dispose).toHaveBeenCalledOnce();
     await connect(session(11, '2')); await click(button('Discover'));
     await act(async () => receipt.resolve({ hash: published.hash }));

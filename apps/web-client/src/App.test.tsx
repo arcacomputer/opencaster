@@ -19,6 +19,11 @@ vi.mock('./components/ConnectAccount', () => ({
   },
   DeviceSettings: () => <div>Synthetic device settings</div>,
 }));
+vi.mock('./lib/auth', () => ({
+  deleteSavedSession: vi.fn().mockResolvedValue(undefined),
+  getSavedSessionMethod: vi.fn().mockResolvedValue(undefined),
+  restoreRememberedSession: vi.fn().mockResolvedValue(null),
+}));
 vi.mock('@opencaster/client-core/media', () => ({ uploadMedia: vi.fn() }));
 vi.mock('@opencaster/client-core/api', async original => ({ ...await original<typeof import('@opencaster/client-core/api')>(), getCast: vi.fn(), getChannel: vi.fn(), getChannels: vi.fn(), getConversation: vi.fn(), getFeed: vi.fn(), getFollowStatus: vi.fn(), getInfo: vi.fn(), getProfileFeed: vi.fn(), getReactionStatus: vi.fn(), getSuggestedUsers: vi.fn(), getChannelMembers: vi.fn(), getCastQuotes: vi.fn(), getUser: vi.fn(), resolveCastAlias: vi.fn(), searchCasts: vi.fn(), searchUsers: vi.fn() }));
 
@@ -64,7 +69,11 @@ beforeEach(() => {
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); localStorage.clear(); sessionStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-async function start(path = '/') { history.replaceState(null, '', path); await act(async () => root.render(<App />)); }
+async function start(path = '/') {
+  history.replaceState(null, '', path);
+  await act(async () => root.render(<App />));
+  await vi.waitFor(() => expect(container.textContent).not.toContain('Restoring your session…'));
+}
 async function click(element: Element) { await act(async () => { element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); }); }
 async function reachFeedEnd(times = 1) {
   const entry = feedObservers.filter(value => !value.disconnected && value.target).at(-1);

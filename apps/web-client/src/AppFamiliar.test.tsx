@@ -14,7 +14,12 @@ import { FULL_CLIENT_SCOPES } from '@opencaster/client-core/pairing';
 const wallet = vi.hoisted(() => ({ next: null as WalletSession | null }));
 vi.mock('./components/ConnectAccount', () => ({
   default: ({ onConnect }: { onConnect(value: WalletSession): void }) => <button onClick={() => { if (wallet.next) onConnect(wallet.next); }}>Approve isolated wallet</button>,
-  DeviceSettings: ({ onLock }: { onLock(revoked?: boolean): void }) => <button onClick={() => onLock(false)}>Lock isolated wallet</button>,
+  DeviceSettings: ({ onLock }: { onLock(revoked?: boolean): void }) => <button onClick={() => onLock(false)}>Sign out isolated wallet</button>,
+}));
+vi.mock('./lib/auth', () => ({
+  deleteSavedSession: vi.fn().mockResolvedValue(undefined),
+  getSavedSessionMethod: vi.fn().mockResolvedValue(undefined),
+  restoreRememberedSession: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('@opencaster/client-core/api', async original => ({
   ...await original<typeof import('@opencaster/client-core/api')>(), getCast: vi.fn(), getCastReactionPeople: vi.fn(), getChannel: vi.fn(), getChannelMembers: vi.fn(), getChannels: vi.fn(), getConversation: vi.fn(), getFeed: vi.fn(), getFollowStatus: vi.fn(), getInfo: vi.fn(), getProfileFeed: vi.fn(), getReactionStatus: vi.fn(), getSuggestedUsers: vi.fn(), getUser: vi.fn(), searchCasts: vi.fn(), searchUsers: vi.fn(),
@@ -59,7 +64,12 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); localStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 async function flush() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); }); }
 async function until(ready: () => boolean) { for (let attempt = 0; attempt < 100 && !ready(); attempt++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); }); expect(ready()).toBe(true); }
-async function start(path = '/') { history.replaceState(null, '', path); await act(async () => root.render(<App />)); await flush(); }
+async function start(path = '/') {
+  history.replaceState(null, '', path);
+  await act(async () => root.render(<App />));
+  await flush();
+  await until(() => !container.textContent?.includes('Restoring your session…'));
+}
 async function remount(path: string) { await act(async () => root.unmount()); root = createRoot(container); await start(path); }
 async function click(element: Element) { expect(element).toBeTruthy(); await act(async () => { element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); }); await flush(); }
 function button(label: string, scope: ParentNode = container) { return [...scope.querySelectorAll<HTMLButtonElement>('button')].find(value => value.textContent?.trim() === label)!; }
@@ -69,7 +79,7 @@ async function discover() { await click(button('Discover', container.querySelect
 async function settings() { await click(container.querySelector('nav[aria-label="Main navigation"] a[href="/settings"]')!); await until(() => Boolean(container.querySelector('.content-settings'))); }
 async function options(index = 0) { await click(container.querySelectorAll('main button[aria-label="More cast options"]')[index]); return dialog('Cast options')!; }
 async function connect(value: WalletSession) { wallet.next = value; await click(button('Sign in')); await click(button('Approve isolated wallet')); }
-async function lock() { await click(container.querySelector('button[aria-label="Manage this device’s signing access"]')!); await click(button('Lock isolated wallet')); }
+async function signOut() { await click(container.querySelector('button[aria-label="Manage this device’s signing access"]')!); await click(button('Sign out isolated wallet')); }
 async function input(field: HTMLInputElement, value: string) {
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, value); field.dispatchEvent(new Event('input', { bubbles: true })); });
 }
@@ -90,7 +100,7 @@ describe('isolated familiar-client App integration', () => {
     await start('/settings');
     await until(() => Boolean(container.querySelector('.content-settings')));
     expect(container.querySelector('main')?.textContent).toContain('Guest preferences');
-    expect(container.querySelector('main h2')?.textContent).toBe('Content preferences');
+    expect(container.querySelector('.content-settings h2')?.textContent).toBe('Content preferences');
     expect(getFeed).not.toHaveBeenCalled();
     await discover(); await click(button('Hide this cast on this browser', await options()));
     expect(texts()).toEqual([second.text]);
@@ -107,11 +117,11 @@ describe('isolated familiar-client App integration', () => {
     expect(texts()).toEqual([second.text]);
     await settings(); expect(container.querySelector('main')?.textContent).toContain('Preferences for account FID 10');
     expect(button('Unmute', container.querySelector('main')!)).toBeTruthy();
-    await lock(); await connect(bob); await discover();
+    await signOut(); await connect(bob); await discover();
     expect(texts()).toEqual([first.text, second.text]);
     await settings(); expect(container.querySelector('main')?.textContent).toContain('Preferences for account FID 11');
     expect(container.querySelector('main')?.textContent).toContain('No accounts muted.');
-    await lock(); await connect(session(10, '3')); await discover();
+    await signOut(); await connect(session(10, '3')); await discover();
     expect(texts()).toEqual([second.text]);
     await settings(); await click(button('Unmute')); await discover();
     expect(texts()).toEqual([first.text, second.text]);
@@ -131,10 +141,10 @@ describe('isolated familiar-client App integration', () => {
     expect(texts()).toEqual([second.text]);
     expect(container.querySelector('.toast')?.textContent).toContain('Account muted for this tab. Browser storage is unavailable.');
     expect(readContentPreferences(10).mutedAccounts).toEqual([]);
-    await lock(); expect(texts()).toEqual([first.text, second.text]);
+    await signOut(); expect(texts()).toEqual([first.text, second.text]);
     await connect(session(11, '2')); expect(texts()).toEqual([first.text, second.text]);
     await settings(); expect(container.querySelector('main')?.textContent).toContain('No accounts muted.');
-    await lock(); await discover(); expect(texts()).toEqual([first.text, second.text]);
+    await signOut(); await discover(); expect(texts()).toEqual([first.text, second.text]);
     await connect(session(10, '3')); expect(texts()).toEqual([second.text]);
     await settings(); expect(button('Unmute')).toBeTruthy();
     expect(readContentPreferences().mutedAccounts).toEqual([]); expect(readContentPreferences(11).mutedAccounts).toEqual([]);
@@ -161,7 +171,7 @@ describe('isolated familiar-client App integration', () => {
     await start(); await connect(session(10, '1'));
     expect(texts()).toEqual([second.text]);
     await click(button('Show for this view')); expect(texts()).toEqual([first.text, second.text]);
-    await lock(); await connect(session(11, '2'));
+    await signOut(); await connect(session(11, '2'));
     expect(texts()).toEqual([second.text]);
     expect(container.querySelector('.content-filter-summary')?.textContent).toContain('1 loaded cast is filtered');
     expect(readContentPreferences(10).mutedAccounts[0].fid).toBe(first.author.fid);
