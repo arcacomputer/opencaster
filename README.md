@@ -21,7 +21,7 @@ yarn verify
 
 Browse public profiles, casts, conversations, channels and search without connecting a wallet. Create and share custom feed recipes, and save feeds, bookmarks and content preferences in this browser. Connect an existing custody wallet to publish, react, view recent notifications and use other supported account features through the fixed Hypersnap gateway.
 
-Wallet approval uses a compatible browser extension, optional WalletConnect or the offline signing companion to authorize a scoped device key. **The website never asks for recovery phrases.** Optional passkeys or password encryption protect saved device keys in this browser. See the [application guide](apps/web-client/README.md) and [feature support matrix](apps/web-client/FEATURE_SUPPORT.md) for supported behavior, permissions and limits.
+Wallet approval uses a compatible browser extension, optional WalletConnect or the offline signing companion to authorize a scoped device key. **The website never asks for recovery phrases.** Browser sign-in persists across tabs and restarts by default, with encrypted local key storage and a tab-only option in Settings. Existing password/passkey-protected saved keys still require unlocking. See the [application guide](apps/web-client/README.md) and [feature support matrix](apps/web-client/FEATURE_SUPPORT.md) for supported behavior, permissions and limits.
 
 Opencaster relies on Hypersnap's available indexes and the configured gateway infrastructure. Browser-local saves do not sync across devices. Account creation, DMs, push notifications, video uploads and mini-app execution are outside the current client. The application remains a beta; see the [verification records](apps/web-client/VERIFICATION.md) for dated checks and coverage limits.
 
@@ -54,7 +54,7 @@ The earlier Quorum messenger application and its development records are availab
 
 ## Existing users of quorum.arca.computer
 
-The move from quorum.arca.computer preserves public profile/cast paths and published media links. Browser-local saved keys, passkeys, drafts, bookmarks and preferences remain tied to their original origin; reconnect your wallet and set up optional device saving on the new website. Existing network authorizations are not silently revoked or transferred.
+The move from quorum.arca.computer preserves public profile/cast paths and published media links. Browser-local saved keys, passkeys, drafts, bookmarks and preferences remain tied to their original origin; reconnect your wallet on the new website; remembered sessions cannot move between origins. Existing network authorizations are not silently revoked or transferred.
 
 ## Origins and attribution
 
