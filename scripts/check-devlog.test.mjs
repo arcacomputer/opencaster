@@ -89,6 +89,16 @@ describe('release-note guard against real isolated Git history', { timeout: 15_0
     expect(() => checkDevLog({ base: repo.base, cwd: repo.cwd })).toThrow('Use its recorded timestamp 2026-10-20T08:00:00-03:00.');
   });
 
+  it.each(['2026-10-20T08:00:00Z', '2026-10-20T08:00:00+00:00'])('accepts UTC author timestamp spelling %s for a real UTC-authored commit', timestamp => {
+    const repo = seeded();
+    repo.write(APP, 'export const version = 2;\n');
+    const source = repo.commit('Implement isolated product improvement', '2026-10-20T08:00:00+00:00');
+    const note = { ...milestone('new-release', source, '2026-10-20'), timestamp };
+    repo.log([note, ...repo.old]);
+    const head = repo.commit('Document the implemented release', '2026-10-20T09:00:00+00:00');
+    expect(checkDevLog({ base: repo.base, head, cwd: repo.cwd }).addedIds).toEqual(['new-release']);
+  });
+
   it('checks a transferred release against historical owner URLs and permits canonical source links without losing milestones', () => {
     const repo = seeded();
     repo.log(repo.old.map((note, index) => ({ ...note, commit: note.commit.replace('/arcacomputer/opencaster/', index ? '/arcabotai/hypersnap-web/' : '/arcabotai/opencaster/') })));
