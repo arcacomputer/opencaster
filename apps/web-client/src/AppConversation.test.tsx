@@ -8,6 +8,9 @@ import { contentPreferencesKey, emptyContentPreferences, hideCast } from './lib/
 
 // Exercise the production conversation, cards, mention rendering and quotes.
 // All public responses are isolated fixtures; no account is connected.
+vi.mock('./lib/auth', () => ({
+  restoreRememberedSession: vi.fn().mockResolvedValue(null),
+}));
 vi.mock('@opencaster/client-core/api', async original => ({
   ...await original<typeof import('@opencaster/client-core/api')>(),
   getCast: vi.fn(), getChannels: vi.fn(), getConversation: vi.fn(), getFeed: vi.fn(), getInfo: vi.fn(), getProfileFeed: vi.fn(), getUser: vi.fn(),

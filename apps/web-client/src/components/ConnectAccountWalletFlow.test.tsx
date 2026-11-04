@@ -11,6 +11,7 @@ import { readSavedVault } from '../lib/vault';
 import type { WalletSession } from '../lib/auth';
 import type { WalletProvider } from '../lib/wallet';
 import { addressFromCustodyPrivateKey, bytesToHex, hexToBytes, signEip712Digest } from '@opencaster/protocol/signedKeyRequest';
+import { writeSessionPersistence } from '../lib/sessionPersistence';
 
 vi.mock('@opencaster/client-core/api', async original => ({ ...await original<typeof import('@opencaster/client-core/api')>(), getSigners: vi.fn(), getUser: vi.fn(), submitMessage: vi.fn() }));
 vi.mock('../lib/vault', async original => ({ ...await original<typeof import('../lib/vault')>(), readSavedVault: vi.fn() }));
@@ -98,6 +99,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('location', { origin: 'https://opencaster.org' });
+  writeSessionPersistence('tab');
   vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function (this: HTMLDialogElement) { this.open = true; });
   vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function (this: HTMLDialogElement) { this.open = false; });
   registry = { signers: [], currentUserNonce: 4, gaslessSignerCount: 0, gaslessSignerLimit: 1000 };
