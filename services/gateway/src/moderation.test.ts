@@ -19,6 +19,7 @@ describe('operator visibility policy', () => {
       '', ' ', '{', JSON.stringify({ version: 1, blockedFids: [], blockedCasts: [], blockedMedia: [], extra: true }),
       JSON.stringify({ version: 2, blockedFids: [], blockedCasts: [], blockedMedia: [] }),
       JSON.stringify({ version: 1, blockedFids: [0], blockedCasts: [], blockedMedia: [] }),
+      JSON.stringify({ version: 1, blockedFids: ['7'], blockedCasts: [], blockedMedia: [] }),
       JSON.stringify({ version: 1, blockedFids: [], blockedCasts: ['bad'], blockedMedia: [] }),
       JSON.stringify({ version: 1, blockedFids: [], blockedCasts: [], blockedMedia: ['f'.repeat(63)] }),
       JSON.stringify({ version: 1, blockedFids: Array(501).fill(1), blockedCasts: [], blockedMedia: [] }),
@@ -44,11 +45,13 @@ describe('operator visibility policy', () => {
 
   it('keeps allowed native messages intact, removes a blocked message whole, and enforces traversal bounds', () => {
     const blocked = policy({ version: 1, blockedFids: [7], blockedCasts: [], blockedMedia: [] });
-    const allowed = { hash: 'a'.repeat(40), data: { fid: 8, type: 'MESSAGE_TYPE_CAST_ADD', dataBytes: 'same', signature: 'same' } };
-    const removed = { hash: 'b'.repeat(40), data: { fid: 8, type: 'MESSAGE_TYPE_CAST_ADD', parentCastId: { fid: 7, hash: 'c'.repeat(40) }, dataBytes: 'same', signature: 'same' } };
-    const result = filterModeratedContent({ messages: [allowed, removed], nextPageToken: 'cursor' }, blocked);
+    const allowed = { hash: 'a'.repeat(40), data: { fid: 8, type: 1 }, dataBytes: 'same', signature: 'same' };
+    const removedStringType = { hash: 'b'.repeat(40), data: { fid: 8, type: 'MESSAGE_TYPE_CAST_ADD', castAddBody: { parentCastId: { fid: 7 } } }, dataBytes: 'same', signature: 'same' };
+    const removedNumericType = { hash: 'c'.repeat(40), data: { fid: 8, type: 3, target: [{ targetFid: 7 }] }, dataBytes: 'same', signature: 'same' };
+    const result = filterModeratedContent({ messages: [allowed, removedStringType, removedNumericType], nextPageToken: 'cursor' }, blocked);
     expect(result.value).toEqual({ messages: [allowed], nextPageToken: 'cursor' });
-    expect(result.removedNativeMessages).toBe(1);
+    expect((result.value!.messages as unknown[])[0]).toBe(allowed);
+    expect(result.removedNativeMessages).toBe(2);
     expect(() => filterModeratedContent({ deep: JSON.parse(`${'{"x":'.repeat(66)}0${'}'.repeat(66)}`) }, blocked)).toThrow();
     expect(() => filterModeratedContent({ items: Array(100_001).fill(null) }, blocked)).toThrow();
   });

@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { handleRequest, type Env } from './index';
 import { handleMediaRequest, type MediaEnv } from './media';
 import { loadShareData } from './shareData';
+import { encodeFeed, type FeedDefinition } from '@opencaster/client-core/customFeeds';
+import { previewImageData } from './shareMedia';
 
 const BASE = 'https://opencaster.org';
 const hash = 'ab'.repeat(20);
@@ -71,18 +73,41 @@ describe('gateway visibility moderation integration', () => {
   });
 
   it('denies signed cast-history pages if any native receipt must be removed', async () => {
-    const fetch = vi.fn().mockResolvedValue(json({ messages: [{ hash, data: { fid: 8, type: 'MESSAGE_TYPE_CAST_ADD', castAddBody: { parentCastId: { fid: 7, hash } }, dataBytes: 'unchanged', signature: 'unchanged' } }], nextPageToken: 'keep' }));
+    const fetch = vi.fn().mockResolvedValue(json({ messages: [{ hash, data: { fid: 8, type: 3, castAddBody: { parentCastId: { fid: 7, hash } } }, dataBytes: 'unchanged', signature: 'unchanged' }], nextPageToken: 'keep' }));
     vi.stubGlobal('fetch', fetch);
     const response = await handleRequest(new Request(`${BASE}/api/v1/castsByFid?fid=8&pageSize=250&reverse=true`), { ...base, OPENCASTER_MODERATION: manifest() });
     expect(response.status).toBe(403); expect(await response.json()).toEqual({ code: 'content_unavailable', message: 'This content is unavailable on Opencaster.' });
   });
 
-  it('uses generic HTML metadata when a share resolves to a blocked identity and rejects blocked feed sources', async () => {
+  it('uses generic HTML metadata for blocked identities and rejects actual blocked feed sources', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ user: { fid: 7, username: 'hidden', display_name: 'Private', custody_address: `0x${'a'.repeat(40)}`, profile: { bio: { text: '' } } } })));
     const env = { ...base, OPENCASTER_MODERATION: manifest() };
     const html = await handleRequest(new Request(`${BASE}/profile/hidden`), env);
     expect(await html.text()).not.toContain('Private');
-    expect(await loadShareData({ kind: 'feed', token: 'invalid' }, env)).toBeUndefined();
+    const recipe: FeedDefinition = { version: 1, name: 'Synthetic account feed', sources: [{ kind: 'following', fid: 7 }], order: 'source', filters: { includeWords: [], excludeWords: [], hideReplies: false, imagesOnly: false } };
+    const route = { kind: 'feed' as const, token: encodeFeed(recipe) };
+    expect(await loadShareData(route, {})).toMatchObject({ kind: 'feed' });
+    expect(await loadShareData(route, env)).toBeUndefined();
+  });
+
+  it('rejects blocked full-hash casts and hosted media through the real share resolver and preview reader', async () => {
+    const fullHash = `0x${'c'.repeat(40)}`;
+    const mediaHash = 'd'.repeat(64);
+    const author = { fid: 8, username: 'allowed', display_name: 'Allowed', profile: { bio: { text: '' } }, follower_count: 1, following_count: 2 };
+    const cast = { hash: fullHash, author, text: 'Synthetic public cast.', timestamp: '2026-11-04T12:00:00Z', embeds: [{ url: `${BASE}/media/${mediaHash}` }] };
+    const fetch = vi.fn().mockResolvedValue(json({ cast }));
+    vi.stubGlobal('fetch', fetch);
+    const route = { kind: 'cast' as const, hash: fullHash };
+    const castBlocked = { ...base, OPENCASTER_MODERATION: manifest({ blockedCasts: [fullHash] }) };
+    expect(await loadShareData(route, castBlocked)).toBeUndefined();
+    expect(fetch.mock.calls[0][0]).toContain(`/v2/farcaster/cast?identifier=${'c'.repeat(40)}&type=hash`);
+
+    fetch.mockClear();
+    const bucket = { get: vi.fn(), head: vi.fn(), put: vi.fn() };
+    const mediaBlocked = { ...base, MEDIA_BUCKET: bucket, MEDIA_QUOTA: {} as MediaEnv['MEDIA_QUOTA'], OPENCASTER_MODERATION: manifest({ blockedMedia: [mediaHash] }) };
+    expect(await loadShareData(route, mediaBlocked)).toBeUndefined();
+    expect(await previewImageData(`${BASE}/media/${mediaHash}`, mediaBlocked)).toBeUndefined();
+    expect(bucket.get).not.toHaveBeenCalled();
   });
 
   it('blocks media before bucket reads and makes allowed content no-store only when configured', async () => {

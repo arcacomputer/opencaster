@@ -23,6 +23,23 @@ Malformed, empty, oversized, or invalid configuration fails content reads
 closed. Keep targets private to the operator and out of source, logs, reports,
 and public documentation.
 
+## Private operator procedure
+
+Review any report privately. Identify only the minimum target needed: a FID,
+the full cast hash (not a display prefix), or the exact hosted-media hash.
+Prepare the policy through operator-owned Worker deployment/settings, using
+`OPENCASTER_MODERATION` as a server-only secret/binding. Never put it in a
+browser `VITE_*` variable, public JSON, this repository, or a committed
+deployment config. This repository does not provide an API or admin screen for
+changing the policy.
+
+Stage and check both allowed and denied reads before any separately approved
+production change, including intentionally short pages and preserved
+identity/custody lookups. To restore an individual item, remove that entry and
+verify again. Removing the binding entirely intentionally disables moderation
+globally; a malformed binding is not a rollback and continues to fail content
+reads closed. Do not use production targets or credentials in local fixtures.
+
 The gateway filters returned content locally; it does not delete upstream
 content, suspend accounts, or prevent content from being read elsewhere.
 Identity and custody lookups, signer metadata, and registry/name reads remain

@@ -60,6 +60,7 @@ export function resolveModeration(env: ModerationEnv): ModerationConfig {
 
     const blockedFids = new Set<number>();
     for (const fid of value.blockedFids) {
+      if (typeof fid !== 'number') return { status: 'invalid' };
       const normalized = normalizeFid(fid);
       if (normalized === undefined) return { status: 'invalid' };
       blockedFids.add(normalized);
@@ -103,7 +104,7 @@ function directlyBlocked(value: Record<string, unknown>, policy: ModerationPolic
 }
 
 function nativeMessage(value: Record<string, unknown>): boolean {
-  return object(value.data) && Object.hasOwn(value.data, 'fid') && typeof value.data.type === 'string';
+  return object(value.data) && Object.hasOwn(value.data, 'fid') && Object.hasOwn(value.data, 'type');
 }
 
 interface Traversal {
