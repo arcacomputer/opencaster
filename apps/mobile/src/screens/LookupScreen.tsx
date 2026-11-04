@@ -1,17 +1,17 @@
 import { getUser, type User } from '@opencaster/client-core/api';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import Feather from '@expo/vector-icons/Feather';
 import { useCallback, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LocalContentNotice } from '../components/LocalContentNotice';
 import { ActionButton, LoadingMessage, ScreenMessage } from '../components/Primitives';
 import { useLocalContent } from '../lib/LocalContentProvider';
-import type { RootStackParamList } from '../navigation';
+import type { MainTabScreenProps } from '../navigation';
 import { safeHttpsUrl } from '../lib/urls';
 import { usePublicRead } from '../lib/usePublicRead';
 import { palette } from '../theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Lookup'>;
+type Props = MainTabScreenProps<'Search'>;
 
 function UserResult({ user, onPress }: { user: User; onPress: () => void }) {
   const avatar = user.pfp_url ? safeHttpsUrl(user.pfp_url) : null;
@@ -57,34 +57,36 @@ export function LookupScreen({ navigation }: Props) {
 
   if (snapshot.phase !== 'ready') {
     return (
-      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
+      <SafeAreaView edges={['left', 'right']} style={styles.screen}>
         <LocalContentNotice onManage={() => navigation.navigate('Safety')} />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
+    <SafeAreaView edges={['left', 'right']} style={styles.screen}>
       <ScrollView
         automaticallyAdjustKeyboardInsets
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <Text accessibilityRole="header" style={styles.heading}>Find a public profile</Text>
-        <Text style={styles.detail}>Search by username or numeric FID. Only public profiles available through Hypersnap can be shown.</Text>
+        <View style={styles.searchField}>
+        <Feather name="search" size={21} color={palette.muted} accessible={false} />
         <TextInput
           accessibilityLabel="Username or FID"
           autoCapitalize="none"
           autoCorrect={false}
           onChangeText={setInput}
           onSubmitEditing={onSearch}
-          placeholder="Username or FID"
+          placeholder="Search by username or FID"
           placeholderTextColor={palette.muted}
           returnKeyType="search"
           style={styles.input}
           value={input}
         />
+        </View>
         <ActionButton label="Search" onPress={onSearch} />
+        {!submitted ? <View style={styles.empty}><Feather name="users" size={40} color={palette.muted} accessible={false} /><Text accessibilityRole="header" style={styles.heading}>Find your people</Text><Text style={styles.detail}>Enter an exact username or FID to discover their public profile and posts on Hypersnap.</Text></View> : null}
         {validationError ? <Text accessibilityRole="alert" style={styles.error}>{validationError}</Text> : null}
         {state.phase === 'loading' ? <LoadingMessage label="Looking up public profile…" /> : null}
         {state.phase === 'error'
@@ -113,18 +115,17 @@ export function LookupScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: palette.background, flex: 1 },
-  content: { gap: 16, padding: 20 },
+  content: { gap: 16, padding: 16 },
+  searchField: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 26, backgroundColor: palette.raised, paddingHorizontal: 16 },
+  empty: { paddingVertical: 48, gap: 16 },
   heading: { color: palette.text, fontSize: 24, fontWeight: '800' },
   detail: { color: palette.muted, fontSize: 15, lineHeight: 22 },
   input: {
-    backgroundColor: palette.surface,
-    borderColor: palette.border,
-    borderRadius: 12,
-    borderWidth: 1,
+    flex: 1,
     color: palette.text,
     fontSize: 16,
     minHeight: 50,
-    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   error: { color: palette.error, fontSize: 14 },
   result: {

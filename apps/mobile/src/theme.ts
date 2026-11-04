@@ -1,8 +1,8 @@
 export const palette = {
-  background: '#08111f',
-  surface: '#101d2e',
-  raised: '#15243a',
-  border: '#293b51',
+  background: '#0b1017',
+  surface: '#111923',
+  raised: '#1b2735',
+  border: '#263340',
   text: '#f2f7fc',
   muted: '#9aafc4',
   cyan: '#50dce8',

@@ -1,19 +1,20 @@
 import { getFeed, type Cast, type TrendingTimeWindow } from '@opencaster/client-core/api';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useMemo, useState } from 'react';
+import Feather from '@expo/vector-icons/Feather';
+import { useScrollToTop } from '@react-navigation/native';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { CastCard } from '../components/CastCard';
 import { LocalContentNotice } from '../components/LocalContentNotice';
 import { SocialStatus } from '../components/SocialStatus';
-import { ActionButton, LoadingMessage, PublicPreviewNotice, ScreenMessage } from '../components/Primitives';
+import { ActionButton, LoadingMessage, ScreenMessage } from '../components/Primitives';
 import { useLocalContent } from '../lib/LocalContentProvider';
 import { isHiddenTarget } from '../lib/localContent';
-import type { RootStackParamList } from '../navigation';
+import type { MainTabScreenProps } from '../navigation';
 import { usePagedCasts } from '../lib/usePagedCasts';
 import { palette } from '../theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
+type Props = MainTabScreenProps<'Feed'>;
 
 const WINDOWS: Array<{ label: string; value: TrendingTimeWindow }> = [
   { label: '1 hour', value: '1h' },
@@ -22,6 +23,8 @@ const WINDOWS: Array<{ label: string; value: TrendingTimeWindow }> = [
 ];
 
 export function HomeScreen({ navigation }: Props) {
+  const list = useRef<FlatList<Cast>>(null);
+  useScrollToTop(list);
   const { snapshot: localContentSnapshot } = useLocalContent();
   const [timeWindow, setTimeWindow] = useState<TrendingTimeWindow>('24h');
   const readPage = useCallback((cursor: string | null, signal: AbortSignal) => (
@@ -37,20 +40,13 @@ export function HomeScreen({ navigation }: Props) {
 
   const listHeader = useMemo(() => (
     <View style={styles.headerContent}>
-      <PublicPreviewNotice />
       <View style={styles.headingRow}>
         <View style={styles.headingCopy}>
           <Text accessibilityRole="header" style={styles.heading}>Trending</Text>
-          <Text style={styles.subheading}>Public casts available through Hypersnap.</Text>
+          <Text style={styles.subheading}>Public conversations · Hypersnap</Text>
         </View>
       </View>
-      <View style={styles.quickActions}>
-        <ActionButton label="Find a person" onPress={() => navigation.navigate('Lookup')} secondary />
-        <ActionButton label="Device access" onPress={() => navigation.navigate('DeviceAccess')} secondary />
-        <ActionButton label="New post" onPress={() => navigation.navigate('Compose')} />
-        <ActionButton label="Safety and data" onPress={() => navigation.navigate('Safety')} secondary />
-      </View>
-      <SocialStatus onDeviceAccess={() => navigation.navigate('DeviceAccess')} onOpenCast={hash => navigation.navigate('Conversation', { hash })} />
+      <SocialStatus compact onDeviceAccess={() => navigation.navigate('DeviceAccess')} onOpenCast={hash => navigation.navigate('Conversation', { hash })} />
       <View accessibilityRole="tablist" style={styles.windows}>
         {WINDOWS.map(option => (
           <Pressable
@@ -112,15 +108,16 @@ export function HomeScreen({ navigation }: Props) {
 
   if (localContentSnapshot.phase !== 'ready') {
     return (
-      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
+      <SafeAreaView edges={['left', 'right']} style={styles.screen}>
         <LocalContentNotice onManage={() => navigation.navigate('Safety')} />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
+    <SafeAreaView edges={['left', 'right']} style={styles.screen}>
       <FlatList<Cast>
+        ref={list}
         data={visibleCasts}
         keyExtractor={cast => cast.hash}
         ListEmptyComponent={emptyState}
@@ -147,7 +144,11 @@ export function HomeScreen({ navigation }: Props) {
           />
         )}
         style={styles.list}
+        contentContainerStyle={styles.listContent}
       />
+      <Pressable accessibilityRole="button" accessibilityLabel="New post" onPress={() => navigation.navigate('Compose')} style={({ pressed }) => [styles.compose, pressed && { opacity: 0.8 }]}>
+        <Feather name="edit-3" size={25} color={palette.cyanInk} accessible={false} />
+      </Pressable>
     </SafeAreaView>
   );
 }
@@ -155,22 +156,18 @@ export function HomeScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   screen: { backgroundColor: palette.background, flex: 1 },
   list: { flex: 1 },
-  headerContent: { gap: 20, paddingBottom: 12, paddingHorizontal: 16, paddingTop: 12 },
+  headerContent: { gap: 10, paddingHorizontal: 16, paddingTop: 8, borderBottomColor: palette.border, borderBottomWidth: StyleSheet.hairlineWidth },
   headingRow: { alignItems: 'center', flexDirection: 'row', gap: 12, justifyContent: 'space-between' },
   headingCopy: { flex: 1, gap: 4 },
-  quickActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  heading: { color: palette.text, fontSize: 25, fontWeight: '800' },
-  subheading: { color: palette.muted, fontSize: 14, lineHeight: 20 },
+  heading: { color: palette.text, fontSize: 21, fontWeight: '800' },
+  subheading: { color: palette.muted, fontSize: 12, lineHeight: 18 },
+  listContent: { paddingBottom: 90 },
+  compose: { position: 'absolute', right: 20, bottom: 20, width: 58, height: 58, borderRadius: 29, backgroundColor: palette.cyan, justifyContent: 'center', alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
   windows: {
-    backgroundColor: palette.surface,
-    borderColor: palette.border,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    padding: 4,
   },
-  window: { alignItems: 'center', borderRadius: 9, flex: 1, justifyContent: 'center', minHeight: 42, paddingHorizontal: 5 },
-  windowSelected: { backgroundColor: palette.cyan },
+  window: { alignItems: 'center', flex: 1, justifyContent: 'center', minHeight: 48, paddingHorizontal: 5, borderBottomWidth: 3, borderBottomColor: 'transparent' },
+  windowSelected: { borderBottomColor: palette.cyan },
   windowText: { color: palette.muted, fontSize: 13, fontWeight: '600' },
-  windowTextSelected: { color: palette.cyanInk },
+  windowTextSelected: { color: palette.text },
 });

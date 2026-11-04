@@ -3,6 +3,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo } from 'react';
 import { Alert, FlatList, Image, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { CastCard } from '../components/CastCard';
+import { IconButton } from '../components/IconButton';
 import { LocalContentNotice } from '../components/LocalContentNotice';
 import { ActionButton, LoadingMessage, ScreenMessage } from '../components/Primitives';
 import { useLocalContent } from '../lib/LocalContentProvider';
@@ -20,7 +21,7 @@ function countLabel(value: number, noun: string): string | null {
   return Number.isFinite(value) && value >= 0 ? `${new Intl.NumberFormat().format(value)} ${noun}` : null;
 }
 
-function ProfileSummary({ user }: { user: User }) {
+function ProfileSummary({ user, onOptions }: { user: User; onOptions: () => void }) {
   const avatar = user.pfp_url ? safeHttpsUrl(user.pfp_url) : null;
   const name = user.display_name?.trim() || (user.username ? `@${user.username}` : `FID ${user.fid}`);
   const counts = [countLabel(user.follower_count, 'followers'), countLabel(user.following_count, 'following')]
@@ -30,7 +31,10 @@ function ProfileSummary({ user }: { user: User }) {
 
   return (
     <View style={styles.profileCard}>
-      {avatar ? <Image accessibilityLabel={`${name} profile image`} source={{ uri: avatar }} style={styles.avatar} /> : null}
+      <View style={styles.profileTop}>
+        {avatar ? <Image accessibilityLabel={`${name} profile image`} source={{ uri: avatar }} style={styles.avatar} /> : <View style={styles.avatar} />}
+        <IconButton icon="more-horizontal" label={`More options for ${name}`} onPress={onOptions} />
+      </View>
       <Text accessibilityRole="header" style={styles.name}>{name}</Text>
       <Text style={styles.handle}>{user.username ? `@${user.username}  ·  ` : ''}FID {user.fid}</Text>
       {bio ? <Text style={styles.bio}>{bio}</Text> : null}
@@ -72,6 +76,12 @@ export function ProfileScreen({ navigation, route }: Props) {
     );
   }, [hideUser]);
 
+  const profileOptions = useCallback(() => Alert.alert('Profile options', 'Hiding affects this device only. Reporting opens an email draft.', [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Hide user', onPress: () => confirmHideUser(profileTargetFid) },
+    { text: 'Report user by email', onPress: () => navigation.push('Support', { kind: 'user', fid: profileTargetFid }) },
+  ]), [confirmHideUser, navigation, profileTargetFid]);
+
   const listHeader = useMemo(() => (
     <View style={styles.headerContent}>
       {profile.phase === 'loading'
@@ -85,16 +95,9 @@ export function ProfileScreen({ navigation, route }: Props) {
             />
           )
           : profile.phase === 'ready'
-            ? <ProfileSummary user={profile.value} />
+            ? <ProfileSummary user={profile.value} onOptions={profileOptions} />
             : null}
-      <ActionButton
-        label={`Hide user FID ${profileTargetFid} on this device`}
-        onPress={() => confirmHideUser(profileTargetFid)}
-        disabled={snapshot.busy}
-        secondary
-      />
-      <ActionButton label={`Report user FID ${profileTargetFid} by email`} onPress={() => navigation.push('Support', { kind: 'user', fid: profileTargetFid })} secondary />
-      <Text accessibilityRole="header" style={styles.feedHeading}>Public casts</Text>
+      <Text accessibilityRole="header" style={styles.feedHeading}>Posts</Text>
       {feed.error && feed.retryKind === 'refresh'
         ? (
           <ScreenMessage
@@ -105,7 +108,7 @@ export function ProfileScreen({ navigation, route }: Props) {
         )
         : null}
     </View>
-  ), [confirmHideUser, feed.error, feed.retry, feed.retryKind, navigation, profile, profileTargetFid, snapshot.busy]);
+  ), [feed.error, feed.retry, feed.retryKind, profile, profileOptions]);
 
   const allLoadedCastsHidden = feed.casts.length > 0 && visibleCasts.length === 0;
   const emptyState = allLoadedCastsHidden
@@ -193,20 +196,16 @@ export function ProfileScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   screen: { backgroundColor: palette.background, flex: 1 },
   list: { flex: 1 },
-  headerContent: { gap: 16, paddingBottom: 12, paddingHorizontal: 16, paddingTop: 12 },
+  headerContent: { gap: 16, paddingHorizontal: 16, paddingTop: 12, borderBottomColor: palette.border, borderBottomWidth: StyleSheet.hairlineWidth },
   profileCard: {
-    alignItems: 'center',
-    backgroundColor: palette.surface,
-    borderColor: palette.border,
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
     gap: 9,
-    padding: 20,
+    paddingVertical: 12,
   },
-  avatar: { backgroundColor: palette.raised, borderRadius: 36, height: 72, width: 72 },
-  name: { color: palette.text, fontSize: 22, fontWeight: '800', textAlign: 'center' },
-  handle: { color: palette.muted, fontSize: 14, textAlign: 'center' },
-  bio: { color: palette.text, fontSize: 15, lineHeight: 22, textAlign: 'center' },
+  profileTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 8 },
+  avatar: { backgroundColor: palette.raised, borderRadius: 40, height: 80, width: 80 },
+  name: { color: palette.text, fontSize: 26, fontWeight: '800' },
+  handle: { color: palette.muted, fontSize: 14 },
+  bio: { color: palette.text, fontSize: 16, lineHeight: 23 },
   counts: { color: palette.muted, fontSize: 14 },
-  feedHeading: { color: palette.text, fontSize: 19, fontWeight: '700', paddingTop: 6 },
+  feedHeading: { color: palette.text, fontSize: 16, fontWeight: '700', paddingVertical: 14, borderBottomWidth: 3, borderBottomColor: palette.cyan, alignSelf: 'flex-start' },
 });

@@ -3,14 +3,15 @@ import { useAuthorization } from '../lib/AuthorizationProvider';
 import { palette } from '../theme';
 import { ActionButton } from './Primitives';
 
-export function SocialStatus({ onDeviceAccess, onOpenCast }: { onDeviceAccess: () => void; onOpenCast: (hash: string) => void }) {
+export function SocialStatus({ onDeviceAccess, onOpenCast, compact = false }: { onDeviceAccess: () => void; onOpenCast: (hash: string) => void; compact?: boolean }) {
   const { authorization, snapshot } = useAuthorization();
   const { action } = snapshot;
+  if (compact && !snapshot.busy && !action && !snapshot.error && !snapshot.notice) return null;
   return (
     <View style={styles.panel}>
-      <Text style={styles.title}>{snapshot.authorized ? `Device unlocked · FID ${snapshot.request?.fid}` : 'Posting requires an authorized, unlocked device'}</Text>
-      <ActionButton label="Manage device access" onPress={onDeviceAccess} secondary />
-      {snapshot.phase !== 'locked' && snapshot.phase !== 'empty'
+      {!compact ? <><Text style={styles.title}>{snapshot.authorized ? `Device unlocked · FID ${snapshot.request?.fid}` : 'Posting requires an authorized, unlocked device'}</Text>
+      <ActionButton label="Manage device access" onPress={onDeviceAccess} secondary /></> : null}
+      {!compact && snapshot.phase !== 'locked' && snapshot.phase !== 'empty'
         ? <ActionButton label={snapshot.busy ? 'Stop waiting and lock' : 'Lock device'} onPress={authorization.lock} secondary /> : null}
       {snapshot.busy ? <Text accessibilityLiveRegion="polite" style={styles.detail}>Working… no success is assumed.</Text> : null}
       {action ? (

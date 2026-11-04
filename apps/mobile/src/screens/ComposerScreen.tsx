@@ -1,6 +1,7 @@
 import { getCast } from '@opencaster/client-core/api';
 import { useHeaderHeight } from '@react-navigation/elements';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { usePreventRemove } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -26,6 +27,10 @@ export function ComposerScreen({ navigation, route }: Props) {
   const { authorization, snapshot } = useAuthorization();
   const [text, setText] = useState('');
   const [attemptHash, setAttemptHash] = useState<string>();
+  usePreventRemove(text.length > 0, ({ data }) => Alert.alert('Discard this draft?', 'Your unsent text is only stored on this screen.', [
+    { text: 'Keep editing', style: 'cancel' },
+    { text: 'Discard', style: 'destructive', onPress: () => navigation.dispatch(data.action) },
+  ]));
   const readParent = useCallback(async (signal: AbortSignal) => {
     if (!parent) throw new Error('Choose a reply target.');
     const expected = castTarget(parent);
@@ -80,17 +85,17 @@ export function ComposerScreen({ navigation, route }: Props) {
     <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
       <KeyboardAvoidingView style={styles.screen} behavior="padding" keyboardVerticalOffset={headerHeight}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-          <SocialStatus onDeviceAccess={() => navigation.navigate('DeviceAccess')} onOpenCast={hash => navigation.navigate('Conversation', { hash })} />
-          <Text accessibilityRole="header" style={styles.title}>{parent ? 'Reply' : 'New post'}</Text>
-          <Text style={styles.detail}>Public Hypersnap text, up to {MAX_CAST_BYTES} UTF-8 bytes. No attachments or tagged mentions in this increment. Drafts stay on this screen only; leaving it may discard them.</Text>
+          {!snapshot.authorized ? <ScreenMessage title="Connect to post" detail="You can write a draft now. Connect an existing account before publishing." action={<ActionButton label="Connect your account" onPress={() => navigation.navigate('DeviceAccess')} />} /> : <Text style={styles.detail}>Posting as FID {snapshot.request?.fid}</Text>}
+          <SocialStatus compact onDeviceAccess={() => navigation.navigate('DeviceAccess')} onOpenCast={hash => navigation.navigate('Conversation', { hash })} />
           {parentState.phase === 'loading' ? <LoadingMessage label="Loading reply target…" /> : null}
           {parentState.phase === 'error' ? <ScreenMessage title="Reply target unavailable" detail={parentState.error} action={<ActionButton label="Retry reply target" onPress={parentState.retry} />} /> : null}
           {parentState.phase === 'ready' ? <CastCard cast={parentState.value} onReport={() => navigation.push('Support', { kind: 'post', fid: parentState.value.author.fid, hash: parentState.value.hash })} onAuthorPress={fid => navigation.navigate('Profile', { fid })} onThreadPress={hash => navigation.navigate('Conversation', { hash })} /> : null}
           <TextInput accessibilityLabel={parent ? 'Reply text' : 'Post text'} multiline value={text} onChangeText={setText}
-            editable={!snapshot.busy && snapshot.action?.status !== 'pending'} placeholder="What would you like to share?" placeholderTextColor={palette.muted}
+            editable={!snapshot.busy && snapshot.action?.status !== 'pending'} placeholder={parent ? 'Write your reply…' : 'What’s happening?'} placeholderTextColor={palette.muted}
             style={styles.input} textAlignVertical="top" />
           <Text accessibilityLiveRegion="polite" style={styles.detail}>{byteLength} / {MAX_CAST_BYTES} bytes{byteLength > MAX_CAST_BYTES ? ' — shorten your text' : ''}</Text>
           <ActionButton label={parent ? 'Review reply' : 'Review post'} onPress={publish} disabled={!canPublish} />
+          <Text style={styles.detail}>Public text only · {MAX_CAST_BYTES} UTF-8 bytes. No attachments or tagged mentions. You review before publishing.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -100,7 +105,6 @@ export function ComposerScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.background },
   content: { padding: 18, gap: 14, paddingBottom: 40 },
-  title: { fontSize: 24, fontWeight: '700', color: palette.text },
   detail: { fontSize: 14, lineHeight: 21, color: palette.muted },
-  input: { minHeight: 150, borderColor: palette.border, borderWidth: 1, borderRadius: 12, padding: 14, color: palette.text, fontSize: 16 },
+  input: { minHeight: 160, paddingVertical: 14, color: palette.text, fontSize: 21, lineHeight: 30 },
 });

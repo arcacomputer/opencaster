@@ -3,7 +3,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SocialStatus } from '../components/SocialStatus';
-import { CastActions } from '../components/CastActions';
 import { CastCard } from '../components/CastCard';
 import { LocalContentNotice } from '../components/LocalContentNotice';
 import { ActionButton, LoadingMessage, ScreenMessage } from '../components/Primitives';
@@ -47,14 +46,7 @@ export function ConversationScreen({ navigation, route }: Props) {
 
   const header = (
     <View>
-    <Text style={styles.description}>
-      Showing the selected public cast and replies returned by Hypersnap. The available thread may be incomplete.
-    </Text>
-    <SocialStatus onDeviceAccess={() => navigation.navigate('DeviceAccess')} onOpenCast={nextHash => navigation.push('Conversation', { hash: nextHash })} />
-    {state.phase === 'ready' ? <CastActions
-      target={{ fid: state.value.cast.author.fid, hash: state.value.cast.hash }}
-      onReply={() => navigation.navigate('Compose', { parent: { fid: state.value.cast.author.fid, hash: state.value.cast.hash } })}
-    /> : null}
+    <SocialStatus compact onDeviceAccess={() => navigation.navigate('DeviceAccess')} onOpenCast={nextHash => navigation.push('Conversation', { hash: nextHash })} />
     </View>
   );
   const empty = state.phase === 'loading'
@@ -78,6 +70,7 @@ export function ConversationScreen({ navigation, route }: Props) {
         keyExtractor={item => item.cast.hash}
         ListEmptyComponent={empty}
         ListHeaderComponent={header}
+        ListFooterComponent={<Text style={styles.description}>Public replies from Hypersnap. Some replies may not be indexed.</Text>}
         refreshControl={
           <RefreshControl
             colors={[palette.cyan]}
