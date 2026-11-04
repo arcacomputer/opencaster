@@ -2,7 +2,9 @@ import { getUser, type User } from '@opencaster/client-core/api';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { LocalContentNotice } from '../components/LocalContentNotice';
 import { ActionButton, LoadingMessage, ScreenMessage } from '../components/Primitives';
+import { useLocalContent } from '../lib/LocalContentProvider';
 import type { RootStackParamList } from '../navigation';
 import { safeHttpsUrl } from '../lib/urls';
 import { usePublicRead } from '../lib/usePublicRead';
@@ -26,6 +28,7 @@ function UserResult({ user, onPress }: { user: User; onPress: () => void }) {
 }
 
 export function LookupScreen({ navigation }: Props) {
+  const { snapshot } = useLocalContent();
   const [input, setInput] = useState('');
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -51,6 +54,14 @@ export function LookupScreen({ navigation }: Props) {
     if (submitted === normalized) state.retry();
     else setSubmitted(normalized);
   }, [normalized, state.retry, submitted]);
+
+  if (snapshot.phase !== 'ready') {
+    return (
+      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
+        <LocalContentNotice onManage={() => navigation.navigate('Safety')} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
@@ -86,12 +97,14 @@ export function LookupScreen({ navigation }: Props) {
           )
           : null}
         {state.phase === 'ready'
-          ? (
+          ? snapshot.data.users.includes(state.value.fid)
+            ? <LocalContentNotice hidden onManage={() => navigation.navigate('Safety')} />
+            : (
             <UserResult
               onPress={() => navigation.navigate('Profile', { fid: state.value.fid })}
               user={state.value}
             />
-          )
+            )
           : null}
       </ScrollView>
     </SafeAreaView>

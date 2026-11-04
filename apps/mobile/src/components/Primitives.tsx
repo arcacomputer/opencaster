@@ -14,11 +14,13 @@ export function ScreenMessage({ title, detail, action }: { title: string; detail
 
 export function ActionButton({
   label,
+  accessibilityLabel,
   onPress,
   disabled = false,
   secondary = false,
 }: {
   label: string;
+  accessibilityLabel?: string;
   onPress: () => void;
   disabled?: boolean;
   secondary?: boolean;
@@ -26,7 +28,7 @@ export function ActionButton({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}

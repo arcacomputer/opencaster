@@ -68,6 +68,15 @@ and includes text posts, replies, likes and recasts using the existing device
 permissions. Text is limited to 320 UTF-8 bytes; attachments and tagged mentions
 are not included in this increment.
 
+Local content controls hide public FIDs or cast hashes on this device only.
+They are saved in a bounded file in ordinary private app data, separate from
+the protected device-key store; operating-system backup and restore behavior
+can vary. Unreadable or corrupt filters fail closed until retry or explicit
+reset, and file writes are not atomic. These filters only change this app's
+display; they do not send reports, block network interactions, or delete
+content or accounts. Reporting/support destinations and operator policies are
+not configured.
+
 The request grants exactly cast/reply creation and reaction add/remove scopes
 (`[1, 3, 4]`) with a 15-minute approval deadline and a seven-day **sliding
 inactivity** window, not a fixed expiry. Device data uses Expo SecureStore with
@@ -85,6 +94,7 @@ confirmed key absence.
 | Profile lookup | Search by numeric FID or username and open the public profile | Shared API tests and mobile TypeScript check |
 | Public profile | Public identity details and paginated casts | Shared API tests and mobile TypeScript check |
 | Conversation | Selected cast and available nested replies, with indentation capped at five levels | Mobile TypeScript check |
+| Local content controls | Hide public FIDs or cast hashes on this device; no network block, report or deletion | Bounded storage/controller tests and mobile TypeScript check |
 | Native external content | HTTPS links and HTTPS profile/media images | URL-safety tests |
 | Device authorization | Explicit identity review, protected local device state, separate offline-signer request/approval and custody-approved revocation | Core state-machine, protected-storage and bounded-transfer tests |
 | Scoped social actions | Text posts/replies and like/recast add/remove; explicit confirmation, fresh authorization checks and protected pending receipts | Synthetic controller tests cover confirmation, uncertain restart recovery, no duplicate submission, scopes and cancellation |
