@@ -22,6 +22,21 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'remember-browser-sessions',
+    date: '2026-11-04',
+    timestamp: '2026-11-04T11:20:10Z',
+    title: 'Stay signed in when you come back',
+    summary: 'New sign-ins remember this browser by default, so another tab or browser restart no longer requires another wallet approval or unlock prompt.',
+    changes: [
+      'Simplify sign-in to finding your account, reviewing its identity and approving your wallet; save the authorized device automatically, with retry or tab-only continuation if storage fails.',
+      'Choose Tab only in Settings for sessions that end on close or reload. Signing out removes the saved key and ends sessions in other open tabs without revoking network authorization.',
+      'Use encrypted browser-profile storage and recheck current custody, permissions and expiry before restoring. Anyone using that browser profile can use the account; clearing site data or expired or revoked access requires reconnecting.',
+      'Keep existing password and passkey saves protected until you explicitly choose automatic sign-in. No recovery phrase or raw posting key is stored in localStorage or sessionStorage.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/ce26e4570b18c4ebb6c7c235949f02c6ad926f31',
+    tag: 'Wallets',
+  },
+  {
     id: 'portable-timeline-continuations',
     date: '2026-11-01',
     timestamp: '2026-11-01T03:34:19Z',
