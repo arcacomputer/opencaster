@@ -22,6 +22,21 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'operator-managed-gateway-visibility-moderation',
+    date: '2026-11-04',
+    timestamp: '2026-11-04T14:17:51+00:00',
+    title: 'Add operator-managed gateway content visibility',
+    summary: 'The gateway can apply a private operator-managed visibility policy to content reads, previews and hosted media without changing Hypersnap data or signed writes.',
+    changes: [
+      'Keep rules server-side and opt-in; absent configuration preserves existing behavior, while invalid configured rules fail closed for content reads.',
+      'Filter blocked FIDs, cast hashes and explicit media hashes in live, backup and cached reads while preserving identity and custody lookup.',
+      'Preserve signed-message integrity and deny strict history pages rather than changing receipts. Previously downloaded, off-origin and third-party content remains outside this control.',
+      'Document owner-operated configuration and limits. Reports and operator responses are not automated; no production policy or deployment is enabled by this change.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/ccbe1878794173b7d29bc6eb048f38a10eca512b',
+    tag: 'Security',
+  },
+  {
     id: 'safe-sign-out-storage-failures',
     date: '2026-11-04',
     timestamp: '2026-11-04T11:33:29Z',
