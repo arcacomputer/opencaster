@@ -22,6 +22,34 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'mobile-explicit-stack-back-controls',
+    date: '2026-11-04',
+    timestamp: '2026-11-04T13:08:15+00:00',
+    title: 'Keep mobile stack screens visibly connected to Back',
+    summary: 'Auxiliary screens now show an explicit JS-stack-aware Back control when the native header omits its default arrow. Compose retains its Close action and draft protection; a native rerun after this navigation change remains pending.',
+    changes: [
+      'Use the navigation stack’s canGoBack and goBack behavior for the explicit header control while hiding the redundant default back arrow.',
+      'Keep Compose’s Close action and usePreventRemove draft guard unchanged; restore a visible return path for stacked auxiliary screens.',
+      'Android and iOS native runtime validation after this navigation change remains pending.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/a2bbd5abedd5bb4d1ee9188039cec62ec4c9bc8b',
+    tag: 'Reliability',
+  },
+  {
+    id: 'mobile-profile-fallback-report-hide',
+    date: '2026-11-04',
+    timestamp: '2026-11-04T12:22:45+00:00',
+    title: 'Keep profile report and hide actions available after lookup errors',
+    summary: 'When profile lookup fails and no posts are available, the route FID still opens a user-report email draft or a confirmed device-local hide; this does not report or moderate content on the network.',
+    changes: [
+      'Show the route FID and options menu in the non-ready profile header so report and hide controls remain reachable with an empty feed.',
+      'Use the route FID for the SupportScreen user-report draft; confirming hide still precedes localContent.hideUser.',
+      'Email handoff is a draft, not delivery confirmation or network moderation; hiding affects this device only.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/e8e3f70ccdd5c6ee62b5a87be93bd57c3c3a93c7',
+    tag: 'Social',
+  },
+  {
     id: 'mobile-social-navigation-and-timeline',
     date: '2026-11-04',
     timestamp: '2026-11-04T12:16:16+00:00',
