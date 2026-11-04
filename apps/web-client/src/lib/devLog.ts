@@ -24,16 +24,16 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'operator-managed-gateway-visibility-moderation',
     date: '2026-11-04',
-    timestamp: '2026-11-04T14:17:51+00:00',
+    timestamp: '2026-11-04T14:28:40+00:00',
     title: 'Add operator-managed gateway content visibility',
     summary: 'The gateway can apply a private operator-managed visibility policy to content reads, previews and hosted media without changing Hypersnap data or signed writes.',
     changes: [
       'Keep rules server-side and opt-in; absent configuration preserves existing behavior, while invalid configured rules fail closed for content reads.',
       'Filter blocked FIDs, cast hashes and explicit media hashes in live, backup and cached reads while preserving identity and custody lookup.',
-      'Preserve signed-message integrity and deny strict history pages rather than changing receipts. Previously downloaded, off-origin and third-party content remains outside this control.',
+      'Keep numeric and string signed-message envelopes opaque; remove blocked receipts whole or deny strict history pages without changing signed data or pagination. Previously downloaded, off-origin and third-party content remains outside this control.',
       'Document owner-operated configuration and limits. Reports and operator responses are not automated; no production policy or deployment is enabled by this change.',
     ],
-    commit: 'https://github.com/arcacomputer/opencaster/commit/ccbe1878794173b7d29bc6eb048f38a10eca512b',
+    commit: 'https://github.com/arcacomputer/opencaster/commit/b0cd86e7d4e543b0ef404838c51526f643a9be54',
     tag: 'Security',
   },
   {
