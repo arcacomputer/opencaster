@@ -83,10 +83,17 @@ describe('release-note guard against real isolated Git history', { timeout: 15_0
     expect(checkDevLog({ base, head: release.head, cwd: repo.cwd }).addedIds).toEqual(['new-release']);
   });
 
-  it.each([undefined, '2026-10-20T08:01:00-03:00', '2026-10-20T11:00:00Z'])('rejects a new release with a missing or unrecorded author timestamp: %s', timestamp => {
+  it.each([undefined, '2026-10-20T08:01:00-03:00', '2026-10-20T10:00:00Z'])('rejects a new release with a missing or unrecorded author timestamp: %s', timestamp => {
     const repo = seeded(); const source = productChange(repo);
     repo.log([{ ...milestone('new-release', source, '2026-10-20'), timestamp }, ...repo.old]);
     expect(() => checkDevLog({ base: repo.base, cwd: repo.cwd })).toThrow('Use its recorded timestamp 2026-10-20T08:00:00-03:00.');
+  });
+
+  it('accepts equivalent author timestamps across UTC formatting differences', () => {
+    const repo = seeded(); const source = productChange(repo);
+    const note = { ...milestone('new-release', source, '2026-10-20'), timestamp: '2026-10-20T11:00:00Z' };
+    const release = recordedRelease(repo, [note, ...repo.old], source);
+    expect(checkDevLog({ base: repo.base, head: release.head, cwd: repo.cwd }).addedIds).toEqual(['new-release']);
   });
 
   it('checks a transferred release against historical owner URLs and permits canonical source links without losing milestones', () => {
