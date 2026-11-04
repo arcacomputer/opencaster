@@ -48,10 +48,11 @@ describe('operator visibility policy', () => {
     const allowed = { hash: 'a'.repeat(40), data: { fid: 8, type: 1 }, dataBytes: 'same', signature: 'same' };
     const removedStringType = { hash: 'b'.repeat(40), data: { fid: 8, type: 'MESSAGE_TYPE_CAST_ADD', castAddBody: { parentCastId: { fid: 7 } } }, dataBytes: 'same', signature: 'same' };
     const removedNumericType = { hash: 'c'.repeat(40), data: { fid: 8, type: 3, target: [{ targetFid: 7 }] }, dataBytes: 'same', signature: 'same' };
-    const result = filterModeratedContent({ messages: [allowed, removedStringType, removedNumericType], nextPageToken: 'cursor' }, blocked);
+    const removedMention = { hash: 'd'.repeat(40), data: { fid: 8, type: 3, castAddBody: { mentions: [7] } }, dataBytes: 'same', signature: 'same' };
+    const result = filterModeratedContent({ messages: [allowed, removedStringType, removedNumericType, removedMention], nextPageToken: 'cursor' }, blocked);
     expect(result.value).toEqual({ messages: [allowed], nextPageToken: 'cursor' });
     expect((result.value!.messages as unknown[])[0]).toBe(allowed);
-    expect(result.removedNativeMessages).toBe(2);
+    expect(result.removedNativeMessages).toBe(3);
     expect(() => filterModeratedContent({ deep: JSON.parse(`${'{"x":'.repeat(66)}0${'}'.repeat(66)}`) }, blocked)).toThrow();
     expect(() => filterModeratedContent({ items: Array(100_001).fill(null) }, blocked)).toThrow();
   });

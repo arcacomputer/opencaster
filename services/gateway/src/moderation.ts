@@ -100,7 +100,8 @@ export function blocksMedia(policy: ModerationPolicy, value: unknown): boolean {
 
 function directlyBlocked(value: Record<string, unknown>, policy: ModerationPolicy): boolean {
   return FID_KEYS.some(key => blocksFid(policy, value[key]))
-    || CAST_KEYS.some(key => blocksCast(policy, value[key]));
+    || CAST_KEYS.some(key => blocksCast(policy, value[key]))
+    || (Array.isArray(value.mentions) && value.mentions.some(fid => blocksFid(policy, fid)));
 }
 
 function nativeMessage(value: Record<string, unknown>): boolean {

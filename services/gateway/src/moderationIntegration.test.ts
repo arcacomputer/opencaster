@@ -73,7 +73,7 @@ describe('gateway visibility moderation integration', () => {
   });
 
   it('denies signed cast-history pages if any native receipt must be removed', async () => {
-    const fetch = vi.fn().mockResolvedValue(json({ messages: [{ hash, data: { fid: 8, type: 3, castAddBody: { parentCastId: { fid: 7, hash } } }, dataBytes: 'unchanged', signature: 'unchanged' }], nextPageToken: 'keep' }));
+    const fetch = vi.fn().mockResolvedValue(json({ messages: [{ hash, data: { fid: 8, type: 3, castAddBody: { mentions: [7] } }, dataBytes: 'unchanged', signature: 'unchanged' }], nextPageToken: 'keep' }));
     vi.stubGlobal('fetch', fetch);
     const response = await handleRequest(new Request(`${BASE}/api/v1/castsByFid?fid=8&pageSize=250&reverse=true`), { ...base, OPENCASTER_MODERATION: manifest() });
     expect(response.status).toBe(403); expect(await response.json()).toEqual({ code: 'content_unavailable', message: 'This content is unavailable on Opencaster.' });
