@@ -73,6 +73,19 @@ foundation passed Android emulator and iOS simulator validation before this work
 
 ## Submission and revocation
 
+- Social writes use the same exact `[1, 3, 4]` permissions, controller-owned seed,
+  fresh custody/registry checks and operation generation. Text-only casts/replies
+  and like/recast additions/removals require explicit UI confirmation.
+- Persist a bounded public social receipt before POST, with a monotonic protocol
+  timestamp across restarts. It contains no draft text or replayable envelope.
+  One unresolved receipt blocks all further social writes until read-only checks
+  observe the exact cast/hash/FID or desired reaction state. Reaction observation
+  is not proof of a particular message receipt. HTTP acknowledgement is not success.
+  Historical protected records without receipts remain valid.
+- Receipt reconciliation is still available when the signer has expired; it only
+  reads public state and does not restore authorization. Forgetting or successful
+  key revocation removes local tracking, not any possibly submitted social action.
+
 - Persist the submitted/uncertain marker **before** sending any signed request.
   Serialize mutating operations; guard asynchronous completions with a generation
   token so cancellation/locking cannot resurrect a session or send stale approval.
