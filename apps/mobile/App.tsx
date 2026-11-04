@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LocalContentProvider } from './src/lib/LocalContentProvider';
 import { MainTabs } from './src/MainTabs';
 import { IconButton } from './src/components/IconButton';
+import { StackBackButton } from './src/components/StackBackButton';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { ConversationScreen } from './src/screens/ConversationScreen';
 import { DeviceAccessScreen } from './src/screens/DeviceAccessScreen';
@@ -40,14 +41,15 @@ export default function App() {
             >
               <Stack.Navigator
                 initialRouteName="Home"
-                screenOptions={{
+                screenOptions={({ navigation }) => ({
                   contentStyle: styles.screen,
                   headerStyle: styles.header,
                   headerTintColor: palette.cyan,
                   headerTitleStyle: styles.headerTitle,
-                  headerBackTitle: 'Back',
+                  headerBackVisible: false,
+                  headerLeft: () => <StackBackButton navigation={navigation} />,
                   headerShadowVisible: false,
-                }}
+                })}
               >
                 <Stack.Screen component={MainTabs} name="Home" options={{ headerShown: false }} />
                 <Stack.Screen component={DeviceAccessScreen} name="DeviceAccess" options={{ title: 'Device access' }} />
