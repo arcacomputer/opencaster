@@ -7,6 +7,9 @@ import { getChannels, getFeed, getInfo, getSuggestedUsers, searchCasts, searchUs
 import { renderMentionSegments } from '@opencaster/client-core/content';
 
 vi.mock('@opencaster/client-core/api', async original => ({ ...await original<typeof import('@opencaster/client-core/api')>(), getChannels: vi.fn(), getFeed: vi.fn(), getInfo: vi.fn(), getSuggestedUsers: vi.fn(), searchCasts: vi.fn(), searchUsers: vi.fn() }));
+vi.mock('./lib/auth', () => ({
+  restoreRememberedSession: vi.fn().mockResolvedValue(null),
+}));
 vi.mock('@opencaster/client-core/content', async original => {
   const actual = await original<typeof import('@opencaster/client-core/content')>();
   return { ...actual, renderMentionSegments: vi.fn(actual.renderMentionSegments) };
