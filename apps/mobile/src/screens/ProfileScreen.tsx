@@ -84,6 +84,10 @@ export function ProfileScreen({ navigation, route }: Props) {
 
   const listHeader = useMemo(() => (
     <View style={styles.headerContent}>
+      {profile.phase !== 'ready' ? <View style={styles.profileTop}>
+        <Text style={styles.handle}>FID {profileTargetFid}</Text>
+        <IconButton icon="more-horizontal" label={`More options for FID ${profileTargetFid}`} onPress={profileOptions} />
+      </View> : null}
       {profile.phase === 'loading'
         ? <LoadingMessage label="Loading public profile…" />
         : profile.phase === 'error'
@@ -108,7 +112,7 @@ export function ProfileScreen({ navigation, route }: Props) {
         )
         : null}
     </View>
-  ), [feed.error, feed.retry, feed.retryKind, profile, profileOptions]);
+  ), [feed.error, feed.retry, feed.retryKind, profile, profileOptions, profileTargetFid]);
 
   const allLoadedCastsHidden = feed.casts.length > 0 && visibleCasts.length === 0;
   const emptyState = allLoadedCastsHidden
