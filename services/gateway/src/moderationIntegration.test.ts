@@ -94,17 +94,20 @@ describe('gateway visibility moderation integration', () => {
     const fullHash = `0x${'c'.repeat(40)}`;
     const mediaHash = 'd'.repeat(64);
     const author = { fid: 8, username: 'allowed', display_name: 'Allowed', profile: { bio: { text: '' } }, follower_count: 1, following_count: 2 };
-    const cast = { hash: fullHash, author, text: 'Synthetic public cast.', timestamp: '2026-11-04T12:00:00Z', embeds: [{ url: `${BASE}/media/${mediaHash}` }] };
-    const fetch = vi.fn().mockResolvedValue(json({ cast }));
+    const cast = { hash: fullHash, author, text: '🌈 !', timestamp: '2026-11-04T12:00:00Z', embeds: [{ url: `${BASE}/media/${mediaHash}` }], mentioned_profiles: [{ fid: 7, username: 'blockedusername' }], mentioned_profiles_ranges: [{ start: 5, end: 5 }] };
+    const fetch = vi.fn().mockImplementation(async () => json({ cast }));
     vi.stubGlobal('fetch', fetch);
     const route = { kind: 'cast' as const, hash: fullHash };
-    const castBlocked = { ...base, OPENCASTER_MODERATION: manifest({ blockedCasts: [fullHash] }) };
+    expect(await loadShareData(route, {})).toMatchObject({ kind: 'cast', text: '🌈 @blockedusername!' });
+    expect(await loadShareData(route, { ...base, OPENCASTER_MODERATION: manifest() })).toBeUndefined();
+
+    const castBlocked = { ...base, OPENCASTER_MODERATION: manifest({ blockedFids: [], blockedCasts: [fullHash] }) };
     expect(await loadShareData(route, castBlocked)).toBeUndefined();
     expect(fetch.mock.calls[0][0]).toContain(`/v2/farcaster/cast?identifier=${'c'.repeat(40)}&type=hash`);
 
     fetch.mockClear();
     const bucket = { get: vi.fn(), head: vi.fn(), put: vi.fn() };
-    const mediaBlocked = { ...base, MEDIA_BUCKET: bucket, MEDIA_QUOTA: {} as MediaEnv['MEDIA_QUOTA'], OPENCASTER_MODERATION: manifest({ blockedMedia: [mediaHash] }) };
+    const mediaBlocked = { ...base, MEDIA_BUCKET: bucket, MEDIA_QUOTA: {} as MediaEnv['MEDIA_QUOTA'], OPENCASTER_MODERATION: manifest({ blockedFids: [], blockedMedia: [mediaHash] }) };
     expect(await loadShareData(route, mediaBlocked)).toBeUndefined();
     expect(await previewImageData(`${BASE}/media/${mediaHash}`, mediaBlocked)).toBeUndefined();
     expect(bucket.get).not.toHaveBeenCalled();

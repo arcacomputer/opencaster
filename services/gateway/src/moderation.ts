@@ -118,19 +118,23 @@ function countNode(state: Traversal, depth: number): void {
   if (depth > 64 || state.nodes > 100_000) throw new ModerationFilterError();
 }
 
-function nativeMessageContainsBlock(value: unknown, policy: ModerationPolicy, state: Traversal, depth: number): boolean {
+function containsBlockedReference(value: unknown, policy: ModerationPolicy, state: Traversal, depth: number): boolean {
   countNode(state, depth);
-  if (Array.isArray(value)) return value.some(item => nativeMessageContainsBlock(item, policy, state, depth + 1));
+  if (Array.isArray(value)) return value.some(item => containsBlockedReference(item, policy, state, depth + 1));
   if (!object(value)) return false;
   if (directlyBlocked(value, policy)) return true;
-  return Object.values(value).some(child => nativeMessageContainsBlock(child, policy, state, depth + 1));
+  return Object.values(value).some(child => containsBlockedReference(child, policy, state, depth + 1));
+}
+
+export function containsModeratedReference(value: unknown, policy: ModerationPolicy): boolean {
+  return containsBlockedReference(value, policy, { nodes: 0, removedNativeMessages: 0 }, 0);
 }
 
 type Filtered = { removed: true } | { removed: false; value: unknown };
 
 function filterValue(value: unknown, policy: ModerationPolicy, state: Traversal, depth: number): Filtered {
   if (object(value) && nativeMessage(value)) {
-    if (nativeMessageContainsBlock(value, policy, state, depth)) {
+    if (containsBlockedReference(value, policy, state, depth)) {
       state.removedNativeMessages++;
       return { removed: true };
     }

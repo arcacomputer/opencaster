@@ -5,7 +5,7 @@ import { renderMentionSegments } from '@opencaster/client-core/content';
 import { decodeFeed, type FeedDefinition } from '@opencaster/client-core/customFeeds';
 import { APP_ORIGIN, LEGACY_APP_ORIGIN } from '@opencaster/client-core/appOrigins';
 import { fetchUpstream, parseUpstreamObject, resolveReadFallback, resolveUpstream, type UpstreamConfig, type UpstreamEnv } from './upstream';
-import { blocksCast, blocksFid, blocksMedia, resolveModeration, type ModerationPolicy } from './moderation';
+import { blocksCast, blocksFid, blocksMedia, containsModeratedReference, resolveModeration, type ModerationPolicy } from './moderation';
 
 /** Only public display fields may cross the sharing boundary. */
 export interface ShareProfile {
@@ -333,7 +333,11 @@ export async function loadShareData(route: AppRoute, env: UpstreamEnv, signal?: 
   const timeout = setTimeout(() => controller.abort(new DOMException('Sharing lookup timed out', 'TimeoutError')), LOOKUP_TIMEOUT_MS);
   try {
     const primary = resolveUpstream(env);
-    const read = publicReader(primary, resolveReadFallback(env, primary), controller.signal);
+    const originalRead = publicReader(primary, resolveReadFallback(env, primary), controller.signal);
+    const read: PublicRead = async (path, params) => {
+      const response = await originalRead(path, params);
+      return policy && response && containsModeratedReference(response, policy) ? undefined : response;
+    };
     let result: ShareData | undefined;
     if (route.kind === 'profile' && route.identifier) {
       const profile = await loadProfile(route.identifier, read);
