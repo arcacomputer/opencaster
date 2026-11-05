@@ -94,6 +94,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'rename-share-preview-url-check',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:43:59Z',
+    title: 'Clarify the share-preview image link check',
+    summary: 'Link previews keep accepting the same public HTTPS profile, channel and cast images as before; the shared check is now named for what it does, so future avatar-only rules cannot accidentally change channel or cast images. No visible change.',
+    changes: [
+      'Rename the gateway helper that validates public HTTPS image links for profile avatars, channel images and cast attachments in share previews.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/b34af316009df8af109d5bffa06d486ab7bc56ef',
+    tag: 'Reliability',
+  },
+  {
     id: 'remove-unused-messenger-style-tokens',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:34:55Z',
