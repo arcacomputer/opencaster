@@ -9,6 +9,7 @@ import { PAIRING_SCOPES, hashPairingRequest, hashRevocationRequest, validatePair
 import { approvePairingWithWallet, approveRevocationWithWallet, discoverInjectedWallets, type InjectedWallet } from '../lib/wallet';
 import { passkeysAvailable } from '../lib/passkey';
 import { ApiError, getUser } from '@opencaster/client-core/api';
+import { farcasterToUnixSeconds } from '@opencaster/client-core/farcasterEpoch';
 import { normalizeReviewIdentity, parseAccountLookup, sameReviewIdentity, type ReviewIdentity } from '../lib/accountLookup';
 import '../onboarding.scss';
 
@@ -150,7 +151,7 @@ function AccountFacts({ request }: { request: PairingRequest }) {
   return <><dl className="pairing-facts onboarding-permissions">
     <div><dt>Permission</dt><dd>{request.scopes.includes(2) ? 'Publish and delete your own casts, add or remove reactions, follow or unfollow accounts, and edit profile metadata' : request.scopes.includes(11) ? 'Publish casts, add or remove reactions, follow or unfollow accounts, and edit profile metadata' : 'Publish casts and add or remove reactions'}</dd></div>
     <div><dt>Inactivity expiry</dt><dd>7 days, renewed by signing activity</dd></div>
-    <div><dt>Approve before</dt><dd>{new Date((request.deadline + 1609459200) * 1000).toLocaleString()}</dd></div>
+    <div><dt>Approve before</dt><dd>{new Date(farcasterToUnixSeconds(request.deadline) * 1000).toLocaleString()}</dd></div>
   </dl><details className="onboarding-protocol"><summary>Device key and protocol details</summary><dl className="pairing-facts">
     <div><dt>Device key fingerprint</dt><dd className="pairing-mono">{fingerprint(request.publicKey)}</dd></div>
     <div><dt>Request checksum</dt><dd className="pairing-mono">{hashPairingRequest(request)}</dd></div>
@@ -219,7 +220,7 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [request]);
-  const expired = request !== null && Math.floor(now / 1000) >= request.deadline + 1609459200;
+  const expired = request !== null && Math.floor(now / 1000) >= farcasterToUnixSeconds(request.deadline);
   useEffect(() => {
     const previous = previousStage.current; previousStage.current = { step: currentStep, unlock };
     if (presentation === 'page' && (currentStep > 1 || previous.step !== currentStep || previous.unlock !== unlock)) stepHeading.current?.focus();
@@ -441,7 +442,7 @@ export function DeviceSettings({ session, onClose, onLock, notify }: { session: 
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [request]);
-  const expired = request !== null && Math.floor(now / 1000) >= request.deadline + 1609459200;
+  const expired = request !== null && Math.floor(now / 1000) >= farcasterToUnixSeconds(request.deadline);
 
   const lifecycle: StepLifecycle = { busy, generation, controller, setBusy, setError, setStage };
   function resetRevocation() {
@@ -534,7 +535,7 @@ export function DeviceSettings({ session, onClose, onLock, notify }: { session: 
     {request && <section className="revocation-panel">
       <h3><IconShieldLock size={18} />{attempted ? 'Confirm this device’s removal' : 'Approve this device’s removal'}</h3>
       {!attempted && <p className="pairing-copy">Check the <strong>Revoke device</strong> action, FID, custody wallet, and complete key fingerprint before approving removal in your wallet app.</p>}
-      <dl className="pairing-facts"><div><dt>Action</dt><dd>Revoke all permissions granted to this device key</dd></div><div><dt>FID</dt><dd>{request.fid}</dd></div><div><dt>Custody wallet</dt><dd className="pairing-mono">{request.custodyAddress}</dd></div><div><dt>Key to revoke</dt><dd className="pairing-mono">{fingerprint(request.publicKey)}</dd></div><div><dt>Request checksum</dt><dd className="pairing-mono">{hashRevocationRequest(request)}</dd></div><div><dt>Approve before</dt><dd>{new Date((request.deadline + 1609459200) * 1000).toLocaleString()}</dd></div><div><dt>Website label</dt><dd className="pairing-mono">{request.origin}<small>Self-reported; this label does not authenticate the website.</small></dd></div></dl>
+      <dl className="pairing-facts"><div><dt>Action</dt><dd>Revoke all permissions granted to this device key</dd></div><div><dt>FID</dt><dd>{request.fid}</dd></div><div><dt>Custody wallet</dt><dd className="pairing-mono">{request.custodyAddress}</dd></div><div><dt>Key to revoke</dt><dd className="pairing-mono">{fingerprint(request.publicKey)}</dd></div><div><dt>Request checksum</dt><dd className="pairing-mono">{hashRevocationRequest(request)}</dd></div><div><dt>Approve before</dt><dd>{new Date(farcasterToUnixSeconds(request.deadline) * 1000).toLocaleString()}</dd></div><div><dt>Website label</dt><dd className="pairing-mono">{request.origin}<small>Self-reported; this label does not authenticate the website.</small></dd></div></dl>
       {!attempted && <WalletApproval request={request} disabled={busy || expired} expired={expired} onBusy={value => { setBusy(value); setStage(value ? 'Check your wallet for approval…' : ''); if (value) { setApproval(null); setApprovalName(''); } }} onError={setError} onApproved={(value, name) => { setApproval(validateRevocationApproval(value)); setApprovalName(name); }} />}
       {approval && !attempted && <div className="wallet-approved" role="status"><IconCheck size={18} /><span>Removal approved{approvalName ? ` · ${approvalName}` : ''}. Submit below to revoke this device on Hypersnap.</span></div>}
       {!attempted && <details className="pairing-advanced"><summary>Advanced: approve revocation offline</summary>
