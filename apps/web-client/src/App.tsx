@@ -37,6 +37,7 @@ import { getCastAncestors, matchesParentCast, parentCastReference, type CastAnce
 import { createParentCastReader } from './lib/parentCastReader';
 import { mergeFeedPage } from './lib/feedPageMerge';
 import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
+import { errorMessage } from './lib/errors';
 import { decodeFeed, encodeFeed, newSavedFeed, normalizeFeedDefinition, readSavedFeeds, writeSavedFeeds, type FeedDefinition, type SavedFeed } from '@opencaster/client-core/customFeeds';
 import './familiar.scss';
 import './cast-features.scss';
@@ -75,7 +76,7 @@ function localClick(event: MouseEvent<HTMLAnchorElement>, action: () => void) {
   event.preventDefault(); action();
 }
 const sourceUrl = 'https://github.com/arcacomputer/opencaster';
-const message = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+const UNEXPECTED_ERROR = 'Something went wrong. Please try again.';
 const compactNumber = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 const short = (value: number = 0) => compactNumber.format(value);
 // Returns a callback with a stable identity that always runs the latest render's
@@ -527,7 +528,7 @@ export default function App() {
       await session.follow(target, remove);
       if (stillCurrent()) setFollowingProfile(!remove);
       notify(remove ? 'Unfollow submitted to Hypersnap.' : 'Follow submitted to Hypersnap.');
-    } catch (error) { if (stillCurrent()) { setFollowError(message(error)); setFollowingProfile(null); } else notify(message(error)); }
+    } catch (error) { if (stillCurrent()) { setFollowError(errorMessage(error, UNEXPECTED_ERROR)); setFollowingProfile(null); } else notify(errorMessage(error, UNEXPECTED_ERROR)); }
     finally { setFollowBusy(false); }
   }
   const activeTitle = view === 'feed' ? customFeed?.name || 'Feed' : view === 'feeds' ? 'Feeds' : view === 'profile' ? profile?.display_name || profile?.username || 'Profile' : view === 'channel' ? channelInfo?.name || channel : view === 'following' ? 'Following' : view === 'bookmarks' ? 'Bookmarks' : view === 'not-found' ? 'Page not found' : view === 'notifications' ? 'Notifications' : view === 'search' ? 'Search' : view === 'channels' ? 'Channels' : view === 'devlog' ? 'Dev log' : view === 'settings' ? 'Settings' : view === 'connect' ? 'Connect your identity' : 'Discover';
@@ -563,7 +564,7 @@ export default function App() {
     const controller = new AbortController();
     getFollowStatus(sessionFid, profileFid, controller.signal)
       .then(value => { if (!controller.signal.aborted) setFollowingProfile(value); })
-      .catch(error => { if (!controller.signal.aborted) setFollowError(message(error)); });
+      .catch(error => { if (!controller.signal.aborted) setFollowError(errorMessage(error, UNEXPECTED_ERROR)); });
     return () => controller.abort();
   }, [view, profileFid, sessionFid, followRefresh, refresh]);
   useEffect(() => {
@@ -595,7 +596,7 @@ export default function App() {
     setProfile(cached); setProfileLoading(!cached);
     getUser(/^\d+$/.test(identifier) ? { fid: Number(identifier) } : { username: identifier }, controller.signal)
       .then(user => { if (controller.signal.aborted) return; profileCache.current.set(String(user.fid), user); if (user.username) profileCache.current.set(user.username, user); setProfile(user); })
-      .catch(error => { if (!controller.signal.aborted) setProfileError(message(error)); })
+      .catch(error => { if (!controller.signal.aborted) setProfileError(errorMessage(error, UNEXPECTED_ERROR)); })
       .finally(() => { if (!controller.signal.aborted) setProfileLoading(false); });
     return () => controller.abort();
     // Updating the session's display fields must not trigger a second profile
@@ -617,7 +618,7 @@ export default function App() {
     const controller = new AbortController(); setChannelInfo(channelCache.current.get(channel) ?? null);
     getChannel(channel, controller.signal).then(data => {
       if (!controller.signal.aborted) { channelCache.current.set(data.id, data); setChannelInfo(data); }
-    }).catch(error => { if (!controller.signal.aborted) { setChannelInfo(null); setChannelError(message(error)); } });
+    }).catch(error => { if (!controller.signal.aborted) { setChannelInfo(null); setChannelError(errorMessage(error, UNEXPECTED_ERROR)); } });
     return () => controller.abort();
   }, [view, channel, refresh]);
   useEffect(() => { document.title = isConversation ? 'Conversation · Opencaster' : `${activeTitle} · Opencaster`; }, [isConversation, activeTitle]);
@@ -652,7 +653,7 @@ export default function App() {
     const request = customFeed ? import('./lib/customFeedReader').then(({ readCustomFeed }) => readCustomFeed(customFeed, null, controller.signal)) : view === 'profile' && profileFid !== undefined ? getProfileFeed({ fid: profileFid, tab: profileTab, limit: 25, signal: controller.signal }) : getFeed({ kind: view === 'channel' ? 'channel' : view === 'following' ? 'following' : 'trending', fid: view === 'following' ? followingFid : sessionFid, channel, ...(view === 'discover' ? { timeWindow: trendingWindow } : {}), limit: 25, signal: controller.signal });
     request
       .then(data => { if (!controller.signal.aborted) { setCasts(data.casts); setCursor(data.next?.cursor || null); } })
-      .catch(error => { if (!controller.signal.aborted) setError(message(error)); })
+      .catch(error => { if (!controller.signal.aborted) setError(errorMessage(error, UNEXPECTED_ERROR)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { controller.abort(); feedMoreRead.current?.abort(); };
   }, [view, channel, sessionFid, sessionPublicKey, profileFid, profileTab, trendingWindow, refresh, postRefresh, featureView, feedIdentity, followingFid, customFeed]);
@@ -677,7 +678,7 @@ export default function App() {
         history.replaceState(history.state, '', path);
         const next = parseLocalPath(path); currentRoute.current = next; setRoute(next);
       }
-    }).catch(error => { if (!controller.signal.aborted && stillCurrent()) { setThreadErrorKey(key); setThreadError(message(error)); } });
+    }).catch(error => { if (!controller.signal.aborted && stillCurrent()) { setThreadErrorKey(key); setThreadError(errorMessage(error, UNEXPECTED_ERROR)); } });
     return () => controller.abort();
   }, [conversationHash, refresh, postRefresh, castLink]);
 
@@ -698,24 +699,24 @@ export default function App() {
       if (!clearSignedOutAppState(expectedSession)) return;
       notify('Signed out of this browser. The saved key was removed; network authorization remains active until revoked.');
     }).catch(error => {
-      if (clearSignedOutAppState(expectedSession)) notify(message(error));
+      if (clearSignedOutAppState(expectedSession)) notify(errorMessage(error, UNEXPECTED_ERROR));
     });
   }
   function save(cast: Cast) {
     try {
       const next = toggleBookmark(bookmarks, cast);
       setBookmarks(next); if (!saveBookmarks(next)) notify('Browser storage is unavailable. Bookmarks will last for this tab.');
-    } catch (cause) { notify(message(cause)); }
+    } catch (cause) { notify(errorMessage(cause, UNEXPECTED_ERROR)); }
   }
   const search = useCallback((query: string) => {
     if (!query.trim()) return;
     try { navigate(searchPath(query.replace(/^@/, ''), query.startsWith('@') ? 'users' : 'casts')); }
-    catch (error) { notify(message(error)); }
+    catch (error) { notify(errorMessage(error, UNEXPECTED_ERROR)); }
   }, [navigate, notify]);
   useEffect(() => { if (searchQuery !== undefined) searchDraft.set(searchQuery); }, [searchDraft, searchQuery]);
   function toggleSavedChannel(item: Channel) {
     let next: Channel[];
-    try { next = toggleChannelPin(savedChannels, item); } catch (error) { notify(message(error)); return; }
+    try { next = toggleChannelPin(savedChannels, item); } catch (error) { notify(errorMessage(error, UNEXPECTED_ERROR)); return; }
     setSavedChannels(next);
     if (!writeChannelPins(next)) notify('Channel shortcuts will last for this tab. Browser storage is unavailable.');
   }
@@ -758,7 +759,7 @@ export default function App() {
           : undefined;
       setCasts(previous => mergeFeedPage(previous, data.casts, compareCasts)); setCursor(repeated ? null : next);
       if (repeated) setPaginationNotice('The node repeated a feed page. Refresh the feed to check for more conversations.');
-    } catch (error) { if (generation === feedGeneration.current && !controller.signal.aborted) setMoreError(message(error)); }
+    } catch (error) { if (generation === feedGeneration.current && !controller.signal.aborted) setMoreError(errorMessage(error, UNEXPECTED_ERROR)); }
     finally { if (feedMoreRead.current === controller) { feedMoreRead.current = null; if (generation === feedGeneration.current) setLoadingMore(false); } }
   }
   function updatePreferences(next: ContentPreferences) {
@@ -927,7 +928,7 @@ export default function App() {
     {imageViewer && <MediaViewer {...imageViewer} onClose={() => setImageViewer(null)} />}
     {shortcutHelp && <Modal title="Keyboard shortcuts" onClose={() => setShortcutHelp(false)}><dl className="shortcut-list"><div><dt>Search</dt><dd><kbd>⌘ / Ctrl</kbd> + <kbd>K</kbd> or <kbd>/</kbd></dd></div><div><dt>This help</dt><dd><kbd>?</kbd></dd></div><div><dt>Publish from the composer</dt><dd><kbd>⌘ / Ctrl</kbd> + <kbd>Enter</kbd></dd></div><div><dt>Close a dialog</dt><dd><kbd>Esc</kbd></dd></div></dl><p className="muted">Navigation shortcuts pause while you type or a dialog is open.</p></Modal>}
     {reactionPeople && <Suspense fallback={<Modal title="Cast reactions" onClose={() => setReactionPeople(null)}><p role="status">Loading reactions…</p></Modal>}><CastReactionPeople cast={reactionPeople} onClose={() => setReactionPeople(null)} onProfile={openProfile} /></Suspense>}
-    {castOptions && <CastOptions cast={castOptions} onReactionPeople={() => { setReactionPeople(castOptions); setCastOptions(null); }} onHide={() => { try { const saved = updatePreferences(hideCast(preferences, castOptions.hash)); setCastOptions(null); notify(saved ? 'Cast hidden on this browser. Restore it in Settings.' : 'Cast hidden for this tab. Browser storage is unavailable.'); } catch (cause) { notify(message(cause)); } }} onMute={() => { try { const saved = updatePreferences(muteAccount(preferences, castOptions.author)); setCastOptions(null); notify(saved ? 'Account muted on this browser. Manage it in Settings.' : 'Account muted for this tab. Browser storage is unavailable.'); } catch (cause) { notify(message(cause)); } }} onClose={() => setCastOptions(null)} onQuotes={() => { setCastQuotes(castOptions); setCastOptions(null); }} onShare={() => { setSharedCast(castOptions); setCastOptions(null); }} onQuote={() => { quoteGeneration.current += 1; setQuotedCast(castOptions); setCastOptions(null); }} />}
+    {castOptions && <CastOptions cast={castOptions} onReactionPeople={() => { setReactionPeople(castOptions); setCastOptions(null); }} onHide={() => { try { const saved = updatePreferences(hideCast(preferences, castOptions.hash)); setCastOptions(null); notify(saved ? 'Cast hidden on this browser. Restore it in Settings.' : 'Cast hidden for this tab. Browser storage is unavailable.'); } catch (cause) { notify(errorMessage(cause, UNEXPECTED_ERROR)); } }} onMute={() => { try { const saved = updatePreferences(muteAccount(preferences, castOptions.author)); setCastOptions(null); notify(saved ? 'Account muted on this browser. Manage it in Settings.' : 'Account muted for this tab. Browser storage is unavailable.'); } catch (cause) { notify(errorMessage(cause, UNEXPECTED_ERROR)); } }} onClose={() => setCastOptions(null)} onQuotes={() => { setCastQuotes(castOptions); setCastOptions(null); }} onShare={() => { setSharedCast(castOptions); setCastOptions(null); }} onQuote={() => { quoteGeneration.current += 1; setQuotedCast(castOptions); setCastOptions(null); }} />}
     {composeOpen && session && !signIn && <Modal title="New cast" onClose={() => setComposeOpen(false)} wide><Suspense fallback={<p className="devlog-loading" role="status">Loading the composer…</p>}><Composer key={`${session.publicKey}:compose:${composeParentUrl ?? ''}`} session={session} onPublication={onPublication} onSignIn={() => requestSignIn()} parentUrl={composeParentUrl} onPosted={() => setComposeOpen(false)} notify={notify} /></Suspense></Modal>}
     {sharedCast && <ShareCastDialog cast={sharedCast} path={castLink(sharedCast)} onClose={() => setSharedCast(null)} notify={notify} />}
   </div></ContentControls.Provider></ParentCastRead.Provider>;

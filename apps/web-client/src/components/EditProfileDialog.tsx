@@ -3,6 +3,7 @@ import { IconCheck, IconPhoto, IconRefresh, IconUpload } from '@tabler/icons-rea
 import type { User } from '@opencaster/client-core/api';
 import { profileChanges, type ProfileField, type ProfilePatch, type ProfileUpdateResult } from '../lib/social';
 import { profileDraft, type ProfileValues } from '../lib/profileDraft';
+import { errorMessage } from '../lib/errors';
 import { Button, Input, Modal } from './ui';
 import '../social.scss';
 import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
@@ -16,7 +17,7 @@ const LABELS: Record<ProfileField, string> = { displayName: 'Display name', bio:
 const LIMITS: Record<ProfileField, number> = { displayName: 32, bio: 256, pfpUrl: 256 };
 type Values = ProfileValues;
 const byteLength = (value: string) => new TextEncoder().encode(value).length;
-const errorMessage = (error: unknown) => error instanceof Error ? error.message.slice(0, 240) : 'This action could not be completed.';
+const ACTION_FAILED = 'This action could not be completed.';
 const profileValues = (user: User): Values => ({ displayName: user.display_name ?? '', bio: user.profile?.bio?.text ?? '', pfpUrl: user.pfp_url ?? '' });
 
 interface Props {
@@ -79,7 +80,7 @@ export default function EditProfileDialog({ user, onSave, onUpload, onReload, on
       setValues(current => ({ ...current, pfpUrl: uploaded.url }));
       setStatus('Image uploaded. Choose Save changes to use it on your profile.');
     } catch (cause) {
-      if (run === generation.current && !controller.signal.aborted) { setError(errorMessage(cause)); setStatus(''); }
+      if (run === generation.current && !controller.signal.aborted) { setError(errorMessage(cause, ACTION_FAILED)); setStatus(''); }
     } finally {
       if (run === generation.current) { setBusy(''); uploadController.current = null; }
     }
@@ -95,7 +96,7 @@ export default function EditProfileDialog({ user, onSave, onUpload, onReload, on
     if (!canSave || writing.current) return;
     const changes = draft.changes;
     try { profileChanges(changes); }
-    catch (cause) { setError(errorMessage(cause)); return; }
+    catch (cause) { setError(errorMessage(cause, ACTION_FAILED)); return; }
     const run = ++generation.current;
     writing.current = true; setBusy('save'); setError(''); setStatus('Saving your profile on Hypersnap…'); setFailedFields([]);
     try {
@@ -123,7 +124,7 @@ export default function EditProfileDialog({ user, onSave, onUpload, onReload, on
       // The session throws only before sending anything. Actual write failures
       // are structured above, so a preflight rejection must not quarantine a
       // second field that was never submitted (especially after reopening).
-      setError(errorMessage(cause)); setStatus('No new changes were submitted. Check your public profile if an earlier save is still unconfirmed.');
+      setError(errorMessage(cause, ACTION_FAILED)); setStatus('No new changes were submitted. Check your public profile if an earlier save is still unconfirmed.');
     } finally {
       writing.current = false;
       if (run === generation.current) setBusy('');
@@ -157,7 +158,7 @@ export default function EditProfileDialog({ user, onSave, onUpload, onReload, on
       if (Object.keys(confirmed).length) onSaved?.(confirmed);
       const unresolved = uncertainFields.some(field => confirmed[field] === undefined);
       setStatus(unresolved ? 'Some changes are still unconfirmed. They will not be sent again from this dialog.' : 'Public profile checked.');
-    } catch (cause) { if (run === generation.current) { setError(errorMessage(cause)); setStatus(''); } }
+    } catch (cause) { if (run === generation.current) { setError(errorMessage(cause, ACTION_FAILED)); setStatus(''); } }
     finally { if (run === generation.current) setBusy(''); }
   }
 

@@ -3,6 +3,7 @@ import { IconBell, IconBookmark, IconChevronRight, IconHash, IconHeart, IconMess
 import { getChannels, getNotifications, searchCasts, searchUsers, type ActivityItem, type Cast, type Channel, type User } from '@opencaster/client-core/api';
 import { castPath, PROFILE_TABS, profilePath, type ProfileTab } from '@opencaster/client-core/navigation';
 import { Button, Input } from './ui';
+import { errorMessage } from '../lib/errors';
 import '../feature.scss';
 import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
 
@@ -51,7 +52,7 @@ function useFeaturePages<T>(key: string, enabled: boolean, loader: (options: Pag
       if (repeated) setStatus('You have reached the end of the available results.');
       setLoaded(true);
     } catch (cause) {
-      if (run === generation.current && !controller.signal.aborted && activeKey.current === key) setError(cause instanceof Error ? cause.message.slice(0, 240) : 'These results could not be loaded.');
+      if (run === generation.current && !controller.signal.aborted && activeKey.current === key) setError(errorMessage(cause, 'These results could not be loaded.'));
     } finally {
       if (run === generation.current) { setBusy(false); requesting.current = false; }
     }

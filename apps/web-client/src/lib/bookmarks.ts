@@ -1,5 +1,6 @@
-import type { Cast, Channel, User } from '@opencaster/client-core/api';
+import type { Cast, User } from '@opencaster/client-core/api';
 import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
+import { channelSnapshot } from './channelPins';
 
 // Public local snapshots only. Validation/filtering can move to a future shared
 // Hypersnap mobile package; the optional Storage argument is the web adapter.
@@ -24,11 +25,6 @@ function userSnapshot(value: unknown): User | undefined {
   const bio = object(value.profile) && object(value.profile.bio) ? text(value.profile.bio.text, 1024) : '';
   return { fid: value.fid, username, ...(typeof value.display_name === 'string' ? { display_name: text(value.display_name, 256) } : {}), ...(pfp ? { pfp_url: pfp } : {}), custody_address: '', profile: { bio: { text: bio } }, follower_count: count(value.follower_count), following_count: count(value.following_count) };
 }
-function channelSnapshot(value: unknown): Channel | undefined {
-  if (!object(value) || typeof value.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(value.id)) return;
-  const url = https(value.url); const parent = https(value.parent_url); const image = https(value.image_url);
-  return { id: value.id, name: text(value.name, 128) || value.id, url: url ?? '', ...(parent ? { parent_url: parent } : {}), ...(image ? { image_url: image } : {}), ...(typeof value.description === 'string' ? { description: text(value.description, 512) } : {}) };
-}
 function snapshot(value: unknown): Cast | undefined {
   if (!object(value)) return;
   const hash = bookmarkHash(value.hash); const author = userSnapshot(value.author);
@@ -41,7 +37,7 @@ function snapshot(value: unknown): Cast | undefined {
     else if (object(embed.cast_id) && fid(embed.cast_id.fid)) { const target = bookmarkHash(embed.cast_id.hash); if (target) embeds.push({ cast_id: { fid: embed.cast_id.fid, hash: target } }); }
   }
   const parentHash = bookmarkHash(value.parent_hash); const parentUrl = https(value.parent_url); const rootUrl = https(value.root_parent_url);
-  const channel = channelSnapshot(value.channel);
+  const channel = channelSnapshot(value.channel, { maxUrlLength: 2048, includeMemberCount: false, keepBlankName: true });
   const result: Cast = { hash, author, text: value.text, timestamp: value.timestamp, embeds, reactions: { likes_count: object(value.reactions) ? count(value.reactions.likes_count) : 0, recasts_count: object(value.reactions) ? count(value.reactions.recasts_count) : 0 }, replies: { count: object(value.replies) ? count(value.replies.count) : 0 }, ...(parentHash ? { parent_hash: parentHash } : {}), ...(parentUrl ? { parent_url: parentUrl } : {}), ...(rootUrl ? { root_parent_url: rootUrl } : {}), ...(object(value.parent_author) && fid(value.parent_author.fid) ? { parent_author: { fid: value.parent_author.fid } } : {}), ...(channel ? { channel } : {}) };
   if (Array.isArray(value.mentioned_profiles) && Array.isArray(value.mentioned_profiles_ranges) && value.mentioned_profiles.length > 0 && value.mentioned_profiles.length <= 10 && value.mentioned_profiles.length === value.mentioned_profiles_ranges.length) {
     const profiles = value.mentioned_profiles.map(userSnapshot); const ranges = value.mentioned_profiles_ranges;

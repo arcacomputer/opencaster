@@ -3,6 +3,7 @@ import { IconChevronRight, IconRefresh, IconUsers } from '@tabler/icons-react';
 import type { User } from '@opencaster/client-core/api';
 import { profilePath } from '@opencaster/client-core/navigation';
 import { Button, Modal } from './ui';
+import { errorMessage } from '../lib/errors';
 import '../social.scss';
 import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
 
@@ -52,7 +53,7 @@ export default function FollowListDialog({ user, kind, loadPage, onProfile, onCl
       if (repeated) setStatus('You have reached the end of the available list.');
       setLoaded(true);
     } catch (cause) {
-      if (run === generation.current && !requestController.signal.aborted) setError(cause instanceof Error ? cause.message.slice(0, 240) : 'This list could not be loaded.');
+      if (run === generation.current && !requestController.signal.aborted) setError(errorMessage(cause, 'This list could not be loaded.'));
     } finally {
       if (run === generation.current) { setBusy(false); requesting.current = false; }
     }

@@ -1,4 +1,5 @@
 /** Separate operator surface. Never imported by the public browser or gateway. */
+import { readLimited } from '@opencaster/client-core/boundedRead';
 import { collectReport, renderReport, type AnalyticsRow } from './report.mjs';
 
 export interface AnalyticsSqlBinding {
@@ -55,21 +56,7 @@ function decodeObject(segment: string): Record<string, unknown> {
 
 async function readJwks(response: Response): Promise<unknown> {
   if (!response.ok || !response.body || Number(response.headers.get('Content-Length')) > MAX_JWKS_BYTES) throw new Error('Unavailable keys');
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      length += value.byteLength;
-      if (length > MAX_JWKS_BYTES) { void reader.cancel().catch(() => {}); throw new Error('Unavailable keys'); }
-      chunks.push(value);
-    }
-  } finally { reader.releaseLock(); }
-  const bytes = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  const bytes = await readLimited(response.body, MAX_JWKS_BYTES);
   return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
 }
 

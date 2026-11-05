@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { IconArrowDown, IconArrowUp, IconCopy, IconEdit, IconPin, IconPinnedOff, IconPlus, IconRss, IconTrash, IconX } from '@tabler/icons-react';
 import { getUser, type User } from '@opencaster/client-core/api';
 import { parseAccountLookup } from '../lib/accountLookup';
+import { errorMessage } from '../lib/errors';
 import { encodeFeed, normalizeFeedDefinition, sourceKey, type FeedDefinition, type FeedSource, type SavedFeed } from '@opencaster/client-core/customFeeds';
 import { publicUrl } from '@opencaster/client-core/navigation';
 import { Button, Input, Modal } from './ui';
@@ -9,7 +10,7 @@ import '../feeds.scss';
 
 const WINDOWS = ['1h', '6h', '12h', '24h', '7d'] as const;
 const DEFAULT_FEED: FeedDefinition = { version: 1, name: '', sources: [], order: 'source', filters: { includeWords: [], excludeWords: [], hideReplies: false, imagesOnly: false } };
-function message(error: unknown) { return error instanceof Error ? error.message.slice(0, 240) : 'This public account could not be loaded. Try again.'; }
+const ACCOUNT_LOAD_FAILED = 'This public account could not be loaded. Try again.';
 function sourceLabel(source: FeedSource) {
   if (source.kind === 'trending') return `Trending · ${source.timeWindow}`;
   if (source.kind === 'channel') return `Channel /${source.channel}`;
@@ -35,7 +36,7 @@ function usePublicAccount() {
       if (!Number.isSafeInteger(user.fid) || user.fid < 1 || user.fid > 0xffffffff || (lookup.fid !== undefined && user.fid !== lookup.fid)) throw new Error('The node returned a different or invalid FID. Try the account’s exact FID.');
       return user;
     } catch (cause) {
-      if (!request.signal.aborted && controller.current === request) setError(message(cause));
+      if (!request.signal.aborted && controller.current === request) setError(errorMessage(cause, ACCOUNT_LOAD_FAILED));
       return null;
     } finally { if (controller.current === request && !request.signal.aborted) setBusy(false); }
   }
@@ -88,7 +89,7 @@ function FeedEditor({ initial = DEFAULT_FEED, existingId, onSave, onClose }: { i
       if (!definition) throw new Error('Enter a feed name, 1–8 sources and up to 10 phrases per filter (64 characters each).');
       encodeFeed(definition);
       onSave(definition, existingId); onClose();
-    } catch (cause) { setError(message(cause)); }
+    } catch (cause) { setError(errorMessage(cause, ACCOUNT_LOAD_FAILED)); }
   }
   function move(index: number, direction: number) { setSources(current => { const next = [...current]; [next[index], next[index + direction]] = [next[index + direction], next[index]]; return next; }); }
   return <Modal title={initial !== DEFAULT_FEED ? 'Customize feed' : 'Create a feed'} onClose={onClose} wide>
@@ -119,7 +120,7 @@ export interface FeedsViewProps { feeds: SavedFeed[]; onOpen(definition: FeedDef
 export function FeedsView({ feeds, onOpen, onSave, onTogglePin, onDelete, sessionFid }: FeedsViewProps) {
   const [editing, setEditing] = useState<SavedFeed | 'new' | null>(null); const [deleting, setDeleting] = useState<string | null>(null); const [error, setError] = useState('');
   const pinned = feeds.filter(feed => feed.pinned); const others = feeds.filter(feed => !feed.pinned);
-  function action(callback: () => void) { setError(''); try { callback(); } catch (cause) { setError(message(cause)); } }
+  function action(callback: () => void) { setError(''); try { callback(); } catch (cause) { setError(errorMessage(cause, ACCOUNT_LOAD_FAILED)); } }
   return <div className="feeds-view"><section className="feeds-intro"><span className="feeds-kicker"><IconRss size={17} />YOUR VIEW OF THE CONVERSATION</span><h2>Follow your own curiosity.</h2><p>Mix accounts, channels and public feeds. Choose your filters, save a timeline, and pin the ones you come back to.</p><div className="feeds-actions"><Button onClick={() => setEditing('new')}><IconPlus size={17} />Create feed</Button><span className="feeds-note">No wallet needed.</span></div></section>
     {error ? <p className="error" role="alert">{error}</p> : null}
     <section className="feeds-section" aria-label="Your saved feeds"><div className="feeds-section__head"><h3>Your feeds <span>{feeds.length}</span></h3><span className="feeds-local">ON THIS BROWSER</span></div><p className="feeds-note">Feeds and pins are saved locally and do not sync across devices. Share a feed link to let anyone open or save its public rules.</p>
@@ -138,7 +139,7 @@ export function FeedHeader({ definition, saved, onSave, onTogglePin, onNavigate,
   const input = useRef<HTMLInputElement>(null); const link = publicUrl(`/feeds/view?feed=${encodeFeed(definition)}`);
   useEffect(() => { if (copyFallback) { input.current?.focus(); input.current?.select(); } }, [copyFallback]);
   useEffect(() => { setCopyFallback(false); setError(''); setEditing(false); }, [link]);
-  function action(callback: () => void) { setError(''); try { callback(); } catch (cause) { setError(message(cause)); } }
+  function action(callback: () => void) { setError(''); try { callback(); } catch (cause) { setError(errorMessage(cause, ACCOUNT_LOAD_FAILED)); } }
   async function copy() { try { if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable'); await navigator.clipboard.writeText(link); notify('Feed link copied.'); } catch { setCopyFallback(true); } }
   return <section className="custom-feed-header" aria-label="Timeline settings"><div className="feeds-section__head"><span className="feeds-local">{saved ? 'SAVED IN THIS BROWSER' : 'PUBLIC FEED'}</span><Button variant="ghost" onClick={() => onNavigate('/feeds')}>All feeds</Button></div><h2>{definition.name}</h2><p className="feeds-note">{definition.sources.map(sourceLabel).join(' · ')}</p><p className="feeds-note">{definition.order === 'newest' ? 'Newest loaded first' : 'Source order'}{definition.filters.hideReplies ? ' · Replies hidden' : ''}{definition.filters.imagesOnly ? ' · Images only' : ''}{definition.filters.includeWords.length ? ` · Includes any: ${definition.filters.includeWords.join(', ')}` : ''}{definition.filters.excludeWords.length ? ` · Excludes: ${definition.filters.excludeWords.join(', ')}` : ''}</p><div className="feeds-actions"><Button variant="secondary" onClick={() => setEditing(true)}><IconEdit size={16} />Customize</Button>{saved ? <Button variant="ghost" aria-pressed={saved.pinned} onClick={() => action(() => onTogglePin(saved.id))}>{saved.pinned ? <IconPinnedOff size={16} /> : <IconPin size={16} />}{saved.pinned ? 'Unpin feed' : 'Pin feed'}</Button> : <Button onClick={() => action(() => onSave(definition))}><IconPlus size={16} />Save feed</Button>}<Button variant="ghost" onClick={() => void copy()}><IconCopy size={16} />Copy feed link</Button></div><p className="feeds-note">Anyone can open this link without a wallet. It includes the feed name, public sources and filters. Results depend on the node’s available casts.</p>{copyFallback ? <label className="feeds-field">Feed link<Input ref={input} value={link} readOnly onFocus={event => event.currentTarget.select()} /><span className="feeds-note" role="status">Select the link and use your device’s Copy command.</span></label> : null}{error ? <p className="error" role="alert">{error}</p> : null}
     {editing ? <FeedEditor initial={definition} existingId={saved?.id} onSave={onSave} onClose={() => setEditing(false)} /> : null}
