@@ -196,6 +196,34 @@ describe('remembered browser device vault v3', () => {
   });
 });
 
+describe('shared vault cipher and signer checks', () => {
+  it('applies the same AES-GCM cipher rules and signer binding to every vault version with its own message', async () => {
+    const generic = 'The saved device vault is invalid. You can forget it and authorize a new device.';
+    const browser = 'The saved browser device vault is invalid. You can forget it and authorize a new device.';
+    const vaults: [unknown, string][] = [
+      [await encryptSignerVault(key, metadata, PASSWORD), generic],
+      [await encryptSignerVaultWithPasskey(key, metadata, descriptor(), secret), generic],
+      [await encryptSignerVaultForBrowser(key, metadata), browser],
+    ];
+    for (const [vault, message] of vaults) {
+      const { cipher, ciphertext } = vault as SignerVault;
+      expect(cipher).toEqual({ name: 'AES-GCM', length: 256, iv: expect.stringMatching(/^[0-9a-f]{24}$/), tagLength: 128 });
+      expect(ciphertext).toMatch(/^[0-9a-f]{96}$/);
+      expect(validateSignerVault(vault)).toEqual(vault);
+      for (const altered of [
+        { cipher: { ...cipher, name: 'AES-CBC' } }, { cipher: { ...cipher, length: 128 } }, { cipher: { ...cipher, tagLength: 96 } },
+        { cipher: { ...cipher, iv: '00'.repeat(16) } }, { cipher: { ...cipher, iv: 'ZZ'.repeat(12) } }, { cipher: { ...cipher, extra: 1 } },
+        { cipher: [] }, { ciphertext: `${ciphertext}00` }, { ciphertext: ciphertext.toUpperCase() },
+      ]) expect(() => validateSignerVault({ ...(vault as object), ...altered })).toThrow(message);
+    }
+    const otherKey = new Uint8Array(32).fill(20);
+    for (const encrypt of [
+      () => encryptSignerVault(otherKey, metadata, PASSWORD), () => encryptSignerVault(new Uint8Array(31), metadata, PASSWORD),
+      () => encryptSignerVaultWithPasskey(otherKey, metadata, descriptor(), secret), () => encryptSignerVaultForBrowser(otherKey, metadata),
+    ]) await expect(encrypt()).rejects.toThrow('The device signer does not match its public key.');
+  });
+});
+
 function awaitablePasswordFixture(): SignerVault {
   return { kind: 'arca.hypersnap.device-vault', version: 1, metadata, kdf: { name: 'PBKDF2', hash: 'SHA-256', iterations: VAULT_ITERATIONS, salt: '00'.repeat(16) }, cipher: { name: 'AES-GCM', length: 256, iv: '00'.repeat(12), tagLength: 128 }, ciphertext: '00'.repeat(48) };
 }

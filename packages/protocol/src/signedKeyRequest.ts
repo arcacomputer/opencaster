@@ -315,41 +315,6 @@ export function abiEncodeSignedKeyRequestMetadata(input: {
   return concat(toUint256(32), tuple);
 }
 
-// ---------------------------------------------------------------------------
-// All-in-one helper
-// ---------------------------------------------------------------------------
-
-/**
- * Build the SignedKeyRequestMetadata bytes that go into KeyAddBody.metadata,
- * given the user's custody secp256k1 private key and the new signer key.
- */
-export function buildSignedKeyRequestMetadata(params: {
-  requestFid: number | bigint;
-  /** 32-byte Ed25519 public key the user is authorizing. */
-  signerPublicKey: Uint8Array;
-  /** Unix epoch seconds at which the signature should expire. */
-  deadline: number | bigint;
-  /** secp256k1 custody key (32 bytes). */
-  custodyPrivateKey: Uint8Array;
-  chainId?: number;
-}): { metadata: Uint8Array; signature: Uint8Array; requestSigner: string } {
-  const digest = signedKeyRequestDigest({
-    requestFid: params.requestFid,
-    key: params.signerPublicKey,
-    deadline: params.deadline,
-    chainId: params.chainId,
-  });
-  const signature = signEip712Digest(digest, params.custodyPrivateKey);
-  const requestSigner = addressFromCustodyPrivateKey(params.custodyPrivateKey);
-  const metadata = abiEncodeSignedKeyRequestMetadata({
-    requestFid: params.requestFid,
-    requestSigner,
-    signature,
-    deadline: params.deadline,
-  });
-  return { metadata, signature, requestSigner };
-}
-
 // Local hex codec — exported under `hexToBytes` / `bytesToHex` only for
 // sibling modules in this folder. The package-level barrel re-exports the
 // canonical pair from src/utils/encoding.ts via `farcaster/index.ts`'s

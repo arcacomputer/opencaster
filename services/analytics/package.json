@@ -10,6 +10,9 @@
     "test": "yarn --cwd ../.. test services/analytics",
     "report": "node scripts/analytics-report.mjs"
   },
+  "dependencies": {
+    "@opencaster/client-core": "0.2.1"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.9.3",

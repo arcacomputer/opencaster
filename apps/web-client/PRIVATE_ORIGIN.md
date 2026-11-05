@@ -36,11 +36,26 @@ browser override, per-request routing flag or arbitrary-host proxy. Unknown or
 absent values disable retry; both origin bindings absent retain the single
 public development default below, not a primary/backup retry loop.
 
-The checked-in production configuration uses `HYPERSNAP_READ_FALLBACK=haatz-v1`
-to preserve the active operational read-backup recovery. Index-readiness guards
-remain in place on the private primary; eligible failures can use the fixed
-backup under the bounded failover contract below. Signed writes and media
-signer checks remain primary-only.
+The checked-in production configuration currently uses the temporary Haatz
+primary adopted during the private-node reinstall: both origin bindings are
+absent, so production uses the public default described below.
+`HYPERSNAP_AGGREGATE_CACHE=disabled` and `HYPERSNAP_READ_FALLBACK=haatz-v1`
+remain set, but without a valid private pair neither the aggregate-cache
+override nor the read backup is active. Signed writes and media signer checks
+use Haatz.
+
+### Returning to the private origin
+
+Restoring the private primary is a separate, approved operational change. Both
+bindings must reach the Worker in the **same version**. Secrets persist across
+deployments and `wrangler secret put` deploys a new version immediately, so
+adding only the token, or deploying only `HYPERSNAP_ORIGIN`, activates a partial
+pair and every API request returns HTTP 503. Instead, add `HYPERSNAP_ORIGIN` to
+`vars` in `services/gateway/wrangler.jsonc` and pass the token in the same
+`wrangler deploy --secrets-file <file outside the repository>`, then delete that
+file. Confirm that the active version lists both bindings. Leaving the private
+origin must likewise never leave a partial pair active; afterwards confirm that
+neither binding remains.
 
 If **both bindings are absent**, the unchanged fork/development fallback is
 `https://haatz.quilibrium.com`, with no origin-token header. An empty, partial

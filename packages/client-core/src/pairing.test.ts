@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { bytesToHex, hexToBytes, addressFromCustodyPrivateKey, keyAddDigest, keyRemoveDigest, signedKeyRequestDigest, signEip712Digest } from '@opencaster/protocol/signedKeyRequest';
-import { FULL_CLIENT_SCOPES, FULL_SOCIAL_SCOPES, hashPairingRequest, validatePairingRequest, validatePairingApproval, verifyPairingApproval, type PairingRequest, type PairingApproval, PAIRING_TTL_SECONDS, type RevocationRequest, type RevocationApproval, hashRevocationRequest, validateRevocationRequest, validateRevocationApproval, verifyRevocationApproval, validateSignerRequest, hashSignerRequest } from './pairing';
+import { FULL_CLIENT_SCOPES, FULL_SOCIAL_SCOPES, hashPairingRequest, validatePairingRequest, validatePairingApproval, verifyPairingApproval, type PairingRequest, type PairingApproval, PAIRING_TTL_SECONDS, type RevocationRequest, type RevocationApproval, hashRevocationRequest, validateRevocationRequest, validateRevocationApproval, verifyRevocationApproval, validateSignerRequest, hashSignerRequest, pairingDeadline } from './pairing';
+import { farcasterToUnixSeconds } from './farcasterEpoch';
+import { FARCASTER_EPOCH_MS } from '@opencaster/protocol/messageBuilder';
 
 const now = Date.UTC(2026, 9, 19, 12);
 const custody = hexToBytes('1111111111111111111111111111111111111111111111111111111111111111');
@@ -12,6 +14,15 @@ function approve(req: PairingRequest): PairingApproval {
   const key = hexToBytes(req.publicKey);
   return { kind: 'arca.hypersnap.signer.approval', version: 1, requestId: req.requestId, requestHash: hashPairingRequest(req), custodyAddress: req.custodyAddress, custodySignature: bytesToHex(signEip712Digest(keyAddDigest({ fid: req.fid, key, keyType: 1, scopes: req.scopes, ttl: req.ttl, nonce: req.nonce, deadline: req.deadline }), custody)), requestSignature: bytesToHex(signEip712Digest(signedKeyRequestDigest({ requestFid: req.fid, key, deadline: req.deadline }), custody)) };
 }
+describe('Farcaster epoch deadlines', () => {
+  it('keeps request deadlines fifteen minutes after creation and converts them back to Unix time', () => {
+    expect(FARCASTER_EPOCH_MS).toBe(1609459200000);
+    expect(pairingDeadline(1_800_000_000)).toBe(1_800_000_000 - 1609459200 + 900);
+    expect(farcasterToUnixSeconds(pairingDeadline(1_800_000_000))).toBe(1_800_000_900);
+    expect(farcasterToUnixSeconds(0)).toBe(1609459200);
+  });
+});
+
 describe('offline authorization transfer boundary', () => {
   it.each(['https://opencaster.org', 'https://quorum.arca.computer', 'https://hypersnap-quorum.lf-e32.workers.dev'])('retains narrow current and historic request display origins: %s', origin => {
     const req = { ...request(), origin };
@@ -57,6 +68,18 @@ describe('offline authorization transfer boundary', () => {
     expect(() => verifyPairingApproval(changed, { ...approval, requestHash: hashPairingRequest(changed) }, now)).toThrow('signatures');
     expect(() => verifyPairingApproval(req, { ...approval, custodySignature: `${approval.custodySignature.slice(0, -2)}00` }, now)).toThrow();
   });
+  it('keeps the generic signature message while preserving the specific failure as its cause', () => {
+    const req = request(); const approval = approve(req);
+    const failure = (change: Partial<PairingApproval>, request = req) => { try { verifyPairingApproval(request, { ...approval, ...change }, now); } catch (error) { return error as Error; } throw new Error('expected failure'); };
+    const generic = 'The approval signatures do not authorize this wallet and posting key.';
+    const badRecovery = failure({ custodySignature: `${approval.custodySignature.slice(0, -2)}00` });
+    expect(badRecovery.message).toBe(generic);
+    expect(badRecovery.cause).toMatchObject({ message: 'The approval has an invalid signature recovery ID.' });
+    const changed = { ...req, nonce: req.nonce + 1 };
+    const wrongWallet = failure({ requestHash: hashPairingRequest(changed) }, changed);
+    expect(wrongWallet.message).toBe(generic);
+    expect(wrongWallet.cause).toMatchObject({ message: 'custody mismatch' });
+  });
   it('rejects extra approval fields and non-signature content before use', () => {
     const approval = approve(request());
     expect(() => validatePairingApproval({ ...approval, mnemonic: 'must never exist' })).toThrow();
@@ -101,6 +124,14 @@ describe('offline custody revocation transfer', () => {
     for (const changed of [{ ...req, fid: 42 }, { ...req, publicKey: bytesToHex(randomBytes(32)) }, { ...req, nonce: req.nonce + 1 }, { ...req, createdAt: req.createdAt + 1, deadline: req.deadline + 1 }]) {
       expect(() => verifyRevocationApproval(changed, { ...approval, requestHash: hashRevocationRequest(changed) }, now)).toThrow('signature');
     }
+  });
+
+  it('preserves the specific revocation signature failure as the generic error cause', () => {
+    const req = revocationRequest(); const approval = revocationApproval(req);
+    let failure: Error | undefined;
+    try { verifyRevocationApproval(req, { ...approval, custodySignature: `${approval.custodySignature.slice(0, -2)}00` }, now); } catch (error) { failure = error as Error; }
+    expect(failure?.message).toBe('The revocation signature does not authorize removal of this wallet and posting key.');
+    expect(failure?.cause).toMatchObject({ message: 'The approval has an invalid signature recovery ID.' });
   });
 
   it('never accepts grant signatures, another signature type or additional secret fields', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import type { Cast } from '@opencaster/client-core/api';
-import { addMutedWord, contentPreferencesKey, emptyContentPreferences, getContentFilterReason, hideCast, muteAccount, normalizeContentPreferences, normalizeMutedWord, readContentPreferences, removeMutedWord, unhideCast, unmuteAccount, writeContentPreferences } from './contentPreferences';
+import { addMutedWord, contentPreferencesKey, emptyContentPreferences, getContentFilterReason, hideCast, muteAccount, normalizeContentPreferences, normalizeMutedWord, readContentPreferences, removeMutedWord, unmuteAccount, writeContentPreferences } from './contentPreferences';
 
 function storage() {
   const values = new Map<string, string>();
@@ -68,7 +68,7 @@ describe('browser content preferences', () => {
     expect(muteAccount(withAccount, { fid: 3 })).toEqual(withAccount); expect(unmuteAccount(withAccount, 3)).toEqual(original);
     expect(() => muteAccount(original, { fid: -1 })).toThrow('valid Farcaster ID');
     const hidden = hideCast(original, '0x' + 'A'.repeat(40)); expect(hidden.hiddenCasts).toEqual(['a'.repeat(40)]);
-    expect(unhideCast(hidden, 'A'.repeat(40))).toEqual(original); expect(() => hideCast(original, 'bad')).toThrow('valid hash');
+    expect(() => hideCast(original, 'bad')).toThrow('valid hash');
     expect(() => addMutedWord({ ...original, mutedWords: Array.from({ length: 100 }, (_, i) => `word${i}`) }, 'another')).toThrow('100 words');
     expect(() => muteAccount({ ...original, mutedAccounts: Array.from({ length: 100 }, (_, i) => ({ fid: i + 1 })) }, { fid: 101 })).toThrow('100 accounts');
     expect(() => hideCast({ ...original, hiddenCasts: Array.from({ length: 500 }, (_, i) => i.toString(16).padStart(40, '0')) }, 'f'.repeat(40))).toThrow('500 casts');

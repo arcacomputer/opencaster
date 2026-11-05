@@ -2,14 +2,15 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEven
 import { IconArrowUpRight, IconAt, IconCheck, IconDeviceFloppy, IconInfoCircle, IconMoodSmile, IconPhoto, IconRefresh, IconTrash, IconX } from '@tabler/icons-react';
 import { ApiError, getUser, searchUsers, type Cast, type User } from '@opencaster/client-core/api';
 import type { WalletSession } from '../lib/auth';
-import { composeCastContent } from '@opencaster/client-core/content';
+import { composeCastContent, MAX_CAST_BYTES, MAX_CAST_EMBEDS, MAX_MENTIONS } from '@opencaster/client-core/content';
 import { composerDraftScope, inlineMentionQuery, readComposerDraft, removeComposerDraft, saveComposerDraft, type SavedComposerDraft } from '../lib/composerDraft';
 import type { CastPublicationEvent } from '../lib/pendingCasts';
+import { errorMessage } from '../lib/errors';
 import { Button, Input } from './ui';
 import '../composer.scss';
 
 export interface ComposerProps { session: WalletSession | null; onSignIn(): void; onPosted?(): void; onPublication?(event: CastPublicationEvent): void; parent?: Cast; parentUrl?: string; quote?: Cast; notify(text: string): void }
-const errorMessage = (cause: unknown) => cause instanceof Error ? cause.message.slice(0, 240) : 'This action could not be completed.';
+const ACTION_FAILED = 'This action could not be completed.';
 function ComposerAvatar({ user }: { user?: User }) {
   const [failed, setFailed] = useState('');
   let url: string | undefined;
@@ -30,7 +31,7 @@ export default function Composer(props: ComposerProps) {
   return <ComposerEditor key={context} {...props} scope={scope} context={context} />;
 }
 function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, parentUrl, quote, notify, scope, context }: ComposerProps & { scope: string; context: string }) {
-  const attachmentLimit = quote ? 1 : 2;
+  const attachmentLimit = MAX_CAST_EMBEDS - (quote ? 1 : 0);
   const [text, setText] = useState('');
   const [embeds, setEmbeds] = useState<string[]>([]);
   const [mentionedUsers, setMentionedUsers] = useState<User[]>([]);
@@ -73,7 +74,7 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
     generation.current += 1; publishing.current = false; uploadingRef.current = false;
     setText(''); setEmbeds([]); setMentionedUsers([]); setMentionQuery(''); setMentionCandidate(null); setMentionLoading(false); setBusy(false); setUploading(false); setDraftError(''); setDraftStatus(''); setConfirmRestore(false); setCaret(0); setSuggestions([]); setDismissedQuery(''); setPanel(null);
     try { setSavedDraft(scope ? readComposerDraft(scope) ?? null : null); }
-    catch (cause) { setSavedDraft(null); setDraftStatus(errorMessage(cause)); }
+    catch (cause) { setSavedDraft(null); setDraftStatus(errorMessage(cause, ACTION_FAILED)); }
     return () => { generation.current += 1; uploadController.current?.abort(); mentionController.current?.abort(); };
   }, [context, scope]);
   useLayoutEffect(() => {
@@ -98,9 +99,9 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
 
   let draft = { text, mentions: [] as number[], mentionsPositions: [] as number[] };
   let validationError = '';
-  try { draft = composeCastContent(text, mentionedUsers); } catch (cause) { validationError = errorMessage(cause); }
+  try { draft = composeCastContent(text, mentionedUsers); } catch (cause) { validationError = errorMessage(cause, ACTION_FAILED); }
   const bytes = new TextEncoder().encode(draft.text).length;
-  const canPublish = Boolean(session && (text.trim() || embeds.length || quote) && bytes <= 1024 && !validationError && !busy && !uploading);
+  const canPublish = Boolean(session && (text.trim() || embeds.length || quote) && bytes <= MAX_CAST_BYTES && !validationError && !busy && !uploading);
   async function publish() {
     if (!session) { onSignIn(); return; }
     if (!canPublish || publishing.current || uploadingRef.current) return;
@@ -124,7 +125,7 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
       notify(quote ? 'Quote submitted to Hypersnap. It may take a moment to appear.' : parent ? 'Reply submitted to Hypersnap. It may take a moment to appear.' : 'Cast submitted to Hypersnap. It may take a moment to appear.'); onPosted?.();
     } catch (cause) {
       if (!submitted) reportPublication({ type: cause instanceof ApiError && cause.code === 'submission_unknown' ? 'unknown' : 'failed', id: publicationId });
-      if (run === generation.current && activeContext.current === capturedContext) setDraftError(cause instanceof ApiError && cause.code === 'submission_unknown' ? 'Submission status is unknown. Your draft is retained. Check your profile before publishing again to avoid a duplicate cast.' : errorMessage(cause));
+      if (run === generation.current && activeContext.current === capturedContext) setDraftError(cause instanceof ApiError && cause.code === 'submission_unknown' ? 'Submission status is unknown. Your draft is retained. Check your profile before publishing again to avoid a duplicate cast.' : errorMessage(cause, ACTION_FAILED));
     } finally { if (run === generation.current && activeContext.current === capturedContext) { publishing.current = false; setBusy(false); } }
   }
   async function attachImage(file: File | undefined) {
@@ -136,7 +137,7 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
       const { uploadMedia } = await import('@opencaster/client-core/media');
       const uploaded = await uploadMedia(file, input => session.authorizeMediaUpload(input), controller.signal);
       if (!controller.signal.aborted && run === generation.current && activeContext.current === capturedContext) setEmbeds(current => [...new Set([...current, uploaded.url])].slice(0, attachmentLimit));
-    } catch (cause) { if (!controller.signal.aborted && run === generation.current && activeContext.current === capturedContext) setDraftError(errorMessage(cause)); }
+    } catch (cause) { if (!controller.signal.aborted && run === generation.current && activeContext.current === capturedContext) setDraftError(errorMessage(cause, ACTION_FAILED)); }
     finally { if (uploadController.current === controller && run === generation.current) { uploadingRef.current = false; setUploading(false); uploadController.current = null; } }
   }
   function pasteImage(event: ClipboardEvent<HTMLTextAreaElement>) {
@@ -156,12 +157,12 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
     setMentionLoading(true); setMentionCandidate(null); setDraftError('');
     const term = mentionQuery.trim().replace(/^@/, '');
     try { const user = await getUser(/^\d+$/.test(term) ? { fid: Number(term) } : { username: term }, controller.signal); if (!controller.signal.aborted && activeContext.current === capturedContext) setMentionCandidate(user); }
-    catch (cause) { if (!controller.signal.aborted && activeContext.current === capturedContext) setDraftError(errorMessage(cause)); }
+    catch (cause) { if (!controller.signal.aborted && activeContext.current === capturedContext) setDraftError(errorMessage(cause, ACTION_FAILED)); }
     finally { if (mentionController.current === controller && activeContext.current === capturedContext) setMentionLoading(false); }
   }
   function addMention(user: User, inline = false) {
     if (busy || uploading) return;
-    if (mentionedUsers.length >= 10 && !mentionedUsers.some(item => item.fid === user.fid)) { setDraftError('Remove a selected mention before adding another profile. A cast supports up to 10 mentions.'); return; }
+    if (mentionedUsers.length >= MAX_MENTIONS && !mentionedUsers.some(item => item.fid === user.fid)) { setDraftError(`Remove a selected mention before adding another profile. A cast supports up to ${MAX_MENTIONS} mentions.`); return; }
     const field = textarea.current; const tokenQuery = inline ? inlineMentionQuery(text, caret) : undefined;
     if (inline && !tokenQuery) return;
     const start = tokenQuery?.start ?? field?.selectionStart ?? text.length; const end = tokenQuery?.end ?? field?.selectionEnd ?? text.length;
@@ -184,7 +185,7 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
   function saveDraft() {
     if (!scope || busy || uploading) return;
     try { const saved = saveComposerDraft(scope, { text, mentions: mentionedUsers.map(({ fid, username }) => ({ fid, username })), images: embeds }); setSavedDraft(saved); setDraftStatus('Draft saved in this tab for up to 24 hours.'); setConfirmRestore(false); }
-    catch (cause) { setDraftStatus(errorMessage(cause)); }
+    catch (cause) { setDraftStatus(errorMessage(cause, ACTION_FAILED)); }
   }
   function restoreDraft(confirm = false) {
     if (!savedDraft || busy || uploading) return;
@@ -194,7 +195,7 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
   function discardSavedDraft() {
     if (!scope || busy || uploading) return;
     try { removeComposerDraft(scope, savedDraft?.id); setSavedDraft(null); setConfirmRestore(false); setDraftStatus('Saved draft discarded. Your current text is unchanged. Uploaded images remain public.'); }
-    catch (cause) { setDraftStatus(errorMessage(cause)); }
+    catch (cause) { setDraftStatus(errorMessage(cause, ACTION_FAILED)); }
   }
   function togglePanel(value: ComposerPanel) {
     if (!session && value !== 'info') { onSignIn(); return; }
@@ -232,7 +233,7 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
       <Button variant="ghost" className="composer-tool" data-analytics="composer-mentions" data-composer-tool="mentions" aria-label="Mention a person" title="Mention a person" aria-expanded={panel === 'mentions'} aria-controls={panel === 'mentions' ? panelId : undefined} disabled={busy || uploading} onClick={() => togglePanel('mentions')}><IconAt size={20} /></Button>
       <Button variant="ghost" className="composer-tool" data-analytics="composer-emoji" data-composer-tool="emoji" aria-label="Insert emoji" title="Insert emoji" aria-expanded={panel === 'emoji'} aria-controls={panel === 'emoji' ? panelId : undefined} disabled={busy || uploading} onClick={() => togglePanel('emoji')}><IconMoodSmile size={20} /></Button>
       <Button variant="ghost" className="composer-tool composer-tool--drafts" data-analytics="composer-drafts" data-composer-tool="drafts" aria-label="Drafts" title={savedDraft ? 'Drafts: saved draft available' : 'Drafts'} aria-expanded={panel === 'drafts'} aria-controls={panel === 'drafts' ? panelId : undefined} disabled={busy || uploading} onClick={() => togglePanel('drafts')}><IconDeviceFloppy size={18} /><span>Drafts</span>{savedDraft && <span className="composer-draft-badge" aria-label="Saved draft available">1</span>}</Button>
-    </div><div className="composer__submit">{session && <span className={`composer-size${bytes > 1024 ? ' error' : ''}`} aria-label={`${bytes} of 1024 UTF-8 bytes`} title="Up to 1024 UTF-8 bytes per cast"><progress value={Math.min(bytes, 1024)} max={1024} aria-label="Cast size" /><span>{bytes}/1024</span></span>}<Button data-analytics={quote ? 'publish-quote' : parent ? 'publish-reply' : 'publish-cast'} disabled={Boolean(session) && !canPublish} onClick={() => void publish()}>{busy ? 'Publishing…' : quote ? 'Quote' : parent ? 'Reply' : 'Cast'}<IconArrowUpRight size={16} /></Button></div></div>
+    </div><div className="composer__submit">{session && <span className={`composer-size${bytes > MAX_CAST_BYTES ? ' error' : ''}`} aria-label={`${bytes} of ${MAX_CAST_BYTES} UTF-8 bytes`} title={`Up to ${MAX_CAST_BYTES} UTF-8 bytes per cast`}><progress value={Math.min(bytes, MAX_CAST_BYTES)} max={MAX_CAST_BYTES} aria-label="Cast size" /><span>{bytes}/{MAX_CAST_BYTES}</span></span>}<Button data-analytics={quote ? 'publish-quote' : parent ? 'publish-reply' : 'publish-cast'} disabled={Boolean(session) && !canPublish} onClick={() => void publish()}>{busy ? 'Publishing…' : quote ? 'Quote' : parent ? 'Reply' : 'Cast'}<IconArrowUpRight size={16} /></Button></div></div>
     {uploading && <div className="composer-upload" role="status"><span><IconRefresh size={15} className="spin" />Uploading {uploadName}…</span><Button variant="ghost" onClick={() => { uploadController.current?.abort(); uploadingRef.current = false; setUploading(false); }}>Cancel upload</Button></div>}
     {embeds.length > 0 && <p className="composer-attachment-count">{embeds.length}/{attachmentLimit} images{quote && ' · 1 quoted cast'}</p>}
     {panel && <section id={panelId} className="composer-panel" aria-label={panel === 'mentions' ? 'Find a mention' : panel === 'emoji' ? 'Emoji' : panel === 'drafts' ? 'Drafts on this tab' : 'Media info'}>
