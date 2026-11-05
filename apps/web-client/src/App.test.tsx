@@ -9,6 +9,7 @@ import { uploadMedia } from '@opencaster/client-core/media';
 import { FULL_CLIENT_SCOPES, FULL_SOCIAL_SCOPES } from '@opencaster/client-core/pairing';
 import { castPermalink } from '@opencaster/client-core/navigation';
 import { contentPreferencesKey, emptyContentPreferences } from './lib/contentPreferences';
+import { EXPLORE_STORAGE_KEY } from './lib/storageKeys';
 
 const wallet = vi.hoisted(() => ({ next: null as WalletSession | null, signal: null as AbortSignal | null, initialFid: undefined as number | undefined, onConnect: null as ((value: WalletSession) => void) | null }));
 vi.mock('./components/ConnectAccount', () => ({
@@ -18,6 +19,11 @@ vi.mock('./components/ConnectAccount', () => ({
     return <main data-testid="synthetic-wallet" data-presentation={presentation}><p data-testid="requested-scopes">{requestedScopes?.join(',') || 'posting'}</p><button onClick={() => { if (wallet.next) onConnect(wallet.next); }}>Approve synthetic wallet</button><button onClick={onClose}>Cancel synthetic wallet</button></main>;
   },
   DeviceSettings: () => <div>Synthetic device settings</div>,
+}));
+vi.mock('./lib/auth', () => ({
+  deleteSavedSession: vi.fn().mockResolvedValue(undefined),
+  getSavedSessionMethod: vi.fn().mockResolvedValue(undefined),
+  restoreRememberedSession: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('@opencaster/client-core/media', () => ({ uploadMedia: vi.fn() }));
 vi.mock('@opencaster/client-core/api', async original => ({ ...await original<typeof import('@opencaster/client-core/api')>(), getCast: vi.fn(), getChannel: vi.fn(), getChannels: vi.fn(), getConversation: vi.fn(), getFeed: vi.fn(), getFollowStatus: vi.fn(), getInfo: vi.fn(), getProfileFeed: vi.fn(), getReactionStatus: vi.fn(), getSuggestedUsers: vi.fn(), getChannelMembers: vi.fn(), getCastQuotes: vi.fn(), getUser: vi.fn(), resolveCastAlias: vi.fn(), searchCasts: vi.fn(), searchUsers: vi.fn() }));
@@ -34,7 +40,7 @@ let container: HTMLDivElement;
 let root: Root;
 let feedObservers: { callback: IntersectionObserverCallback; observer: IntersectionObserver; target?: Element; disconnected: boolean }[];
 beforeEach(() => {
-  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.clearAllMocks(); localStorage.clear(); localStorage.setItem('opencaster.explore', '1'); sessionStorage.clear(); wallet.next = null; wallet.signal = null; wallet.initialFid = undefined; wallet.onConnect = null;
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.clearAllMocks(); localStorage.clear(); localStorage.setItem(EXPLORE_STORAGE_KEY, '1'); sessionStorage.clear(); wallet.next = null; wallet.signal = null; wallet.initialFid = undefined; wallet.onConnect = null;
   history.replaceState(null, '', '/');
   feedObservers = [];
   vi.stubGlobal('IntersectionObserver', class {
@@ -64,7 +70,11 @@ beforeEach(() => {
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); localStorage.clear(); sessionStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-async function start(path = '/') { history.replaceState(null, '', path); await act(async () => root.render(<App />)); }
+async function start(path = '/') {
+  history.replaceState(null, '', path);
+  await act(async () => root.render(<App />));
+  await vi.waitFor(() => expect(container.textContent).not.toContain('Restoring your session…'));
+}
 async function click(element: Element) { await act(async () => { element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); }); }
 async function reachFeedEnd(times = 1) {
   const entry = feedObservers.filter(value => !value.disconnected && value.target).at(-1);
@@ -946,16 +956,16 @@ describe('feed-first social layout', () => {
 
 describe('signed-out landing and cast pages', () => {
   it('greets a new visitor at the root with sign-in, then remembers the choice to explore', async () => {
-    localStorage.removeItem('opencaster.explore');
+    localStorage.removeItem(EXPLORE_STORAGE_KEY);
     await start();
     expect(container.querySelector('.landing h1')?.textContent).toBe('Your people, your identity, your voice.'); expect(container.querySelector('.app')).toBeNull();
     await click(button('Explore without an account'));
     expect(container.querySelector('.landing')).toBeNull(); expect(container.querySelector('main .feed-heading')).not.toBeNull();
-    expect(localStorage.getItem('opencaster.explore')).toBe('1');
+    expect(localStorage.getItem(EXPLORE_STORAGE_KEY)).toBe('1');
   });
 
   it('opens the sign-in page from the landing and keeps shared links readable without it', async () => {
-    localStorage.removeItem('opencaster.explore');
+    localStorage.removeItem(EXPLORE_STORAGE_KEY);
     await start(); await click(button('Sign in'));
     expect(location.pathname).toBe('/connect'); expect(container.querySelector('[data-testid="synthetic-wallet"]')).not.toBeNull();
     await act(async () => root.unmount()); root = createRoot(container);
@@ -1012,7 +1022,7 @@ describe('persistent node support links', () => {
   });
 
   it('offers the same link in the signed-out landing footer', async () => {
-    localStorage.removeItem('opencaster.explore'); await start();
+    localStorage.removeItem(EXPLORE_STORAGE_KEY); await start();
     expect(supportLinks(container.querySelector('.landing__footer')!).map(link => link.href)).toEqual(['https://buy.stripe.com/cNi00i9dY4kD3JP7G57ss05']);
   });
 });

@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { IconArrowLeft, IconArrowRight, IconArrowUpRight } from '@tabler/icons-react';
 import { Button, Modal } from './ui';
+import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
 
 export interface CastImage { url: string; alt: string }
 
 /** Images remain public attachments; viewing them never calls a wallet or API. */
 export default function MediaViewer({ images, initialIndex, onClose }: { images: readonly CastImage[]; initialIndex: number; onClose(): void }) {
-  const safeImages = images.filter(image => {
-    try { const url = new URL(image.url); return url.protocol === 'https:' && !url.username && !url.password; } catch { return false; }
-  }).slice(0, 2);
+  const safeImages = images.filter(image => safeHttpsUrl(image.url)).slice(0, 2);
   const [index, setIndex] = useState(() => Math.min(Math.max(0, initialIndex), Math.max(0, safeImages.length - 1)));
   const [failed, setFailed] = useState<string | null>(null);
   const container = useRef<HTMLDivElement>(null);

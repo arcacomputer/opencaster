@@ -1,3 +1,43 @@
+# Remembered browser sessions deployed · 2026-11-05
+
+Release source [`d329359b`](https://github.com/arcacomputer/opencaster/commit/d329359b3bedb7047d57cea9594b44f6a73855e7)
+was deployed at **2026-11-04 21:43:31 America/Santiago**
+(`2026-11-05T00:43:31.954375Z`) as Worker
+**`0393ed84-e6e2-4a83-aaa2-f5804a0e8f53`**, deployment
+`e5a381cc-d844-4f84-a220-059291aa1d30`, at **100% traffic**. The version tag is
+`sessions-20261105-d329359b3`.
+
+Authenticated metadata established the pre-release active Worker as
+`864e9cbe-7239-439b-b5c5-f6b5b2aea031`: application source `8980e502` (inline
+embeds) with the authorized temporary Haatz primary. Both private-origin
+values were absent, aggregate caching was disabled and the Haatz read setting
+remained `haatz-v1`. This release merges remembered browser sessions from
+`main` with that deployed application source and preserves those settings.
+No private-node cutback was performed.
+
+Root `yarn check:devlog` passed against the deployed source `8980e502` and
+merged `main` `4e36eddb`. Root `yarn verify` passed **2,020 tests across 81
+files**, all workspace typechecks, the production browser build and offline
+signer build. PR CI passed.
+
+The fresh external asset directory contained **49 regular files**, with no
+symlinks, browser sourcemaps, synthetic fixtures or preview wrappers, and kept
+the existing public WalletConnect build identifier. Its file hashes were
+rechecked immediately before upload. The dry-run Worker module matched the
+active module apart from generated source-path comments, with an identical
+WASM module. An external Wrangler 4.141.0 configuration used the exact asset
+directory and current live observability settings. The active version and
+settings were checked again immediately before upload.
+
+After deployment, authenticated settings showed the same non-asset bindings,
+compatibility settings and observability as before. Public reads matched all
+**48 non-HTML assets** byte-for-byte; the live entry is
+`assets/index-CBcHIq3T.js`, and `/api/v1/info` returned 200. The live `/devlog`
+showed **74 milestones**, including the remembered-session, safe sign-out and
+Haatz-preservation milestones. Production checks used public reads and
+navigation only; no wallet approval, signature, account write or upload was
+performed.
+
 # Inline linked posts and media deployed · 2026-11-02
 
 Release source [`8980e502`](https://github.com/arcacomputer/opencaster/commit/8980e502e596e2fdd78413aece6babf712bf04b9)

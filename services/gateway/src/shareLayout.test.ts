@@ -255,4 +255,19 @@ describe('public sharing card SVG layout', () => {
     expect(lines(svg, 'feed-rules')).toEqual(['Source order (as loaded)']);
     expect(svg).not.toMatch(/NaN|undefined|Infinity/);
   });
+  it('lays out one- and two-line profile and channel titles identically', () => {
+    const positions = (svg: string, name: string) => [...(new RegExp(`<text data-role="${name}"([^>]*)>([\\s\\S]*?)</text>`).exec(svg) ?? [])]
+      .slice(1).join('').match(/font-size="\d+"|y="\d+"/g);
+    for (const [title, size, tops] of [['Art club', '60', ['241']], ['W'.repeat(20), '52', ['226', '287']]] as const) {
+      const person = buildShareSvg({ kind: 'profile', profile: { ...profile, displayName: title } });
+      const place = buildShareSvg({ ...channel, channel: { ...channel.channel, name: title } });
+      expect(lines(person, 'profile-name')).toEqual(lines(place, 'channel-name'));
+      expect(positions(person, 'profile-name')).toEqual([`font-size="${size}"`, ...tops.map(top => `y="${top}"`)]);
+      expect(positions(place, 'channel-name')).toEqual(positions(person, 'profile-name'));
+      const below = `y="${Number(tops[tops.length - 1]) + 43}"`;
+      expect(positions(person, 'profile-handle')).toContain(below);
+      expect(positions(place, 'channel-id')).toContain(below);
+      expect(lines(person, 'profile-bio').length).toBeLessThanOrEqual(tops.length > 1 ? 3 : 4);
+    }
+  });
 });

@@ -1,13 +1,15 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { ApiError, clearReactionStatusCache, getCast, getFollowStatus, getReactionStatus, getSigners, getUser, invalidateReactionStatus, primeReactionStatus, submitMessage, type Signer, type SignersResponse, type User } from '@opencaster/client-core/api';
-import { PAIRING_SCOPES, PAIRING_TTL_SECONDS, validatePairingRequest, validatePairingScopes, verifyPairingApproval, validateRevocationRequest, verifyRevocationApproval, type PairingApproval, type PairingRequest, type RevocationRequest, type RevocationApproval } from '@opencaster/client-core/pairing';
+import { PAIRING_SCOPES, PAIRING_TTL_SECONDS, PAIRING_WINDOW_SECONDS, pairingDeadline, validatePairingRequest, validatePairingScopes, verifyPairingApproval, validateRevocationRequest, verifyRevocationApproval, type PairingApproval, type PairingRequest, type RevocationRequest, type RevocationApproval } from '@opencaster/client-core/pairing';
 import { buildSignedMessage, CastType, farcasterTimestamp, MessageType, ReactionType, SignatureScheme, type MessageDataInput } from '@opencaster/protocol/messageBuilder';
 import { abiEncodeSignedKeyRequestMetadata, bytesToHex, hexToBytes } from '@opencaster/protocol/signedKeyRequest';
-import { compareAndSwapSavedVault, decryptSignerVault, decryptSignerVaultWithPasskey, deleteSavedVault, encryptSignerVault, encryptSignerVaultWithPasskey, passkeyVault, readSavedVault, savedVaultMethod, validateSignerVault, type SavedSessionMethod, type StoredSignerVault, type VaultMetadata } from './vault';
+import { compareAndSwapSavedVault, decryptSignerVault, decryptSignerVaultForBrowser, decryptSignerVaultWithPasskey, deleteSavedVault, encryptSignerVault, encryptSignerVaultForBrowser, encryptSignerVaultWithPasskey, passkeyVault, readSavedVault, savedVaultMethod, validateSignerVault, type SavedSessionMethod, type StoredSignerVault, type VaultMetadata } from './vault';
 import { enrollPasskey, evaluatePasskey } from './passkey';
+import { notifySessionChange } from './sessionPersistence';
 import { profileChanges, type ProfileField, type ProfilePatch, type ProfileUpdateResult } from './social';
 import { createMediaUploadGrant, type MediaUploadInput, type MediaUploadGrant } from '@opencaster/client-core/media';
 import { APP_ORIGIN } from '@opencaster/client-core/appOrigins';
+import { LONG_CAST_THRESHOLD_BYTES, MAX_CAST_BYTES, MAX_CAST_EMBEDS, MAX_MENTIONS } from '@opencaster/client-core/content';
 
 export const SIGNER_TTL_SECONDS = PAIRING_TTL_SECONDS;
 const SIGNER_SCOPE_NAMES: Record<number, string> = { 1: 'MESSAGE_TYPE_CAST_ADD', 2: 'MESSAGE_TYPE_CAST_REMOVE', 3: 'MESSAGE_TYPE_REACTION_ADD', 4: 'MESSAGE_TYPE_REACTION_REMOVE', 5: 'MESSAGE_TYPE_LINK_ADD', 6: 'MESSAGE_TYPE_LINK_REMOVE', 11: 'MESSAGE_TYPE_USER_DATA_ADD' };
@@ -58,6 +60,8 @@ export interface WalletSession {
   saveToDevice(password: string, options?: ConnectOptions): Promise<void>;
   /** Explicit local wrapping only; this never grants new network permissions. */
   saveToDeviceWithPasskey(options?: ConnectOptions): Promise<void>;
+  /** Remember this existing signer in the current browser profile without a prompt. */
+  rememberOnDevice(options?: ConnectOptions): Promise<void>;
   /** Offline custody approval works even when the node omits app nonces. */
   prepareRevocation(options?: ConnectOptions): Promise<PendingRevocation>;
   /** Self-revoke on Hypersnap, confirm removal, then clear local signer/vault. */
@@ -163,7 +167,7 @@ export async function preparePairing(lookup: { fid?: number; username?: string; 
       requestId: bytesToHex(crypto.getRandomValues(new Uint8Array(32))), createdAt,
       fid: user.fid, custodyAddress: custody, publicKey: bytesToHex(ed25519.getPublicKey(privateKey)),
       scopes: requestedScopes, ttl: PAIRING_TTL_SECONDS,
-      nonce: nonceAfter(registry.currentUserNonce), deadline: createdAt - 1609459200 + 900,
+      nonce: nonceAfter(registry.currentUserNonce), deadline: pairingDeadline(createdAt),
     });
     Object.freeze(request.scopes);
     Object.freeze(request);
@@ -245,14 +249,17 @@ export async function getSavedSessionMethod(publicKey?: string): Promise<SavedSe
   if (publicKey && vault.metadata.publicKey !== publicKey) return undefined;
   return savedVaultMethod(vault);
 }
-export async function deleteSavedSession(publicKey?: string): Promise<void> {
+export async function deleteSavedSession(publicKey?: string, options: { notify?: boolean } = {}): Promise<void> {
   await deleteSavedVault(publicKey);
+  if (options.notify !== false) notifySessionChange();
 }
 export async function unlockSavedSession(password: string, options: ConnectOptions & { origin?: string } = {}): Promise<WalletSession> {
   assertActive(options.signal);
   const saved = await readSavedVault();
   if (saved === undefined) throw new Error('There is no saved device signer. Authorize this device first.');
-  if (validateSignerVault(saved).version !== 1) throw new Error('This device vault uses a passkey. Choose passkey unlock.');
+  const vault = validateSignerVault(saved);
+  if (vault.version === 3) throw new Error('This device vault uses browser-profile protection. No password is required.');
+  if (vault.version !== 1) throw new Error('This device vault uses a passkey. Choose passkey unlock.');
   const origin = options.origin ?? globalThis.location?.origin;
   if (!origin) throw new Error('Could not determine this website’s origin.');
   const { privateKey, metadata } = await decryptSignerVault(saved, password, clientOrigin(origin));
@@ -263,6 +270,37 @@ export async function unlockSavedSession(password: string, options: ConnectOptio
     assertActive(options.signal);
     if (user.fid !== metadata.fid || custodyAddress(user) !== metadata.custodyAddress) throw new Error('Account custody changed. Forget this vault and authorize a new device signer.');
     if (!usableSigner(signerIn(registry, metadata.publicKey), metadata.fid, metadata.scopes)) throw new Error('This device signer is expired or revoked. Forget this vault and authorize the device again.');
+    const session = createSession(user, privateKey, metadata, true);
+    transferred = true;
+    return session;
+  } finally { if (!transferred) privateKey.fill(0); }
+}
+
+export async function restoreRememberedSession(options: ConnectOptions & { origin?: string } = {}): Promise<WalletSession | null> {
+  assertActive(options.signal);
+  const saved = await readSavedVault();
+  assertActive(options.signal);
+  if (saved === undefined) return null;
+  const vault = validateSignerVault(saved);
+  if (vault.version !== 3) return null;
+  const origin = options.origin ?? globalThis.location?.origin;
+  if (!origin) throw new Error('Could not determine this website’s origin.');
+  const { privateKey, metadata } = await decryptSignerVaultForBrowser(vault, clientOrigin(origin));
+  let transferred = false;
+  try {
+    assertActive(options.signal);
+    options.onProgress?.('Checking current custody and remembered signer authorization…');
+    const [user, registry] = await Promise.all([
+      getUser({ fid: metadata.fid }, options.signal),
+      getSigners(metadata.fid, options.signal),
+    ]);
+    assertActive(options.signal);
+    if (user.fid !== metadata.fid || custodyAddress(user) !== metadata.custodyAddress) throw new Error('Account custody changed. Reconnect with the current custody wallet.');
+    if (!usableSigner(signerIn(registry, metadata.publicKey), metadata.fid, metadata.scopes)) throw new Error('This device signer is expired or revoked. Forget this vault and authorize the device again.');
+    const current = await readSavedVault();
+    assertActive(options.signal);
+    const latest = current === undefined ? undefined : validateSignerVault(current);
+    if (latest?.version !== 3 || latest.wrapperId !== vault.wrapperId) throw new Error('The remembered device changed while it was being restored. Try again.');
     const session = createSession(user, privateKey, metadata, true);
     transferred = true;
     return session;
@@ -351,6 +389,7 @@ function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetada
           persisted = !restored || previous?.metadata.publicKey === metadata.publicKey;
           throw cause;
         }
+        notifySessionChange();
       } catch (cause) {
         controller.abort();
         throw cause;
@@ -484,8 +523,8 @@ function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetada
       const bytes = textBytes.length;
       const { embeds = [], mentions = [], mentionsPositions = [], parentUrl } = options;
       if (!text.trim() && !embeds.length && !mentions.length) throw new Error('Write something before casting.');
-      if (bytes > 1024) throw new Error('Casts can contain up to 1,024 UTF-8 bytes.');
-      if (!Array.isArray(embeds) || embeds.length > 2) throw new Error('Use at most two embeds, including quoted casts and HTTPS media.');
+      if (bytes > MAX_CAST_BYTES) throw new Error(`Casts can contain up to ${MAX_CAST_BYTES.toLocaleString('en-US')} UTF-8 bytes.`);
+      if (!Array.isArray(embeds) || embeds.length > MAX_CAST_EMBEDS) throw new Error('Use at most two embeds, including quoted casts and HTTPS media.');
       const protocolEmbeds = embeds.map(embed => {
         if (!embed || typeof embed !== 'object' || Object.keys(embed).length !== 1) throw new Error('Choose an HTTPS media URL or a cast to quote.');
         if ('url' in embed) { assertHttpsUrl(embed.url); return { url: embed.url }; }
@@ -493,13 +532,13 @@ function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetada
         assertFid(embed.castId.fid);
         return { castId: { fid: embed.castId.fid, hash: hashBytes(embed.castId.hash) } };
       });
-      if (!Array.isArray(mentions) || !Array.isArray(mentionsPositions) || mentions.length > 10 || mentions.length !== mentionsPositions.length) throw new Error('Use at most ten mentions with matching positions.');
+      if (!Array.isArray(mentions) || !Array.isArray(mentionsPositions) || mentions.length > MAX_MENTIONS || mentions.length !== mentionsPositions.length) throw new Error('Use at most ten mentions with matching positions.');
       mentions.forEach(assertFid);
       if (mentionsPositions.some((position, index) => !Number.isSafeInteger(position) || position < 0 || position > bytes
         || (index > 0 && position < mentionsPositions[index - 1]) || (position < bytes && (textBytes[position] & 0xc0) === 0x80))) throw new Error('Mention positions must be sorted UTF-8 boundaries in the cast text.');
       if (parent) assertFid(parent.fid);
       if (parentUrl !== undefined) { assertHttpsUrl(parentUrl); if (parent) throw new Error('Choose either a reply or a channel destination.'); }
-      return send({ type: MessageType.CAST_ADD, fid: metadata.fid, body: { castAddBody: { text, embeds: protocolEmbeds, mentions, mentionsPositions, type: bytes > 320 ? CastType.LONG_CAST : CastType.CAST, ...(parent ? { parent: { castId: { fid: parent.fid, hash: hashBytes(parent.hash) } } } : parentUrl !== undefined ? { parent: { url: parentUrl } } : {}) } } });
+      return send({ type: MessageType.CAST_ADD, fid: metadata.fid, body: { castAddBody: { text, embeds: protocolEmbeds, mentions, mentionsPositions, type: bytes > LONG_CAST_THRESHOLD_BYTES ? CastType.LONG_CAST : CastType.CAST, ...(parent ? { parent: { castId: { fid: parent.fid, hash: hashBytes(parent.hash) } } } : parentUrl !== undefined ? { parent: { url: parentUrl } } : {}) } } });
     },
     async deleteCast(target) {
       assertSession();
@@ -645,6 +684,15 @@ function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetada
         } finally { secret?.fill(0); }
       }, options);
     },
+    async rememberOnDevice(options = {}) {
+      await saveWrappedVault(async signal => {
+        const vault = await encryptSignerVaultForBrowser(privateKey, metadata);
+        options.onProgress?.('Checking current custody and device authorization before remembering this browser…');
+        await assertAuthorized(MessageType.CAST_ADD, signal);
+        assertSession(); assertActive(signal);
+        return vault;
+      }, options);
+    },
     async prepareRevocation(options = {}) {
       if (disposed) throw new Error('Your session has ended. Unlock this device before revoking it.');
       if (revoking) throw new Error('Revocation is already being checked.');
@@ -664,7 +712,7 @@ function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetada
         kind: 'arca.hypersnap.signer.revoke.request', version: 1,
         origin: metadata.origin, requestId: bytesToHex(crypto.getRandomValues(new Uint8Array(32))), createdAt,
         fid: metadata.fid, custodyAddress: metadata.custodyAddress, publicKey: metadata.publicKey,
-        nonce: nonceAfter(registry.currentUserNonce), deadline: createdAt - 1609459200 + 900,
+        nonce: nonceAfter(registry.currentUserNonce), deadline: pairingDeadline(createdAt),
       });
       Object.freeze(request);
       let ended = false;
@@ -724,7 +772,7 @@ function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetada
           const nonce = nonceAfter(registry.requesterFidNonces?.[String(metadata.requestFid)]);
           const { envelope } = await buildSignedMessage({
             type: MessageType.KEY_REMOVE, fid: metadata.fid,
-            body: { keyRemoveBody: { key: publicKey, signature: new Uint8Array(), signatureType: 2, deadline: farcasterTimestamp() + 900, nonce } },
+            body: { keyRemoveBody: { key: publicKey, signature: new Uint8Array(), signatureType: 2, deadline: farcasterTimestamp() + PAIRING_WINDOW_SECONDS, nonce } },
           }, { scheme: SignatureScheme.ED25519, publicKey, sign });
           assertActive(options.signal);
           if (disposed) throw new Error('Your session has ended.');

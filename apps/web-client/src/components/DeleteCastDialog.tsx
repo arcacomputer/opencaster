@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { IconRefresh, IconTrash } from '@tabler/icons-react';
 import { ApiError, type Cast } from '@opencaster/client-core/api';
 import type { WalletSession } from '../lib/auth';
+import { errorMessage } from '../lib/errors';
 import { Button, Modal } from './ui';
 
 type Phase = 'idle' | 'pending' | 'unknown' | 'failed' | 'invalidated';
@@ -61,7 +62,7 @@ export default function DeleteCastDialog({ cast, session, onEnable, onDeleted, o
       const unknown = cause instanceof ApiError && cause.code === 'submission_unknown';
       if (!unknown) attempted.current = null;
       setPhase(unknown ? 'unknown' : 'failed');
-      setError(cause instanceof Error ? cause.message : 'The cast could not be deleted.');
+      setError(errorMessage(cause, 'The cast could not be deleted.'));
     } finally {
       if (run === generation.current && activeContext.current === context) busy.current = false;
     }

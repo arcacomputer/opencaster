@@ -95,6 +95,13 @@ describe('browser API client', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it('rejects an already-cancelled search with the caller reason before fetching', async () => {
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+    const controller = new AbortController(); const reason = new DOMException('Left the page', 'AbortError'); controller.abort(reason);
+    await expect(searchCasts({ query: 'hello', signal: controller.signal })).rejects.toBe(reason);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it.each([' ', 'a\nb', '\u0000', '🙂'.repeat(65)])('rejects empty, control-containing or oversized search before fetching: %j', async query => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
@@ -403,6 +410,18 @@ describe('browser API client', () => {
     expect((await getSigners(3)).signers.map(signer => signer.key)).toEqual(['a', 'b']);
     expect(fetch.mock.calls[0][0]).toContain('requesterFids%5B0%5D=3');
     expect(fetch.mock.calls[1][0]).toContain('pageToken=YWJj');
+  });
+
+  it('reports a timed-out submission as unknown status rather than a read timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetch = vi.fn().mockImplementation((_url: string, options: RequestInit) => new Promise((_resolve, reject) => options.signal?.addEventListener('abort', () => reject(options.signal?.reason))));
+      vi.stubGlobal('fetch', fetch);
+      const assertion = expect(submitMessage(new Uint8Array([8, 1]))).rejects.toMatchObject({ status: 502, code: 'submission_unknown' });
+      await vi.advanceTimersByTimeAsync(25_001);
+      await assertion;
+      expect(fetch).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
   });
 
   it('submits the binary payload once and never retries an uncertain write', async () => {

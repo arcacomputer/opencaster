@@ -3,12 +3,10 @@
   "name": "hypersnap-quorum",
   "account_id": "e320a5a80611f9a30148d452929b1fb1",
   "main": "src/index.ts",
-  // Server-only origin settings. The credential is a version-bound Worker secret,
-  // never a VITE_* value or browser asset. Missing credential fails closed.
+  // Preserve the temporary Haatz primary during the private-node reinstall.
+  // Restore the private origin and its credential only through an approved cutback.
   "vars": {
-    "HYPERSNAP_ORIGIN": "https://node.opencaster.org",
-    "HYPERSNAP_AGGREGATE_CACHE": "trusted-origin-v1",
-    // Preserve the active operational read-backup recovery on later deployments.
+    "HYPERSNAP_AGGREGATE_CACHE": "disabled",
     "HYPERSNAP_READ_FALLBACK": "haatz-v1"
   },
   "compatibility_date": "2026-10-19",

@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { ApiError, clearReactionStatusCache, getCast, getFollowStatus, getReactionStatus, getSigners, getUser, invalidateReactionStatus, primeReactionStatus, submitMessage, type Cast, type SignersResponse, type User } from '@opencaster/client-core/api';
-import { deleteSavedSession, getSavedSessionMethod, hasSavedSession, preparePairing, unlockSavedSession, unlockSavedSessionWithPasskey, type PendingPairing, type PendingRevocation } from './auth';
+import { deleteSavedSession, getSavedSessionMethod, hasSavedSession, preparePairing, restoreRememberedSession, unlockSavedSession, unlockSavedSessionWithPasskey, type PendingPairing, type PendingRevocation } from './auth';
 import { FULL_CLIENT_SCOPES, FULL_SOCIAL_SCOPES, hashPairingRequest, hashRevocationRequest, type PairingApproval, type RevocationApproval } from '@opencaster/client-core/pairing';
 import { blake3_20 } from '@opencaster/protocol/messageBuilder';
 import { addressFromCustodyPrivateKey, bytesToHex, hexToBytes, keyAddDigest, keyRemoveDigest, signedKeyRequestDigest, signEip712Digest } from '@opencaster/protocol/signedKeyRequest';
 import { compareAndSwapSavedVault, deleteSavedVault, readSavedVault, writeSavedVault } from './vault';
 import * as vaultModule from './vault';
+import * as sessionPersistenceModule from './sessionPersistence';
 import { enrollPasskey, evaluatePasskey, type PasskeyDescriptor } from './passkey';
 import { mediaGrantPayload } from '@opencaster/client-core/media';
 
@@ -933,6 +934,138 @@ describe('offline approved per-device authentication', () => {
     unlocked.dispose();
     registry.signers = [];
     await expect(unlockSavedSession('synthetic-device-password', { origin: ORIGIN })).rejects.toThrow('expired or revoked');
+  });
+
+  it('remembers the existing signer by default and restores it with fresh read-only authorization checks', async () => {
+    const { session } = await connect();
+    await session.rememberOnDevice();
+    const saved = await readSavedVault() as vaultModule.BrowserSignerVault;
+    expect(saved.version).toBe(3);
+    expect(await getSavedSessionMethod()).toBe('browser');
+    const plaintext = await vaultModule.decryptSignerVaultForBrowser(saved, ORIGIN);
+    expect(JSON.stringify(saved)).not.toContain(bytesToHex(plaintext.privateKey));
+    plaintext.privateKey.fill(0);
+    const readsBefore = { user: vi.mocked(getUser).mock.calls.length, signers: vi.mocked(getSigners).mock.calls.length };
+    const writesBefore = { cas: vi.mocked(compareAndSwapSavedVault).mock.calls.length, writes: vi.mocked(writeSavedVault).mock.calls.length };
+    session.dispose();
+    const restored = await restoreRememberedSession({ origin: ORIGIN });
+    expect(restored?.publicKey).toBe(saved.metadata.publicKey);
+    expect(restored?.scopes).toEqual(saved.metadata.scopes);
+    expect(vi.mocked(getUser).mock.calls.length).toBe(readsBefore.user + 1);
+    expect(vi.mocked(getSigners).mock.calls.length).toBe(readsBefore.signers + 1);
+    expect(vi.mocked(compareAndSwapSavedVault).mock.calls.length).toBe(writesBefore.cas);
+    expect(vi.mocked(writeSavedVault).mock.calls.length).toBe(writesBefore.writes);
+    expect(submitMessage).toHaveBeenCalledOnce();
+    expect(deleteSavedVault).not.toHaveBeenCalled();
+    restored?.dispose();
+  });
+
+  it('returns null for no vault or legacy password/passkey vaults and rejects prompts for browser-protected vaults', async () => {
+    expect(await restoreRememberedSession({ origin: ORIGIN })).toBeNull();
+    const { session } = await connect();
+    await session.saveToDevice('synthetic-device-password');
+    const legacyReads = { user: vi.mocked(getUser).mock.calls.length, signers: vi.mocked(getSigners).mock.calls.length };
+    expect(await restoreRememberedSession({ origin: ORIGIN })).toBeNull();
+    expect(vi.mocked(getUser).mock.calls.length).toBe(legacyReads.user);
+    expect(vi.mocked(getSigners).mock.calls.length).toBe(legacyReads.signers);
+    await session.saveToDeviceWithPasskey();
+    const passkeyReads = { user: vi.mocked(getUser).mock.calls.length, signers: vi.mocked(getSigners).mock.calls.length };
+    expect(await restoreRememberedSession({ origin: ORIGIN })).toBeNull();
+    expect(vi.mocked(getUser).mock.calls.length).toBe(passkeyReads.user);
+    expect(vi.mocked(getSigners).mock.calls.length).toBe(passkeyReads.signers);
+    await session.rememberOnDevice();
+    await expect(unlockSavedSession('synthetic-device-password', { origin: ORIGIN })).rejects.toThrow('browser-profile protection');
+    await expect(unlockSavedSessionWithPasskey({ origin: ORIGIN })).rejects.toThrow('browser-profile protection');
+    expect(evaluatePasskey).not.toHaveBeenCalled();
+    session.dispose();
+  });
+
+  it('checks all saved scopes and current expiry before remembering the existing signer', async () => {
+    const { session } = await connect(FULL_CLIENT_SCOPES);
+    const original = structuredClone(registry);
+    const originalProfile = structuredClone(currentProfile);
+    for (const variant of ['scopes', 'expired', 'custody']) {
+      registry = structuredClone(original);
+      currentProfile = structuredClone(originalProfile);
+      if (variant === 'scopes') registry.signers[0].scopes = scopes;
+      if (variant === 'expired') registry.signers[0].expiresAt = 1;
+      if (variant === 'custody') currentProfile.custody_address = `0x${'ff'.repeat(20)}`;
+      await expect(session.rememberOnDevice()).rejects.toThrow('no longer authorized');
+    }
+    expect(compareAndSwapSavedVault).not.toHaveBeenCalled();
+    expect(await readSavedVault()).toBeUndefined();
+    session.dispose();
+  });
+
+  it('notifies other tabs only after a successful save or explicit vault deletion', async () => {
+    const notify = vi.spyOn(sessionPersistenceModule, 'notifySessionChange');
+    const { session } = await connect();
+    await session.rememberOnDevice();
+    expect(notify).toHaveBeenCalledOnce();
+    notify.mockClear();
+    await deleteSavedSession('ff'.repeat(32)); // Missing matching vault still means this tab signed out.
+    expect(notify).toHaveBeenCalledOnce();
+    await deleteSavedSession();
+    expect(notify).toHaveBeenCalledTimes(2);
+    session.dispose();
+  });
+
+  it('rejects remembered sessions after revocation, expiry, scope loss, or custody transfer', async () => {
+    const { session } = await connect(FULL_CLIENT_SCOPES);
+    await session.rememberOnDevice();
+    session.dispose();
+    const originalRegistry = structuredClone(registry);
+    const originalProfile = structuredClone(currentProfile);
+    for (const variant of ['revoked', 'expired', 'scopes', 'custody']) {
+      registry = structuredClone(originalRegistry);
+      currentProfile = structuredClone(originalProfile);
+      if (variant === 'revoked') registry.signers = [];
+      if (variant === 'expired') registry.signers[0].expiresAt = 1;
+      if (variant === 'scopes') registry.signers[0].scopes = scopes;
+      if (variant === 'custody') currentProfile.custody_address = `0x${'ff'.repeat(20)}`;
+      await expect(restoreRememberedSession({ origin: ORIGIN })).rejects.toThrow();
+    }
+    expect(deleteSavedVault).not.toHaveBeenCalled();
+    expect(await hasSavedSession()).toBe(true);
+  });
+
+  it('wipes decrypted bytes after network failure, cancellation, or a deletion race without erasing the vault', async () => {
+    const { session } = await connect();
+    await session.rememberOnDevice();
+    session.dispose();
+    const saved = await readSavedVault();
+    const real = await vi.importActual<typeof import('./vault')>('./vault');
+    const plaintexts: Uint8Array[] = [];
+    vi.spyOn(vaultModule, 'decryptSignerVaultForBrowser').mockImplementation(async (...args) => {
+      const decrypted = await real.decryptSignerVaultForBrowser(...args);
+      plaintexts.push(decrypted.privateKey);
+      return decrypted;
+    });
+
+    vi.mocked(getUser).mockRejectedValueOnce(new Error('network unavailable'));
+    await expect(restoreRememberedSession({ origin: ORIGIN })).rejects.toThrow('network unavailable');
+    expect(plaintexts.at(-1)!.every(byte => byte === 0)).toBe(true);
+    expect(deleteSavedVault).not.toHaveBeenCalled();
+    expect(await readSavedVault()).toEqual(saved);
+
+    const controller = new AbortController();
+    let started!: () => void;
+    const reading = new Promise<void>(resolve => { started = resolve; });
+    vi.mocked(getUser).mockImplementationOnce(async (_lookup, signal) => new Promise((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(new DOMException('Cancelled.', 'AbortError')), { once: true });
+      started();
+    }));
+    const cancelled = restoreRememberedSession({ origin: ORIGIN, signal: controller.signal });
+    const rejection = expect(cancelled).rejects.toMatchObject({ name: 'AbortError' });
+    await reading;
+    controller.abort();
+    await rejection;
+    expect(plaintexts.at(-1)!.every(byte => byte === 0)).toBe(true);
+
+    vi.mocked(readSavedVault).mockImplementationOnce(async () => saved).mockImplementationOnce(async () => undefined);
+    await expect(restoreRememberedSession({ origin: ORIGIN })).rejects.toThrow('changed while it was being restored');
+    expect(plaintexts.at(-1)!.every(byte => byte === 0)).toBe(true);
+    expect(deleteSavedVault).not.toHaveBeenCalled();
   });
 
   it('self-revokes with app nonce and verifies actual removal before deleting the matching vault', async () => {

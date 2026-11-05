@@ -1,23 +1,20 @@
-import { createContext, lazy, memo, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type MouseEvent, type ReactNode } from 'react';
-import { IconSettings, IconKeyboard, IconBell, IconDots, IconTrash, IconArrowLeft, IconArrowUpRight, IconBookmark, IconChevronRight, IconCompass, IconHash, IconHeart, IconHome, IconLayoutList, IconPin, IconLock, IconPencil, IconMessageCircle, IconMoon, IconRefresh, IconRepeat, IconSearch, IconShare, IconShieldLock, IconSparkles, IconSun, IconUser, IconUsers, IconWorld, IconX } from '@tabler/icons-react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from 'react';
+import { IconKeyboard, IconBell, IconArrowLeft, IconBookmark, IconChevronRight, IconCompass, IconHash, IconHome, IconLayoutList, IconLock, IconPencil, IconMoon, IconRefresh, IconSearch, IconShare, IconShieldLock, IconSparkles, IconSun, IconUser, IconUsers, IconWorld, IconX } from '@tabler/icons-react';
 import { Button, Input, Modal } from './components/ui';
-import { getFeed, getProfileFeed, hasImageEmbed, getCast, getChannels, getChannel, getUser, getInfo, getConversation, type Channel, type Cast, type User, type ConversationNode } from '@opencaster/client-core/api';
+import { getFeed, getProfileFeed, getChannels, getChannel, getUser, getInfo, getConversation, type Channel, type Cast, type User, type ConversationNode } from '@opencaster/client-core/api';
 import type { WalletSession } from './lib/auth';
-import { castPath, castPermalink, parseRoute, parseLocalPath, routePath, searchPath, profilePath, feedPath, followingPath, publicUrl, connectReturnPath, type AppRoute } from '@opencaster/client-core/navigation';
+import { castPath, castPermalink, parseRoute, parseLocalPath, routePath, searchPath, profilePath, feedPath, followingPath, connectReturnPath, type AppRoute } from '@opencaster/client-core/navigation';
 import { ShareCastDialog } from './components/ShareCast';
 import FollowButton from './components/FollowButton';
 import FollowListDialog from './components/FollowListDialog';
 import { getFollows, getFollowStatus } from '@opencaster/client-core/api';
 import { FULL_CLIENT_SCOPES, FULL_SOCIAL_SCOPES } from '@opencaster/client-core/pairingScopes';
-import { renderMentionSegments } from '@opencaster/client-core/content';
 import { SearchView, NotificationsView, ChannelsView, ChannelHeader, ProfileTabs } from './components/FeaturePanels';
 import DeleteCastDialog from './components/DeleteCastDialog';
 import PendingCastCard from './components/PendingCastCard';
 import { reconcilePublications, updatePublications, type CastPublication, type CastPublicationEvent } from './lib/pendingCasts';
 import FeedPagination from './components/FeedPagination';
-import CastReactions from './components/CastReactions';
 import MediaViewer, { type CastImage } from './components/MediaViewer';
-import LinkEmbed from './components/LinkEmbed';
 import CastOptions from './components/CastOptions';
 import CastLinkLookup from './components/CastLinkLookup';
 import { SuggestedPeople, ChannelPeopleDialog, CastQuotesDialog } from './components/CommunityPanels';
@@ -27,15 +24,23 @@ import BookmarkTools from './components/BookmarkTools';
 import NodeSupportBanner from './components/NodeSupportBanner';
 import { NODE_SUPPORT_URL } from './lib/nodeSupport';
 import { readBookmarks, saveBookmarks, toggleBookmark, filterBookmarks, bookmarkHash, type BookmarkSort } from './lib/bookmarks';
-import { contentPreferencesKey, emptyContentPreferences, readContentPreferences, writeContentPreferences, getContentFilterReason, hideCast, muteAccount, type ContentPreferences } from './lib/contentPreferences';
+import { contentPreferencesKey, readContentPreferences, writeContentPreferences, getContentFilterReason, hideCast, muteAccount, type ContentPreferences } from './lib/contentPreferences';
 import { useNavigationShortcuts } from './lib/useNavigationShortcuts';
-import { textLinks } from './lib/textLinks';
-import { quorumSocialPath } from './lib/socialLinks';
+import { useBrowserSession } from './lib/useBrowserSession';
 import { trackPageView } from './lib/analytics';
-import { getCastAncestors, matchesParentCast, parentCastReference, type CastAncestors } from './lib/castContext';
 import { createParentCastReader } from './lib/parentCastReader';
 import { mergeFeedPage } from './lib/feedPageMerge';
+import { errorMessage } from './lib/errors';
 import { decodeFeed, encodeFeed, newSavedFeed, normalizeFeedDefinition, readSavedFeeds, writeSavedFeeds, type FeedDefinition, type SavedFeed } from '@opencaster/client-core/customFeeds';
+import { Avatar, CastCard, ContentControls, LinkedText, ParentCastRead, type ReplyPresentation } from './components/CastCard';
+import { ConversationContext, ConversationReplies, conversationCasts } from './components/Conversation';
+import { localClick, NavLink } from './components/NavLink';
+import Sidebar, { sourceUrl } from './components/Sidebar';
+import { HomeFeedTabs, PageHeader } from './components/PageHeader';
+import { short } from './lib/castDisplay';
+import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
+import { EXPLORE_STORAGE_KEY } from './lib/storageKeys';
+import { useTheme } from './lib/useTheme';
 import './familiar.scss';
 import './cast-features.scss';
 import './reply-context.scss';
@@ -43,11 +48,10 @@ import './feeds.scss';
 
 const ContentSettings = lazy(() => import('./components/ContentSettings'));
 const AnalyticsSettings = lazy(() => import('./components/AnalyticsSettings'));
+const SessionSettings = lazy(() => import('./components/SessionSettings'));
 const CastReactionPeople = lazy(() => import('./components/CastReactionPeople'));
 const Composer = lazy(() => import('./components/Composer'));
 const EditProfileDialog = lazy(() => import('./components/EditProfileDialog'));
-const ContentControls = createContext<{ preferences: ContentPreferences; revealed: ReadonlySet<string>; reveal(hash: string): void }>({ preferences: emptyContentPreferences(), revealed: new Set(), reveal() {} });
-const ParentCastRead = createContext<typeof getCast>(getCast);
 const DevLog = lazy(() => import('./components/DevLog'));
 const ConnectAccount = lazy(() => import('./components/ConnectAccount'));
 const DeviceSettings = lazy(() => import('./components/ConnectAccount').then(module => ({ default: module.DeviceSettings })));
@@ -67,14 +71,7 @@ function backgroundLocation(): FeedRoute {
   }
   return { kind: 'discover' };
 }
-function localClick(event: MouseEvent<HTMLAnchorElement>, action: () => void) {
-  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-  event.preventDefault(); action();
-}
-const sourceUrl = 'https://github.com/arcacomputer/opencaster';
-const message = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
-const compactNumber = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
-const short = (value: number = 0) => compactNumber.format(value);
+const UNEXPECTED_ERROR = 'Something went wrong. Please try again.';
 // Returns a callback with a stable identity that always runs the latest render's
 // function, so memoized cards do not re-render when App state they ignore changes.
 function useStableCallback<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
@@ -99,153 +96,10 @@ function SearchForm({ draft, onSearch }: { draft: SearchDraft; onSearch(query: s
   function submit(event: FormEvent) { event.preventDefault(); onSearch(query); }
   return <form className="search" onSubmit={submit}><IconSearch size={18} /><Input aria-label="Search casts or people" placeholder="Search casts or @people" value={query} onChange={event => draft.set(event.target.value)} /><Button data-analytics="search-submit" variant="ghost" type="submit" aria-label="Search"><IconChevronRight size={18} /></Button></form>;
 }
-function safeUrl(value?: string): string | undefined {
-  try { const url = new URL(value ?? ''); return url.protocol === 'https:' && !url.username && !url.password ? url.href : undefined; } catch { return undefined; }
-}
-function conversationCasts(conversation: ConversationNode | null): Cast[] {
-  const casts: Cast[] = [];
-  const remaining = conversation ? [conversation] : [];
-  while (remaining.length && casts.length < 150) {
-    const node = remaining.shift()!;
-    casts.push(node.cast);
-    remaining.push(...(node.replies ?? []).slice(0, 150 - casts.length));
-  }
-  return casts;
-}
-function relativeTime(timestamp: string) {
-  const minutes = Math.max(0, Math.floor((Date.now() - new Date(timestamp).getTime()) / 60000));
-  if (minutes < 1) return 'now';
-  if (minutes < 60) return `${minutes}m`;
-  if (minutes < 1440) return `${Math.floor(minutes / 60)}h`;
-  return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-function Avatar({ user, large = false }: { user?: User; large?: boolean }) {
-  const [failedUrl, setFailedUrl] = useState('');
-  const url = safeUrl(user?.pfp_url);
-  return <span className={`avatar ${large ? 'avatar--large' : ''}`}>{url && failedUrl !== url ? <img src={url} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailedUrl(url)} /> : (user?.display_name || user?.username || 'O').slice(0, 2).toUpperCase()}</span>;
-}
-function LinkedText({ text, onNavigate }: { text: string; onNavigate(path: string): void }) {
-  const parts = useMemo(() => textLinks(text), [text]);
-  return <>{parts.map((part, i) => {
-    if (!part.href) return part.text;
-    // Classify the original token before URL normalization can hide escapes,
-    // backslashes, or dot segments that should remain external links.
-    const localPath = quorumSocialPath(part.text);
-    const label = part.text.length > 65 ? `${part.text.slice(0, 62)}…` : part.text;
-    return localPath ? <a key={i} href={localPath} title={`Open on Opencaster. Original link: ${part.text}`} onClick={event => localClick(event, () => onNavigate(localPath))}>{label}</a>
-      : <a key={i} href={part.href} target="_blank" rel="noopener noreferrer">{label}</a>;
-  })}</>;
-}
-function CastText({ cast, onProfile, onNavigate }: { cast: Cast; onProfile(user: User): void; onNavigate(path: string): void }) {
-  const attachmentUrls = useMemo(() => cast.embeds?.filter((embed): embed is { url: string } => 'url' in embed && !!safeUrl(embed.url)).slice(0, 2).map(embed => safeUrl(embed.url)) ?? [], [cast.embeds]);
-  const { text, mentioned_profiles: mentionedProfiles, mentioned_profiles_ranges: mentionedRanges } = cast;
-  const segments = useMemo(() => renderMentionSegments({ text, mentioned_profiles: mentionedProfiles, mentioned_profiles_ranges: mentionedRanges }), [text, mentionedProfiles, mentionedRanges]);
-  const hiddenLines = useMemo(() => new Set(segments.map(segment => segment.kind === 'text' ? segment.text : '\ufffc').join('').split('\n').flatMap((line, index) => {
-    const url = safeUrl(line.trim());
-    return url && attachmentUrls.includes(url) ? [index] : [];
-  })), [segments, attachmentUrls]);
-  let lineIndex = 0;
-  return <>{segments.map((segment, index) => {
-    if (segment.kind !== 'text') return <a data-analytics="profile-open" className="cast-mention" key={index} href={profilePath(segment.user.fid)} onClick={event => localClick(event, () => onProfile(segment.user))}>@{segment.user.username || segment.user.fid}</a>;
-    // Remove only standalone attachment lines, after resolving protocol mention
-    // positions. Inline authored links and the original cast text stay intact.
-    let text = segment.text.split('\n').map((line, part, lines) => {
-      const hidden = hiddenLines.has(lineIndex);
-      if (part === lines.length - 1) return hidden ? '' : line;
-      lineIndex += 1;
-      return hidden ? '' : `${line}\n`;
-    }).join('');
-    if (hiddenLines.size && index === 0) text = text.trimStart();
-    if (hiddenLines.size && index === segments.length - 1) text = text.trimEnd();
-    return <LinkedText key={index} text={text} onNavigate={onNavigate} />;
-  })}</>;
-}
-function ConversationReplies({ nodes, parent, renderCard }: { nodes: ConversationNode[]; parent: Cast; renderCard(cast: Cast, parent: Cast): ReactNode }) {
-  let remaining = 150;
-  const render = (items: ConversationNode[], depth: number, parent: Cast): ReactNode => items.slice(0, 150).map(node => {
-    if (remaining-- <= 0) return null;
-    return <section key={node.cast.hash} className="conversation-reply">{renderCard(node.cast, parent)}{depth < 5 && node.replies?.length > 0 && <div className="conversation-children">{render(node.replies, depth + 1, node.cast)}</div>}</section>;
-  });
-  return <div className="conversation-replies" aria-label="Conversation replies">{render(nodes, 0, parent)}<p className="thread-empty">Open a reply to continue its conversation.</p></div>;
-}
-type ReplyPresentation = { parent?: Cast; replyPreview?: boolean };
-function ConversationContext({ cast, renderCard, onNavigate, onRetry }: { cast: Cast; renderCard(cast: Cast, featured: boolean, context: ReplyPresentation): ReactNode; onNavigate(path: string): void; onRetry(): void }) {
-  const readCast = useContext(ParentCastRead);
-  const [context, setContext] = useState<CastAncestors | null>(null);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    const controller = new AbortController(); setContext(null);
-    getCastAncestors(cast, controller.signal, { readCast }).then(value => { if (!controller.signal.aborted) setContext(value); }).catch(() => { if (!controller.signal.aborted) setContext({ ancestors: [], status: 'unavailable' }); });
-    return () => controller.abort();
-  }, [cast, attempt, readCast]);
-  const ancestors = context?.ancestors ?? [];
-  const earlier = context?.status === 'limited' ? parentCastReference(ancestors[0]) : undefined;
-  return <>
-    {(cast.parent_hash || ancestors.length > 0) && <section className="conversation-context" aria-label="Earlier casts in this conversation">
-      {!context && <p className="conversation-context__notice" role="status">Loading earlier casts…</p>}
-      {context?.status === 'unavailable' && <div className="conversation-context__notice"><p>Earlier context is unavailable on this Hypersnap node.</p><Button variant="ghost" onClick={() => { onRetry(); setAttempt(value => value + 1); }}>Retry</Button></div>}
-      {earlier && <a className="conversation-context__notice" href={castPath(earlier.hash)} onClick={event => localClick(event, () => onNavigate(castPath(earlier.hash)))}>View earlier casts<IconArrowUpRight size={14} /></a>}
-      {ancestors.map((ancestor, index) => <div className="conversation-context__ancestor" key={ancestor.hash}>{renderCard(ancestor, false, { parent: ancestors[index - 1], replyPreview: false })}</div>)}
-    </section>}
-    {renderCard(cast, true, { parent: ancestors.at(-1), replyPreview: false })}
-  </>;
-}
-function ReplyContext({ cast, parent, preview = true, getCastPath, onProfile, onNavigate, onThread, onCastHash }: { cast: Cast; parent?: Cast; preview?: boolean; getCastPath(cast: Cast): string; onProfile(user: User): void; onNavigate(path: string): void; onThread(cast: Cast): void; onCastHash(hash: string): void }) {
-  const controls = useContext(ContentControls);
-  const readCast = useContext(ParentCastRead);
-  const reference = parentCastReference(cast);
-  const hash = reference?.hash;
-  const fid = reference?.fid;
-  const known = parent && matchesParentCast(cast, parent) ? parent : undefined;
-  const [loaded, setLoaded] = useState<Cast | null>(null);
-  const [unavailable, setUnavailable] = useState(false);
-  useEffect(() => {
-    const controller = new AbortController(); setLoaded(null); setUnavailable(false);
-    if (hash && preview && !known) readCast(hash, controller.signal).then(value => {
-      if (!controller.signal.aborted) {
-        if (bookmarkHash(value?.hash) === bookmarkHash(hash) && Number.isSafeInteger(value?.author?.fid) && value.author.fid > 0 && (fid === undefined || value.author.fid === fid) && typeof value.text === 'string') setLoaded(value);
-        else setUnavailable(true);
-      }
-    }).catch(() => { if (!controller.signal.aborted) setUnavailable(true); });
-    return () => controller.abort();
-  }, [hash, fid, preview, known, readCast]);
-  if (!reference) return null;
-  const resolved = known ?? (loaded && matchesParentCast(cast, loaded) ? loaded : undefined);
-  const reason = resolved && !controls.revealed.has(bookmarkHash(resolved.hash)!) ? getContentFilterReason(resolved, controls.preferences) : undefined;
-  if (reason) return <div className="cast-reply-context cast-reply-context--filtered"><p>Parent cast filtered: {reason}</p><Button variant="ghost" onClick={() => controls.reveal(resolved!.hash)}>Show parent for this view</Button></div>;
-  const recipient = resolved?.author;
-  const label = recipient?.username ? `@${recipient.username}` : recipient?.display_name || (recipient || fid ? `FID ${recipient?.fid ?? fid}` : 'a cast');
-  const path = resolved ? getCastPath(resolved) : castPath(reference.hash);
-  return <div className="cast-reply-context">
-    <div className="cast-reply-context__label"><IconMessageCircle size={13} aria-hidden="true" /><span>Replying to {recipient ? <a data-analytics="profile-open" href={profilePath(recipient.fid)} onClick={event => localClick(event, () => onProfile(recipient))}>{label}</a> : fid ? <a data-analytics="profile-open" href={profilePath(fid)} onClick={event => localClick(event, () => onNavigate(profilePath(fid)))}>{label}</a> : <a href={path} onClick={event => localClick(event, () => onCastHash(reference.hash))}>{label}</a>}</span></div>
-    {preview && <a data-analytics="cast-parent-open" className="cast-reply-context__preview" href={path} onClick={event => localClick(event, () => resolved ? onThread(resolved) : onCastHash(reference.hash))}>{resolved ? renderMentionSegments(resolved).map(segment => segment.kind === 'text' ? segment.text : `@${segment.user.username || segment.user.fid}`).join('') || 'Cast with attachments' : unavailable ? 'Parent cast unavailable on this node · View parent cast' : 'Loading parent cast…'}</a>}
-    {!preview && !resolved && <a data-analytics="cast-parent-open" className="cast-reply-context__open" href={path} onClick={event => localClick(event, () => onCastHash(reference.hash))}>View parent cast<IconArrowUpRight size={13} /></a>}
-  </div>;
-}
-function QuotedCast({ target, onThread, getCastPath }: { getCastPath(cast: Cast): string; target: { fid: number; hash: string }; onThread(cast: Cast): void }) {
-  const readParentCast = useContext(ParentCastRead);
-  const controls = useContext(ContentControls);
-  const [cast, setCast] = useState<Cast | null>(null);
-  const [unavailable, setUnavailable] = useState(false);
-  useEffect(() => {
-    const controller = new AbortController(); setCast(null); setUnavailable(false);
-    readParentCast(target.hash, controller.signal).then(value => {
-      if (!controller.signal.aborted) { if (value.author.fid === target.fid) setCast(value); else setUnavailable(true); }
-    }).catch(() => { if (!controller.signal.aborted) setUnavailable(true); });
-    return () => controller.abort();
-  }, [readParentCast, target.hash, target.fid]);
-  const reason = cast && !controls.revealed.has(bookmarkHash(cast.hash)!) ? getContentFilterReason(cast, controls.preferences) : undefined;
-  if (reason) return <div className="filtered-cast"><p>Quoted cast filtered: {reason}</p><Button variant="ghost" onClick={() => controls.reveal(cast!.hash)}>Show this quote for this view</Button></div>;
-  const quoteImages = cast?.embeds.filter((embed): embed is { url: string } => 'url' in embed && !!safeUrl(embed.url) && hasImageEmbed({ ...cast, embeds: [embed] })).slice(0, 2) ?? [];
-  return <a data-analytics="cast-open" className="quoted-cast" href={cast ? getCastPath(cast) : castPath(target.hash)} onClick={event => { if (cast) localClick(event, () => onThread(cast)); }}>
-      {cast ? <><span className="quoted-cast__author"><Avatar user={cast.author} /><strong>{cast.author.username || cast.author.display_name || `FID ${target.fid}`}</strong><time dateTime={cast.timestamp}>{relativeTime(cast.timestamp)}</time></span><span className="quoted-cast__text">{renderMentionSegments(cast).map(segment => segment.kind === 'text' ? segment.text : `@${segment.user.username || segment.user.fid}`).join('') || 'Cast with attachments'}</span>{quoteImages.length > 0 && <span className="quoted-cast__images">{quoteImages.map(embed => <img key={embed.url} src={embed.url} alt="Image attached to quoted cast" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={event => { event.currentTarget.hidden = true; }} />)}</span>}</> : <span>{unavailable ? 'Quoted cast unavailable or deleted' : 'Loading quoted cast…'}</span>}
-  </a>;
-}
 function GuestPrompt({ children, onConnect }: { children: ReactNode; onConnect(): void }) {
   return <section className="guest-prompt"><span className="avatar"><IconUser size={18} /></span><p>{children}</p><Button data-analytics="connect-open" onClick={onConnect}>Sign in</Button></section>;
 }
-const exploreKey = 'opencaster.explore';
-function readExplore() { try { return localStorage.getItem(exploreKey) === '1'; } catch { return false; } }
+function readExplore() { try { return localStorage.getItem(EXPLORE_STORAGE_KEY) === '1'; } catch { return false; } }
 function Landing({ onSignIn, onExplore, onNavigate }: { onSignIn(): void; onExplore(): void; onNavigate(path: string): void }) {
   return <main className="landing">
     <div className="landing__visual" aria-hidden="true"><div className="orbit"><div className="orbit__ring orbit__ring--one" /><div className="orbit__ring orbit__ring--two" /><div className="orbit__ring orbit__ring--three" /><div className="orbit__core"><img src="/opencaster-symbol.svg" alt="" /></div><span className="orbit__point orbit__point--a" /><span className="orbit__point orbit__point--b" /><span className="orbit__point orbit__point--c" /><span className="orbit__star">✳</span></div></div>
@@ -259,44 +113,9 @@ function Landing({ onSignIn, onExplore, onNavigate }: { onSignIn(): void; onExpl
       <Button data-analytics="landing-explore" variant="secondary" className="landing__secondary" onClick={onExplore}>Explore without an account</Button>
       <p className="landing__note">New here? Opencaster can’t create accounts yet. You need an existing Farcaster account to sign in; anyone can read public casts.</p>
     </section>
-    <footer className="landing__footer"><a data-analytics="nav-settings" href="/settings" onClick={event => localClick(event, () => onNavigate('/settings'))}>Privacy &amp; analytics</a><a data-analytics="nav-devlog" href="/devlog" onClick={event => localClick(event, () => onNavigate('/devlog'))}>Dev log</a><a data-analytics="hypersnap-open" href="https://hypersnap.org" target="_blank" rel="noopener noreferrer">Hypersnap</a><a data-analytics="node-support-open" href={NODE_SUPPORT_URL} target="_blank" rel="noopener noreferrer" aria-label="Support the node (opens Stripe in a new tab)">Support the node</a><a data-analytics="source-open" href={sourceUrl} target="_blank" rel="noopener noreferrer">Source</a><a href={`${sourceUrl}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer">AGPL-3.0</a></footer>
+    <footer className="landing__footer"><NavLink data-analytics="nav-settings" href="/settings" onNavigate={onNavigate}>Privacy &amp; analytics</NavLink><NavLink data-analytics="nav-devlog" href="/devlog" onNavigate={onNavigate}>Dev log</NavLink><a data-analytics="hypersnap-open" href="https://hypersnap.org" target="_blank" rel="noopener noreferrer">Hypersnap</a><a data-analytics="node-support-open" href={NODE_SUPPORT_URL} target="_blank" rel="noopener noreferrer" aria-label="Support the node (opens Stripe in a new tab)">Support the node</a><a data-analytics="source-open" href={sourceUrl} target="_blank" rel="noopener noreferrer">Source</a><a href={`${sourceUrl}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer">AGPL-3.0</a></footer>
   </main>;
 }
-const CastCard = memo(function CastCard({ cast, dark, featured = false, fullHashLinks = false, parent, replyPreview = true, getCastPath, onProfile, onNavigate, onThread, onShare, onQuote, onDelete, reactionActor, onCastHash, onImages, onOptions, session, onSignIn, saved, onSave, notify }: { cast: Cast; dark: boolean; featured?: boolean; fullHashLinks?: boolean; getCastPath(cast: Cast): string; onProfile(user: User): void; onNavigate(path: string): void; onThread(cast: Cast): void; onShare(cast: Cast): void; onQuote(cast: Cast): void; onDelete(cast: Cast): void; reactionActor?: User; onCastHash(hash: string): void; onImages(images: CastImage[], initialIndex: number): void; onOptions(cast: Cast): void; session: WalletSession | null; onSignIn(): void; saved: boolean; onSave(cast: Cast): void; notify(text: string): void } & ReplyPresentation) {
-  const urls = useMemo(() => cast.embeds?.filter((embed): embed is { url: string } => 'url' in embed && !!safeUrl(embed.url)).slice(0, 2) ?? [], [cast.embeds]);
-  const isImage = (url: string) => hasImageEmbed({ ...cast, embeds: [{ url }] });
-  const images = useMemo(() => urls.filter(embed => isImage(embed.url)).map((embed, index) => ({ url: embed.url, alt: `Image ${index + 1} attached to cast by @${cast.author.username || cast.author.fid}` })), [urls, cast]);
-  const [expanded, setExpanded] = useState(false);
-  const collapsed = !featured && !expanded && ((cast.text?.length ?? 0) > 420 || (cast.text?.split('\n').length ?? 0) > 9);
-  function openFromCard(event: MouseEvent<HTMLElement>) {
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    if ((event.target as Element).closest('a, button, input, textarea, select, label, video, audio, dialog')) return;
-    if (window.getSelection?.()?.toString()) return;
-    onThread(cast);
-  }
-  return <article className={`cast ${featured ? 'cast--featured' : 'cast--openable'}`} onClick={featured ? undefined : openFromCard}>
-    <div className="cast__header">
-    <a data-analytics="profile-open" className="button button--ghost avatar-button" href={profilePath(cast.author.fid)} aria-label={`View ${cast.author.username}'s profile`} onClick={event => localClick(event, () => onProfile(cast.author))}><Avatar user={cast.author} /></a>
-    <div className="cast__meta"><a data-analytics="profile-open" className="button button--ghost author" href={profilePath(cast.author.fid)} title={cast.author.display_name} onClick={event => localClick(event, () => onProfile(cast.author))}>{cast.author.username || cast.author.display_name || `FID ${cast.author.fid}`}</a><a data-analytics="cast-open" className="cast-permalink" href={fullHashLinks ? castPermalink(cast, { fullHash: true }) : getCastPath(cast)} aria-label="Open cast" onClick={event => localClick(event, () => onThread(cast))}><time dateTime={cast.timestamp} title={new Date(cast.timestamp).toLocaleString()}>{relativeTime(cast.timestamp)}</time></a>{cast.channel && <span className="channel-tag">/{cast.channel.id}</span>}</div>
-    <Button data-analytics="cast-options-open" variant="ghost" className="cast__options" aria-label="More cast options" onClick={() => onOptions(cast)}><IconDots size={20} /></Button>
-    </div>
-    <div className="cast__body">
-      {cast.reaction_context && <div className="cast-activity">{cast.reaction_context.type === 'like' ? <IconHeart size={14} aria-hidden="true" /> : <IconRepeat size={14} aria-hidden="true" />}<a data-analytics="profile-open" href={profilePath(cast.reaction_context.fid)} onClick={event => { if (reactionActor) localClick(event, () => onProfile(reactionActor)); }}>{reactionActor?.display_name || reactionActor?.username || `FID ${cast.reaction_context.fid}`}</a>{cast.reaction_context.type === 'like' ? 'liked' : 'recasted'}<time dateTime={cast.reaction_context.timestamp} title={new Date(cast.reaction_context.timestamp).toLocaleString()}>{relativeTime(cast.reaction_context.timestamp)}</time></div>}
-      <ReplyContext cast={cast} parent={parent} preview={replyPreview} getCastPath={getCastPath} onProfile={onProfile} onNavigate={onNavigate} onThread={onThread} onCastHash={onCastHash} />
-      <p className={`cast__text ${collapsed ? 'cast__text--clamp' : ''}`}><CastText cast={cast} onProfile={onProfile} onNavigate={onNavigate} /></p>
-      {collapsed && <Button variant="ghost" className="cast__more" onClick={() => setExpanded(true)}>Show more</Button>}
-      {urls.length > 0 && <div className={`cast__attachments ${urls.length > 1 ? 'cast__attachments--multiple' : ''}`} aria-label="Cast attachments">{[...urls].sort((a, b) => Number(isImage(b.url)) - Number(isImage(a.url))).map(embed => isImage(embed.url) ? <a href={embed.url} key={embed.url} target="_blank" rel="noopener noreferrer" data-analytics="cast-image-open" className="embed" aria-label="View attached image" onClick={event => localClick(event, () => onImages(images, images.findIndex(image => image.url === embed.url)))}><img src={embed.url} loading="lazy" decoding="async" alt="Image attached to cast" referrerPolicy="no-referrer" onError={event => { event.currentTarget.hidden = true; }} /></a> : <LinkEmbed key={embed.url} url={embed.url} dark={dark} onNavigate={onNavigate} />)}</div>}
-      {cast.embeds?.filter((embed): embed is { cast_id: { fid: number; hash: string } } => 'cast_id' in embed && !!embed.cast_id && Number.isSafeInteger(embed.cast_id.fid) && embed.cast_id.fid > 0 && /^(?:0x)?[a-fA-F0-9]{40}$/.test(embed.cast_id.hash)).slice(0, 2).map(embed => <QuotedCast key={embed.cast_id.hash} target={embed.cast_id} onThread={onThread} getCastPath={getCastPath} />)}
-      <div className="cast__actions">
-        <Button data-analytics="cast-replies-open" variant="ghost" aria-label="Open replies" onClick={() => onThread(cast)}><IconMessageCircle size={18} /><span>{short(cast.replies?.count)}</span></Button>
-        <CastReactions key={`${cast.hash}:${session?.publicKey ?? 'guest'}`} cast={cast} session={session} onSignIn={onSignIn} notify={notify} onQuote={() => onQuote(cast)} />
-        <Button data-analytics={saved ? 'bookmark-remove' : 'bookmark-add'} variant="ghost" aria-label={saved ? 'Remove bookmark' : 'Bookmark cast'} aria-pressed={saved} className={saved ? 'is-saved' : ''} onClick={() => onSave(cast)}><IconBookmark size={18} fill={saved ? 'currentColor' : 'none'} /></Button>
-        {session?.fid === cast.author.fid && <Button data-analytics="cast-delete-open" variant="ghost" aria-label="Delete cast" onClick={() => onDelete(cast)}><IconTrash size={18} /></Button>}
-        <Button data-analytics="cast-share-open" variant="ghost" aria-label="Share cast" onClick={() => onShare(cast)}><IconShare size={18} /></Button>
-      </div>
-    </div>
-  </article>;
-});
 
 export default function App() {
   const [route, setRoute] = useState<AppRoute>(() => parseRoute(location));
@@ -319,7 +138,7 @@ export default function App() {
   const [channelError, setChannelError] = useState('');
   const channelCache = useRef(new Map<string, Channel>());
   const profileIdentifier = base.kind === 'profile' ? base.identifier : undefined;
-  const [session, setSession] = useState<WalletSession | null>(null);
+  const { session, setSession, restoring, restoreError, retryRestore, signOut } = useBrowserSession();
   const followingFid = base.kind === 'following' ? base.fid ?? session?.fid : undefined;
   const connectFlow = useRef<ConnectFlow | null>(null);
   const connectGeneration = useRef(0);
@@ -409,7 +228,7 @@ export default function App() {
   }, [preferenceScope, storedPreferences]);
   const [composeOpen, setComposeOpen] = useState(false);
   const [exploring, setExploring] = useState(() => route.kind !== 'discover' || readExplore());
-  const [dark, setDark] = useState(() => { try { return localStorage.getItem('quorum.theme') !== 'light'; } catch { return true; } });
+  const [dark, setDark] = useTheme();
   const feedGeneration = useRef(0);
   const feedMoreRead = useRef<AbortController | null>(null);
   const feedCursors = useRef(new Set<string>());
@@ -425,6 +244,11 @@ export default function App() {
   currentRoute.current = route;
   currentBase.current = base;
   const notify = useCallback((text: string) => setToast(text), []);
+  // Every route change, including Back/Forward, closes these route-scoped overlays.
+  // Returning from sign-in may restore the quote, deletion or profile editor it interrupted.
+  const closeRouteOverlays = useCallback((restored?: { quote?: Cast | null; deletion?: Cast | null; editProfile?: boolean }) => {
+    setSharedCast(null); setSharedProfile(null); setImageViewer(null); setCastOptions(null); setCastQuotes(null); setReactionPeople(null); setShortcutHelp(false); setRevealState(current => ({ ...current, hashes: new Set() })); setChannelPeople(null); quoteGeneration.current += 1; setQuotedCast(restored?.quote ?? null); setDeletedCast(restored?.deletion ?? null); setFollowList(null); setEditProfile(restored?.editProfile ?? false);
+  }, []);
   const navigate = useCallback((path: string, replace = false, options?: { pushThread?: boolean }) => {
     const next = parseLocalPath(path);
     const previous = currentRoute.current;
@@ -440,10 +264,10 @@ export default function App() {
       else history.pushState(state, '', path);
     }
     currentRoute.current = next;
-    setRoute(next); setSharedCast(null); setSharedProfile(null); setImageViewer(null); setCastOptions(null); setCastQuotes(null); setReactionPeople(null); setShortcutHelp(false); setRevealState(current => ({ ...current, hashes: new Set() })); setChannelPeople(null); quoteGeneration.current += 1; setQuotedCast(null); setDeletedCast(null); setFollowList(null); setEditProfile(false);
+    setRoute(next); closeRouteOverlays();
     if (isConversationRoute(next)) setBackground(threadBackground);
     else if (next.kind !== 'connect') { setBackground(next); setThread(null); }
-  }, []);
+  }, [closeRouteOverlays]);
   // A link to a separate cast is a new destination, so Back/Close must return
   // to the source conversation rather than replace it as reply navigation does.
   const navigateSocialLink = useCallback((path: string) => navigate(path, false, { pushThread: true }), [navigate]);
@@ -527,7 +351,7 @@ export default function App() {
       await session.follow(target, remove);
       if (stillCurrent()) setFollowingProfile(!remove);
       notify(remove ? 'Unfollow submitted to Hypersnap.' : 'Follow submitted to Hypersnap.');
-    } catch (error) { if (stillCurrent()) { setFollowError(message(error)); setFollowingProfile(null); } else notify(message(error)); }
+    } catch (error) { if (stillCurrent()) { setFollowError(errorMessage(error, UNEXPECTED_ERROR)); setFollowingProfile(null); } else notify(errorMessage(error, UNEXPECTED_ERROR)); }
     finally { setFollowBusy(false); }
   }
   const activeTitle = view === 'feed' ? customFeed?.name || 'Feed' : view === 'feeds' ? 'Feeds' : view === 'profile' ? profile?.display_name || profile?.username || 'Profile' : view === 'channel' ? channelInfo?.name || channel : view === 'following' ? 'Following' : view === 'bookmarks' ? 'Bookmarks' : view === 'not-found' ? 'Page not found' : view === 'notifications' ? 'Notifications' : view === 'search' ? 'Search' : view === 'channels' ? 'Channels' : view === 'devlog' ? 'Dev log' : view === 'settings' ? 'Settings' : view === 'connect' ? 'Connect your identity' : 'Discover';
@@ -563,7 +387,7 @@ export default function App() {
     const controller = new AbortController();
     getFollowStatus(sessionFid, profileFid, controller.signal)
       .then(value => { if (!controller.signal.aborted) setFollowingProfile(value); })
-      .catch(error => { if (!controller.signal.aborted) setFollowError(message(error)); });
+      .catch(error => { if (!controller.signal.aborted) setFollowError(errorMessage(error, UNEXPECTED_ERROR)); });
     return () => controller.abort();
   }, [view, profileFid, sessionFid, followRefresh, refresh]);
   useEffect(() => {
@@ -573,7 +397,7 @@ export default function App() {
       const editAfterReturn = Boolean(restored && afterConnectReturn.current?.action === 'edit' && afterConnectReturn.current.fid === currentSession.current?.fid);
       if (currentRoute.current.kind === 'connect' || next.kind === 'connect') { connectGeneration.current += 1; connectFlow.current = null; afterSocialConnect.current = null; setConnectError(''); }
       connectReturning.current = false; afterConnectReturn.current = null;
-      currentRoute.current = next; setRoute(next); setSharedCast(null); setSharedProfile(null); setImageViewer(null); setCastOptions(null); setCastQuotes(null); setReactionPeople(null); setShortcutHelp(false); setRevealState(current => ({ ...current, hashes: new Set() })); setChannelPeople(null); quoteGeneration.current += 1; setQuotedCast(restored?.quote ?? null); setDeletedCast(restored?.deletion ?? null); setFollowList(null); setEditProfile(editAfterReturn);
+      currentRoute.current = next; setRoute(next); closeRouteOverlays({ quote: restored?.quote, deletion: restored?.deletion, editProfile: editAfterReturn });
       if (isConversationRoute(next)) setBackground(backgroundLocation());
       else if (next.kind !== 'connect') { setBackground(next); setThread(null); }
     };
@@ -595,7 +419,7 @@ export default function App() {
     setProfile(cached); setProfileLoading(!cached);
     getUser(/^\d+$/.test(identifier) ? { fid: Number(identifier) } : { username: identifier }, controller.signal)
       .then(user => { if (controller.signal.aborted) return; profileCache.current.set(String(user.fid), user); if (user.username) profileCache.current.set(user.username, user); setProfile(user); })
-      .catch(error => { if (!controller.signal.aborted) setProfileError(message(error)); })
+      .catch(error => { if (!controller.signal.aborted) setProfileError(errorMessage(error, UNEXPECTED_ERROR)); })
       .finally(() => { if (!controller.signal.aborted) setProfileLoading(false); });
     return () => controller.abort();
     // Updating the session's display fields must not trigger a second profile
@@ -617,11 +441,10 @@ export default function App() {
     const controller = new AbortController(); setChannelInfo(channelCache.current.get(channel) ?? null);
     getChannel(channel, controller.signal).then(data => {
       if (!controller.signal.aborted) { channelCache.current.set(data.id, data); setChannelInfo(data); }
-    }).catch(error => { if (!controller.signal.aborted) { setChannelInfo(null); setChannelError(message(error)); } });
+    }).catch(error => { if (!controller.signal.aborted) { setChannelInfo(null); setChannelError(errorMessage(error, UNEXPECTED_ERROR)); } });
     return () => controller.abort();
   }, [view, channel, refresh]);
   useEffect(() => { document.title = isConversation ? 'Conversation · Opencaster' : `${activeTitle} · Opencaster`; }, [isConversation, activeTitle]);
-  useEffect(() => { document.documentElement.classList.toggle('dark', dark); try { localStorage.setItem('quorum.theme', dark ? 'dark' : 'light'); } catch { /* Theme still works for this tab. */ } }, [dark]);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 6500); return () => clearTimeout(timer); }, [toast]);
   useEffect(() => () => currentSession.current?.dispose(), []);
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [view, channel, profile?.fid, profileTab, feedToken, followingFid]);
@@ -652,7 +475,7 @@ export default function App() {
     const request = customFeed ? import('./lib/customFeedReader').then(({ readCustomFeed }) => readCustomFeed(customFeed, null, controller.signal)) : view === 'profile' && profileFid !== undefined ? getProfileFeed({ fid: profileFid, tab: profileTab, limit: 25, signal: controller.signal }) : getFeed({ kind: view === 'channel' ? 'channel' : view === 'following' ? 'following' : 'trending', fid: view === 'following' ? followingFid : sessionFid, channel, ...(view === 'discover' ? { timeWindow: trendingWindow } : {}), limit: 25, signal: controller.signal });
     request
       .then(data => { if (!controller.signal.aborted) { setCasts(data.casts); setCursor(data.next?.cursor || null); } })
-      .catch(error => { if (!controller.signal.aborted) setError(message(error)); })
+      .catch(error => { if (!controller.signal.aborted) setError(errorMessage(error, UNEXPECTED_ERROR)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { controller.abort(); feedMoreRead.current?.abort(); };
   }, [view, channel, sessionFid, sessionPublicKey, profileFid, profileTab, trendingWindow, refresh, postRefresh, featureView, feedIdentity, followingFid, customFeed]);
@@ -677,30 +500,45 @@ export default function App() {
         history.replaceState(history.state, '', path);
         const next = parseLocalPath(path); currentRoute.current = next; setRoute(next);
       }
-    }).catch(error => { if (!controller.signal.aborted && stillCurrent()) { setThreadErrorKey(key); setThreadError(message(error)); } });
+    }).catch(error => { if (!controller.signal.aborted && stillCurrent()) { setThreadErrorKey(key); setThreadError(errorMessage(error, UNEXPECTED_ERROR)); } });
     return () => controller.abort();
   }, [conversationHash, refresh, postRefresh, castLink]);
 
+  function clearSignedOutAppState(expectedSession: WalletSession) {
+    if (currentSession.current && currentSession.current.publicKey !== expectedSession.publicKey) return false;
+    currentSession.current = null; setPublications(() => []); setDeviceSettings(false);
+    return true;
+  }
   function lockSession(expectedSession = session, revoked = false) {
     if (!expectedSession || currentSession.current?.publicKey !== expectedSession.publicKey) return;
-    expectedSession.dispose(); currentSession.current = null; setSession(null); setPublications(() => []); setDeviceSettings(false);
-    if (!revoked) notify('This tab is locked. Network authorization remains active; unlock a saved vault or approve a new device key to reconnect.');
+    if (revoked) {
+      expectedSession.dispose(); currentSession.current = null; setSession(null); setPublications(() => []); setDeviceSettings(false);
+      return;
+    }
+    const pending = signOut(expectedSession);
+    clearSignedOutAppState(expectedSession);
+    void pending.then(() => {
+      if (!clearSignedOutAppState(expectedSession)) return;
+      notify('Signed out of this browser. The saved key was removed; network authorization remains active until revoked.');
+    }).catch(error => {
+      if (clearSignedOutAppState(expectedSession)) notify(errorMessage(error, UNEXPECTED_ERROR));
+    });
   }
   function save(cast: Cast) {
     try {
       const next = toggleBookmark(bookmarks, cast);
       setBookmarks(next); if (!saveBookmarks(next)) notify('Browser storage is unavailable. Bookmarks will last for this tab.');
-    } catch (cause) { notify(message(cause)); }
+    } catch (cause) { notify(errorMessage(cause, UNEXPECTED_ERROR)); }
   }
   const search = useCallback((query: string) => {
     if (!query.trim()) return;
     try { navigate(searchPath(query.replace(/^@/, ''), query.startsWith('@') ? 'users' : 'casts')); }
-    catch (error) { notify(message(error)); }
+    catch (error) { notify(errorMessage(error, UNEXPECTED_ERROR)); }
   }, [navigate, notify]);
   useEffect(() => { if (searchQuery !== undefined) searchDraft.set(searchQuery); }, [searchDraft, searchQuery]);
   function toggleSavedChannel(item: Channel) {
     let next: Channel[];
-    try { next = toggleChannelPin(savedChannels, item); } catch (error) { notify(message(error)); return; }
+    try { next = toggleChannelPin(savedChannels, item); } catch (error) { notify(errorMessage(error, UNEXPECTED_ERROR)); return; }
     setSavedChannels(next);
     if (!writeChannelPins(next)) notify('Channel shortcuts will last for this tab. Browser storage is unavailable.');
   }
@@ -743,7 +581,7 @@ export default function App() {
           : undefined;
       setCasts(previous => mergeFeedPage(previous, data.casts, compareCasts)); setCursor(repeated ? null : next);
       if (repeated) setPaginationNotice('The node repeated a feed page. Refresh the feed to check for more conversations.');
-    } catch (error) { if (generation === feedGeneration.current && !controller.signal.aborted) setMoreError(message(error)); }
+    } catch (error) { if (generation === feedGeneration.current && !controller.signal.aborted) setMoreError(errorMessage(error, UNEXPECTED_ERROR)); }
     finally { if (feedMoreRead.current === controller) { feedMoreRead.current = null; if (generation === feedGeneration.current) setLoadingMore(false); } }
   }
   function updatePreferences(next: ContentPreferences) {
@@ -763,6 +601,8 @@ export default function App() {
   const filteredCount = feedCandidates.length - visibleCasts.length;
   useNavigationShortcuts({ onSearch() { if (!signIn) { navigate('/search'); setSearchFocus(value => value + 1); } }, onHelp() { if (!signIn) setShortcutHelp(true); } });
   const connectVersion = connectGeneration.current;
+  const restoreNotice = restoreError && <section className="guest-prompt" role="alert"><p>Could not restore your session: {restoreError}</p><Button variant="secondary" onClick={() => void retryRestore()}>Retry sign-in</Button></section>;
+  if (restoring) return <main className="onboarding-loading"><p role="status">Restoring your session…</p><Button variant="ghost" onClick={() => setSession(null)}>Continue browsing</Button></main>;
   if (signIn) return <Suspense fallback={<main className="onboarding-loading"><p role="status">Loading device sign-in…</p><Button variant="ghost" onClick={returnFromConnect}>Cancel</Button></main>}>
     {connectError && <p className="error" role="alert">{connectError}</p>}
     <ConnectAccount key={connectVersion} presentation="page" requestedScopes={connectFlow.current?.scopes} initialFid={connectFlow.current?.initialFid} onClose={returnFromConnect} onConnect={value => {
@@ -785,7 +625,7 @@ export default function App() {
     if (reason) return <div className="filtered-cast" key={cast.hash}><p>Cast filtered: {reason}</p><Button variant="secondary" onClick={() => controls.reveal(cast.hash)}>Show this cast for this view</Button><Button data-analytics="nav-settings" variant="ghost" onClick={() => navigate('/settings')}>Manage content controls</Button></div>;
     return <CastCard key={cast.hash} cast={cast} dark={dark} featured={featured} fullHashLinks={fullHashLinks} replyPreview={!threadOpen} {...context} getCastPath={castLink} reactionActor={view === 'profile' && profile && profile.fid === cast.reaction_context?.fid ? profile : undefined} session={session} onSignIn={cardSignIn} onProfile={openProfile} onNavigate={navigateSocialLink} onThread={openThread} onShare={setSharedCast} onCastHash={cardCastHash} onImages={cardImages} onOptions={setCastOptions} onQuote={cardQuote} onDelete={setDeletedCast} saved={savedHashes.has(bookmarkHash(cast.hash))} onSave={cardSave} notify={notify} />;
   };
-  const composeParentUrl = view === 'channel' && channelInfo && safeUrl(channelInfo.parent_url || channelInfo.url) ? channelInfo.parent_url || channelInfo.url : undefined;
+  const composeParentUrl = view === 'channel' && channelInfo && safeHttpsUrl(channelInfo.parent_url || channelInfo.url) ? channelInfo.parent_url || channelInfo.url : undefined;
   const pending = reconcilePublications(publications, observedCasts).filter(item => item.sessionKey === sessionPublicKey && item.author.fid === sessionFid);
   const pendingFeed = pending.filter(item => {
     if (view === 'profile') return item.author.fid === profileFid && (profileTab === 'casts' ? !item.parent : profileTab === 'replies' ? Boolean(item.parent) : profileTab === 'media' ? item.images.length > 0 : false);
@@ -795,51 +635,29 @@ export default function App() {
   });
   const pendingReplies = pending.filter(item => activeThread && item.parent?.fid === activeThread.author.fid && bookmarkHash(item.parent.hash) === bookmarkHash(activeThread.hash));
   const pendingCard = (publication: CastPublication) => <PendingCastCard key={publication.id} publication={publication} onDismiss={() => setPublications(current => current.filter(item => item.id !== publication.id))} />;
-  if (!session && !exploring && route.kind === 'discover') return <Landing onSignIn={() => requestSignIn()} onExplore={() => { try { localStorage.setItem(exploreKey, '1'); } catch { /* Exploring still works for this tab. */ } setExploring(true); }} onNavigate={path => navigate(path)} />;
+  if (!session && !exploring && route.kind === 'discover') return <>{restoreNotice}<Landing onSignIn={() => requestSignIn()} onExplore={() => { try { localStorage.setItem(EXPLORE_STORAGE_KEY, '1'); } catch { /* Exploring still works for this tab. */ } setExploring(true); }} onNavigate={path => navigate(path)} /></>;
   return <ParentCastRead.Provider value={parentReader.read}><ContentControls.Provider value={controls}><div className={`app ${threadOpen ? 'app--conversation' : ''}`}>
-    <aside className={`sidebar ${pinnedFeeds.length ? 'sidebar--feeds' : ''}`}>
-      <a data-analytics="nav-discover" href="/" onClick={event => localClick(event, () => navigate('/'))} className="wordmark"><img src="/opencaster-symbol.svg" alt="" />Opencaster</a>
-      <p className="brand-credit">Powered by <a href="https://arca.computer" target="_blank" rel="noopener noreferrer">Arca Computer</a></p>
-      <div className="network-label"><span className="status-dot" /> Runs on Hypersnap <span className="beta">BETA</span></div>
-      <nav aria-label="Main navigation">
-        <Button data-analytics="nav-discover" variant="ghost" className={`nav-item ${view === 'discover' ? 'active' : ''}`} onClick={() => navigate('/')}><IconCompass size={21} />Discover <IconSparkles size={15} className="nav-spark" /></Button>
-        <Button data-analytics="nav-following" variant="ghost" className={`nav-item ${view === 'following' ? 'active' : ''}`} onClick={() => navigate('/following')}><IconUsers size={21} />Following</Button>
-        <a data-analytics="nav-feeds" className={`button button--ghost nav-item ${view === 'feeds' || view === 'feed' ? 'active' : ''}`} href="/feeds" aria-current={view === 'feeds' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/feeds'))}><IconLayoutList size={21} />Feeds</a>
-        <Button data-analytics="nav-search" variant="ghost" className={`nav-item ${view === 'search' ? 'active' : ''}`} onClick={() => navigate('/search')}><IconSearch size={21} />Search</Button>
-        <Button data-analytics="nav-notifications" variant="ghost" className={`nav-item ${view === 'notifications' ? 'active' : ''}`} onClick={() => navigate('/notifications')}><IconBell size={21} />Notifications</Button>
-        <Button data-analytics="nav-channels" variant="ghost" className={`nav-item ${view === 'channels' ? 'active' : ''}`} onClick={() => navigate('/channels')}><IconHash size={21} />Channels</Button>
-        <Button data-analytics="nav-bookmarks" variant="ghost" className={`nav-item ${view === 'bookmarks' ? 'active' : ''}`} onClick={() => navigate('/bookmarks')}><IconBookmark size={21} />Bookmarks {bookmarks.length > 0 && <span className="nav-count">{bookmarks.length}</span>}</Button>
-        {session && <Button data-analytics="nav-profile" variant="ghost" className={`nav-item ${view === 'profile' && profile?.fid === session.fid ? 'active' : ''}`} onClick={() => navigate('/profile')}><Avatar user={session.user} />My profile</Button>}
-        <a data-analytics="nav-settings" className={`button button--ghost nav-item ${view === 'settings' ? 'active' : ''}`} href="/settings" aria-current={view === 'settings' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/settings'))}><IconSettings size={21} />Settings</a>
-      </nav>
-      {session && <Button data-analytics="composer-open" className="sidebar-cast" onClick={() => setComposeOpen(true)}><IconPencil size={19} />Cast</Button>}
-      {pinnedFeeds.length > 0 && <><div className="sidebar__section-label">PINNED FEEDS <IconPin size={14} /></div><nav aria-label="Pinned feeds">{pinnedFeeds.map(item => <a key={item.id} className={`button button--ghost channel-nav ${savedFeed?.id === item.id ? 'active' : ''}`} href={feedPath(item.definition)} aria-current={savedFeed?.id === item.id ? 'page' : undefined} onClick={event => localClick(event, () => navigate(feedPath(item.definition)))}><IconLayoutList size={17} /><span>{item.definition.name}</span></a>)}</nav></>}
-      {savedChannels.length > 0 && <><div className="sidebar__section-label">SAVED ON THIS BROWSER <IconBookmark size={14} /></div><nav aria-label="Saved channels">{savedChannels.slice(0, 8).map(item => <Button data-analytics="nav-channel" key={item.id} variant="ghost" className={`channel-nav ${view === 'channel' && channel === item.id ? 'active' : ''}`} onClick={() => openChannel(item)}><span className="channel-mark"><IconHash size={17} /></span>{item.name || item.id}</Button>)}</nav></>}
-      <div className="sidebar-explore">
-      <div className="sidebar__section-label">EXPLORE CHANNELS <IconHash size={14} /></div>
-      <nav aria-label="Channels">{channels.map(item => <Button data-analytics="nav-channel" key={item.id} variant="ghost" className={`channel-nav ${view === 'channel' && channel === item.id ? 'active' : ''}`} onClick={() => openChannel(item)}><span className="channel-mark"><IconHash size={17} /></span>{item.name}</Button>)}</nav>
-      </div>
-      <div className="sidebar__bottom"><div className="sidebar-links"><Button data-analytics="theme-toggle" variant="ghost" aria-label={dark ? 'Use light theme' : 'Use dark theme'} onClick={() => setDark(!dark)}>{dark ? <IconSun size={19} /> : <IconMoon size={19} />}</Button><a data-analytics="nav-devlog" href="/devlog" aria-current={view === 'devlog' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/devlog'))}>Dev log</a><a data-analytics="source-open" href={sourceUrl} target="_blank" rel="noopener noreferrer">Source</a><a data-analytics="hypersnap-open" href="https://hypersnap.org" target="_blank" rel="noopener noreferrer">Hypersnap</a><a data-analytics="node-support-open" href={NODE_SUPPORT_URL} target="_blank" rel="noopener noreferrer" aria-label="Support the node (opens Stripe in a new tab)">Support the node</a></div>{session ? <div className="session-card"><Button data-analytics="nav-profile" variant="ghost" className="session-user" onClick={() => navigate('/profile')}><Avatar user={session.user} /><span><strong>{session.user.display_name || session.user.username}</strong><small>@{session.user.username}</small></span></Button><Button data-analytics="device-access-open" variant="ghost" aria-label="Manage this device’s signing access" onClick={() => setDeviceSettings(true)}><IconShieldLock size={19} /></Button></div> : <Button data-analytics="connect-open" className="full-width sidebar-signin" onClick={() => requestSignIn()}>Sign in</Button>}<p className="sidebar-foot">OPEN PROTOCOL. OPEN POSSIBILITIES.</p></div>
-    </aside>
+    <Sidebar view={view} channel={channel} profile={profile} session={session} bookmarkCount={bookmarks.length} pinnedFeeds={pinnedFeeds} savedFeedId={savedFeed?.id} savedChannels={savedChannels} channels={channels} dark={dark} onToggleTheme={() => setDark(!dark)} onNavigate={navigate} onOpenChannel={openChannel} onCompose={() => setComposeOpen(true)} onDeviceSettings={() => setDeviceSettings(true)} onSignIn={() => requestSignIn()} />
     <main className="main">
+      {restoreNotice}
       <div className="main-base" hidden={threadOpen}>
-      <header className={`page-header ${view === 'feed' ? 'page-header--feed' : ''}`}><a data-analytics="nav-discover" className="page-header__logo" href="/" aria-label="Opencaster home" onClick={event => localClick(event, () => navigate('/'))}><img src="/opencaster-symbol.svg" alt="" /></a>{(view === 'profile' || view === 'channel') && <Button variant="ghost" className="page-header__back" aria-label={view === 'channel' ? 'Back to channels' : 'Back to discover'} onClick={() => navigate(view === 'channel' ? '/channels' : '/')}><IconArrowLeft size={20} /></Button>}<h1>{activeTitle}<span className="title-star">✳</span></h1><div className="header-actions">{networkError && <span className="live-pill"><span className="status-dot status-dot--offline" />Node unavailable</span>}{view !== 'devlog' && view !== 'settings' && <Button data-analytics="feed-refresh" variant="ghost" aria-label="Refresh feed" onClick={refreshPage}><IconRefresh size={19} className={loading ? 'spin' : ''} /></Button>}<a data-analytics="nav-bookmarks" className="button button--ghost header-bookmarks" href="/bookmarks" aria-label="Bookmarks" aria-current={view === 'bookmarks' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/bookmarks'))}><IconBookmark size={19} /></a><Button data-analytics="nav-settings" variant="ghost" className="header-content-settings" aria-label="Settings" onClick={() => navigate('/settings')}><IconSettings size={19} /></Button><Button data-analytics={session ? 'nav-profile' : 'connect-open'} className="mobile-connect" variant="secondary" onClick={() => session ? navigate('/profile') : requestSignIn()}>{session ? 'My profile' : 'Sign in'}</Button></div></header>
+      <PageHeader view={view} title={activeTitle} networkError={networkError} loading={loading} session={session} onNavigate={navigate} onRefresh={refreshPage} onSignIn={() => requestSignIn()} />
       {view !== 'devlog' && view !== 'settings' && view !== 'profile' && <div className="compact-tools"><SearchForm draft={searchDraft} onSearch={search} /><nav className="channel-chips" aria-label="Explore channels">{channels.map(item => <Button data-analytics="nav-channel" key={item.id} variant="ghost" className={view === 'channel' && channel === item.id ? 'active' : ''} onClick={() => navigate(`/channel/${item.id}`)}>/{item.id}</Button>)}<Button data-analytics="nav-channels" variant="ghost" onClick={() => navigate('/channels')}>All channels</Button></nav></div>}
-      {(view === 'discover' || view === 'following' || view === 'feeds' || view === 'feed') && <nav className="feature-tabs home-feed-tabs pinned-feed-tabs" aria-label="Home feeds"><a data-analytics="nav-discover" href="/" aria-current={view === 'discover' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/'))}>Discover</a><a data-analytics="nav-following" href="/following" aria-current={view === 'following' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/following'))}>Following</a>{pinnedFeeds.map(item => <a key={item.id} href={feedPath(item.definition)} aria-current={savedFeed?.id === item.id ? 'page' : undefined} onClick={event => localClick(event, () => navigate(feedPath(item.definition)))}><IconPin size={14} />{item.definition.name}</a>)}<a data-analytics="nav-feeds" href="/feeds" aria-current={view === 'feeds' ? 'page' : undefined} onClick={event => localClick(event, () => navigate('/feeds'))}>Feeds</a></nav>}
+      {(view === 'discover' || view === 'following' || view === 'feeds' || view === 'feed') && <HomeFeedTabs view={view} pinnedFeeds={pinnedFeeds} savedFeedId={savedFeed?.id} onNavigate={navigate} />}
       {view === 'feeds' && <Suspense fallback={<p className="devlog-loading" role="status">Loading feeds…</p>}><FeedsView feeds={savedFeeds} onOpen={definition => navigate(feedPath(definition))} onSave={saveFeed} onTogglePin={toggleFeedPin} onDelete={deleteFeed} sessionFid={session?.fid} /></Suspense>}
       {view === 'feed' && customFeed && <Suspense fallback={<p className="devlog-loading" role="status">Loading feed controls…</p>}><FeedHeader key={feedToken} definition={customFeed} saved={savedFeed} onSave={saveFeed} onTogglePin={toggleFeedPin} onNavigate={navigate} notify={notify} /></Suspense>}
       {view === 'following' && <Suspense fallback={<p className="devlog-loading" role="status">Loading public feed lookup…</p>}><PublicFollowingPicker key={followingFid ?? 'guest'} fid={followingFid} onOpen={fid => navigate(followingPath(fid))} />{followingFid !== undefined && <div className="feed-heading"><Button variant="secondary" onClick={() => navigate(feedPath({ version: 1, name: `Following · FID ${followingFid}`, sources: [{ kind: 'following', fid: followingFid }], order: 'source', filters: { includeWords: [], excludeWords: [], hideReplies: false, imagesOnly: false } }))}>Customize this timeline</Button></div>}</Suspense>}
       <NodeSupportBanner visible={view === 'discover'} />
       {view === 'profile' && profile && <section className="profile">
-        <div className={`profile-cover ${safeUrl(profile.profile?.banner?.url) ? '' : 'profile-cover--empty'}`}>{safeUrl(profile.profile?.banner?.url) && <img className="profile-banner" src={safeUrl(profile.profile.banner?.url)} alt="Profile banner" referrerPolicy="no-referrer" />}</div>
+        <div className={`profile-cover ${safeHttpsUrl(profile.profile?.banner?.url) ? '' : 'profile-cover--empty'}`}>{safeHttpsUrl(profile.profile?.banner?.url) && <img className="profile-banner" src={safeHttpsUrl(profile.profile.banner?.url)} alt="Profile banner" referrerPolicy="no-referrer" />}</div>
         <div className="profile-top"><Avatar user={profile} large /><div className="profile-actions"><Button data-analytics="profile-share-open" variant="secondary" onClick={() => setSharedProfile(profile)}><IconShare size={16} />Share profile</Button>{session?.fid === profile.fid && <Button data-analytics="profile-edit-open" variant="secondary" onClick={() => session.scopes.includes(11) ? setEditProfile(true) : enableSocialFeatures('edit')}>{session.scopes.includes(11) ? 'Edit profile' : 'Enable profile editing'}</Button>}{session?.fid !== profile.fid && <FollowButton following={session ? followingProfile : false} pending={followBusy} onClick={() => void followProfile()} />}</div></div>
         <h2>{profile.display_name || profile.username}</h2><p className="muted profile-handle">@{profile.username} <span>· FID {profile.fid}</span></p>
         <p className="profile__bio"><LinkedText text={profile.profile?.bio?.text || 'A voice on the open social web.'} onNavigate={navigateSocialLink} /></p>
         <ProfileDetails user={profile} />
         <div className="profile__counts"><Button data-analytics="profile-following-open" variant="ghost" onClick={() => setFollowList('following')}><strong>{short(profile.following_count)}</strong> following</Button><Button data-analytics="profile-followers-open" variant="ghost" onClick={() => setFollowList('followers')}><strong>{short(profile.follower_count)}</strong> followers</Button></div>
-        <a href={followingPath(profile.fid)} onClick={event => localClick(event, () => navigate(followingPath(profile.fid)))}>Browse this account’s public Following feed</a>
+        <NavLink href={followingPath(profile.fid)} onNavigate={navigate}>Browse this account’s public Following feed</NavLink>
         {session?.fid !== profile.fid && followError && <div className="profile-follow"><p className="error" role="alert">{followError}</p><Button variant="secondary" onClick={() => setFollowRefresh(value => value + 1)}>Check follow status</Button></div>}
-        {session?.fid === profile.fid && <div className="profile-device-actions"><Button data-analytics="device-access-open" variant="secondary" className="profile-signout" onClick={() => setDeviceSettings(true)}><IconShieldLock size={17} />Device access</Button><Button data-analytics="session-lock" variant="ghost" className="profile-signout" onClick={() => lockSession()}><IconLock size={17} />Lock this tab</Button></div>}
+        {session?.fid === profile.fid && <div className="profile-device-actions"><Button data-analytics="device-access-open" variant="secondary" className="profile-signout" onClick={() => setDeviceSettings(true)}><IconShieldLock size={17} />Device access</Button><Button data-analytics="session-lock" variant="ghost" className="profile-signout" onClick={() => lockSession()}><IconLock size={17} />Sign out</Button></div>}
         {session && ![5, 6, 11].every(scope => session.scopes.includes(scope)) && <p className="profile-upgrade">Follows and profile editing require additional device permissions. Your wallet will show the permissions before you approve a new key.</p>}
         {profileError && <p className="error" role="alert">{profileError}</p>}
       </section>}
@@ -849,7 +667,7 @@ export default function App() {
       {view === 'channel' && channelInfo && session && composeParentUrl && <Suspense fallback={<p className="devlog-loading" role="status">Loading the composer…</p>}><Composer key={`${session?.publicKey ?? 'guest'}:${channel}`} session={session} onPublication={onPublication} onSignIn={() => requestSignIn()} parentUrl={composeParentUrl} notify={notify} /></Suspense>}
       {view === 'search' && base.kind === 'search' && <SearchView key={refresh} query={base.query} kind={base.searchKind} focusRequest={searchFocus} onSearch={(query, kind) => navigate(searchPath(query, kind))} onProfile={openProfile} renderCast={card} />}
       {view === 'notifications' && <NotificationsView key={refresh} isActivityFiltered={item => item.actors.some(actor => preferences.mutedAccounts.some(person => person.fid === actor.fid)) || Boolean(item.cast && getContentFilterReason(item.cast, preferences)) || Boolean(item.targetHash && preferences.hiddenCasts.includes(item.targetHash.replace(/^0x/, '').toLowerCase()))} fid={session?.fid} onConnect={() => requestSignIn()} onProfile={openProfile} onCast={hash => navigate(castPath(hash))} />}
-      {view === 'settings' && <><Suspense fallback={<p className="devlog-loading" role="status">Loading content controls…</p>}><ContentSettings key={preferenceScope} fid={session?.fid} preferences={preferences} onChange={updatePreferences} /></Suspense><Suspense fallback={null}><AnalyticsSettings /></Suspense><section className="settings-shortcuts"><h2>Quick navigation</h2><p><kbd>⌘ / Ctrl</kbd> + <kbd>K</kbd> or <kbd>/</kbd> opens search. Press <kbd>?</kbd> for shortcuts.</p><Button data-analytics="shortcuts-open" variant="secondary" onClick={() => setShortcutHelp(true)}><IconKeyboard size={17} />Keyboard shortcuts</Button></section><section className="settings-shortcuts"><h2>Appearance</h2><p>Theme is saved on this browser.</p><Button data-analytics="theme-toggle" variant="secondary" onClick={() => setDark(!dark)}>{dark ? <IconSun size={17} /> : <IconMoon size={17} />}{dark ? 'Use light theme' : 'Use dark theme'}</Button></section></>}
+      {view === 'settings' && <><Suspense fallback={<p role="status">Loading sign-in settings…</p>}><SessionSettings session={session} /></Suspense>{session && <section className="settings-shortcuts"><Button variant="secondary" onClick={() => lockSession()}>Sign out of this browser</Button></section>}<Suspense fallback={<p className="devlog-loading" role="status">Loading content controls…</p>}><ContentSettings key={preferenceScope} fid={session?.fid} preferences={preferences} onChange={updatePreferences} /></Suspense><Suspense fallback={null}><AnalyticsSettings /></Suspense><section className="settings-shortcuts"><h2>Quick navigation</h2><p><kbd>⌘ / Ctrl</kbd> + <kbd>K</kbd> or <kbd>/</kbd> opens search. Press <kbd>?</kbd> for shortcuts.</p><Button data-analytics="shortcuts-open" variant="secondary" onClick={() => setShortcutHelp(true)}><IconKeyboard size={17} />Keyboard shortcuts</Button></section><section className="settings-shortcuts"><h2>Appearance</h2><p>Theme is saved on this browser.</p><Button data-analytics="theme-toggle" variant="secondary" onClick={() => setDark(!dark)}>{dark ? <IconSun size={17} /> : <IconMoon size={17} />}{dark ? 'Use light theme' : 'Use dark theme'}</Button></section></>}
       {view === 'devlog' && <Suspense fallback={<p className="devlog-loading" role="status">Loading the project story…</p>}><DevLog /></Suspense>}
       {view === 'channels' && <ChannelsView key={refresh} onChannel={openChannel} savedChannels={savedChannels} onToggleSave={toggleSavedChannel} />}
       {!featureView && <>
@@ -872,9 +690,9 @@ export default function App() {
       <SearchForm draft={searchDraft} onSearch={search} />
       {!session && <section className="join-card"><span className="tiny-icon"><IconWorld size={23} /></span><h2>Join the conversation.</h2><p>Sign in with your Farcaster account to cast, reply, like and follow.</p><Button data-analytics="connect-open" className="full-width" onClick={() => requestSignIn()}>Sign in</Button><span className="join-card__note"><IconShieldLock size={13} /> Recovery words stay outside this site.</span></section>}
       {session && view !== 'following' && <SuggestedPeople fid={session.fid} onProfile={openProfile} />}
-      {channels.length > 0 && <section className="rail-channels" aria-labelledby="rail-channels-title"><h2 id="rail-channels-title">Active channels</h2><nav aria-label="Active channels"><ul>{channels.slice(0, 5).map(item => <li key={item.id}><a data-analytics="nav-channel" href={`/channel/${item.id}`} onClick={event => localClick(event, () => openChannel(item))}>{safeUrl(item.image_url) ? <img src={safeUrl(item.image_url)} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="channel-mark"><IconHash size={17} /></span>}<span><strong>{item.name || item.id}</strong><small>/{item.id}{typeof item.member_count === 'number' ? ` · ${short(item.member_count)} participants` : ''}</small></span></a></li>)}</ul></nav><a data-analytics="nav-channels" className="rail-channels__more" href="/channels" onClick={event => localClick(event, () => navigate('/channels'))}>Show all channels</a></section>}
+      {channels.length > 0 && <section className="rail-channels" aria-labelledby="rail-channels-title"><h2 id="rail-channels-title">Active channels</h2><nav aria-label="Active channels"><ul>{channels.slice(0, 5).map(item => <li key={item.id}><a data-analytics="nav-channel" href={`/channel/${item.id}`} onClick={event => localClick(event, () => openChannel(item))}>{safeHttpsUrl(item.image_url) ? <img src={safeHttpsUrl(item.image_url)} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="channel-mark"><IconHash size={17} /></span>}<span><strong>{item.name || item.id}</strong><small>/{item.id}{typeof item.member_count === 'number' ? ` · ${short(item.member_count)} participants` : ''}</small></span></a></li>)}</ul></nav><NavLink data-analytics="nav-channels" className="rail-channels__more" href="/channels" onNavigate={navigate}>Show all channels</NavLink></section>}
       <p className="rail-status" title="haatz.quilibrium.com"><span className={`status-dot ${networkError ? 'status-dot--offline' : ''}`} />{networkError ? 'Hypersnap node unavailable' : info ? 'Connected to Hypersnap' : 'Checking the network…'}<a href="https://hypersnap.org/docs" target="_blank" rel="noopener noreferrer">About the protocol</a></p>
-      <footer><a data-analytics="nav-devlog" href="/devlog" onClick={event => localClick(event, () => navigate('/devlog'))}>Dev log</a><a data-analytics="node-support-open" href={NODE_SUPPORT_URL} target="_blank" rel="noopener noreferrer" aria-label="Support the node (opens Stripe in a new tab)">Support the node</a><a data-analytics="hypersnap-open" href="https://hypersnap.org" target="_blank" rel="noopener noreferrer">Hypersnap</a><a data-analytics="source-open" href={sourceUrl} target="_blank" rel="noopener noreferrer">Source</a><a href="https://www.quorummessenger.com" target="_blank" rel="noopener noreferrer">Quorum upstream</a><a href={`${sourceUrl}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer">AGPL-3.0</a><span>Made for the open internet <span className="footer-star">✳</span></span></footer>
+      <footer><NavLink data-analytics="nav-devlog" href="/devlog" onNavigate={navigate}>Dev log</NavLink><a data-analytics="node-support-open" href={NODE_SUPPORT_URL} target="_blank" rel="noopener noreferrer" aria-label="Support the node (opens Stripe in a new tab)">Support the node</a><a data-analytics="hypersnap-open" href="https://hypersnap.org" target="_blank" rel="noopener noreferrer">Hypersnap</a><a data-analytics="source-open" href={sourceUrl} target="_blank" rel="noopener noreferrer">Source</a><a href="https://www.quorummessenger.com" target="_blank" rel="noopener noreferrer">Quorum upstream</a><a href={`${sourceUrl}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer">AGPL-3.0</a><span>Made for the open internet <span className="footer-star">✳</span></span></footer>
     </aside>
     {session && (view === 'discover' || view === 'following' || (view === 'channel' && composeParentUrl)) && <Button data-analytics="composer-open" className="compose-fab" aria-label="Write a new cast" onClick={() => setComposeOpen(true)}><IconPencil size={23} /></Button>}
     <nav className="mobile-nav" aria-label="Mobile navigation">{([
@@ -909,7 +727,7 @@ export default function App() {
     {imageViewer && <MediaViewer {...imageViewer} onClose={() => setImageViewer(null)} />}
     {shortcutHelp && <Modal title="Keyboard shortcuts" onClose={() => setShortcutHelp(false)}><dl className="shortcut-list"><div><dt>Search</dt><dd><kbd>⌘ / Ctrl</kbd> + <kbd>K</kbd> or <kbd>/</kbd></dd></div><div><dt>This help</dt><dd><kbd>?</kbd></dd></div><div><dt>Publish from the composer</dt><dd><kbd>⌘ / Ctrl</kbd> + <kbd>Enter</kbd></dd></div><div><dt>Close a dialog</dt><dd><kbd>Esc</kbd></dd></div></dl><p className="muted">Navigation shortcuts pause while you type or a dialog is open.</p></Modal>}
     {reactionPeople && <Suspense fallback={<Modal title="Cast reactions" onClose={() => setReactionPeople(null)}><p role="status">Loading reactions…</p></Modal>}><CastReactionPeople cast={reactionPeople} onClose={() => setReactionPeople(null)} onProfile={openProfile} /></Suspense>}
-    {castOptions && <CastOptions cast={castOptions} onReactionPeople={() => { setReactionPeople(castOptions); setCastOptions(null); }} onHide={() => { try { const saved = updatePreferences(hideCast(preferences, castOptions.hash)); setCastOptions(null); notify(saved ? 'Cast hidden on this browser. Restore it in Settings.' : 'Cast hidden for this tab. Browser storage is unavailable.'); } catch (cause) { notify(message(cause)); } }} onMute={() => { try { const saved = updatePreferences(muteAccount(preferences, castOptions.author)); setCastOptions(null); notify(saved ? 'Account muted on this browser. Manage it in Settings.' : 'Account muted for this tab. Browser storage is unavailable.'); } catch (cause) { notify(message(cause)); } }} onClose={() => setCastOptions(null)} onQuotes={() => { setCastQuotes(castOptions); setCastOptions(null); }} onShare={() => { setSharedCast(castOptions); setCastOptions(null); }} onQuote={() => { quoteGeneration.current += 1; setQuotedCast(castOptions); setCastOptions(null); }} />}
+    {castOptions && <CastOptions cast={castOptions} onReactionPeople={() => { setReactionPeople(castOptions); setCastOptions(null); }} onHide={() => { try { const saved = updatePreferences(hideCast(preferences, castOptions.hash)); setCastOptions(null); notify(saved ? 'Cast hidden on this browser. Restore it in Settings.' : 'Cast hidden for this tab. Browser storage is unavailable.'); } catch (cause) { notify(errorMessage(cause, UNEXPECTED_ERROR)); } }} onMute={() => { try { const saved = updatePreferences(muteAccount(preferences, castOptions.author)); setCastOptions(null); notify(saved ? 'Account muted on this browser. Manage it in Settings.' : 'Account muted for this tab. Browser storage is unavailable.'); } catch (cause) { notify(errorMessage(cause, UNEXPECTED_ERROR)); } }} onClose={() => setCastOptions(null)} onQuotes={() => { setCastQuotes(castOptions); setCastOptions(null); }} onShare={() => { setSharedCast(castOptions); setCastOptions(null); }} onQuote={() => { quoteGeneration.current += 1; setQuotedCast(castOptions); setCastOptions(null); }} />}
     {composeOpen && session && !signIn && <Modal title="New cast" onClose={() => setComposeOpen(false)} wide><Suspense fallback={<p className="devlog-loading" role="status">Loading the composer…</p>}><Composer key={`${session.publicKey}:compose:${composeParentUrl ?? ''}`} session={session} onPublication={onPublication} onSignIn={() => requestSignIn()} parentUrl={composeParentUrl} onPosted={() => setComposeOpen(false)} notify={notify} /></Suspense></Modal>}
     {sharedCast && <ShareCastDialog cast={sharedCast} path={castLink(sharedCast)} onClose={() => setSharedCast(null)} notify={notify} />}
   </div></ContentControls.Provider></ParentCastRead.Provider>;

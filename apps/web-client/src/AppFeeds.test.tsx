@@ -7,6 +7,7 @@ import { getCast, getChannels, getFeed, getInfo, getUser, type Cast, type User }
 import { contentPreferencesKey, emptyContentPreferences } from './lib/contentPreferences';
 import { readSavedFeeds, SAVED_FEED_STORAGE_KEY, writeSavedFeeds, type FeedDefinition } from '@opencaster/client-core/customFeeds';
 import { feedPath } from '@opencaster/client-core/navigation';
+import { EXPLORE_STORAGE_KEY } from './lib/storageKeys';
 
 const wallet = vi.hoisted(() => ({ render: vi.fn() }));
 vi.mock('./components/ConnectAccount', () => ({
@@ -25,7 +26,7 @@ let observers: { callback: IntersectionObserverCallback; observer: IntersectionO
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.clearAllMocks();
-  localStorage.clear(); sessionStorage.clear(); localStorage.setItem('opencaster.explore', '1'); history.replaceState(null, '', '/');
+  localStorage.clear(); sessionStorage.clear(); localStorage.setItem(EXPLORE_STORAGE_KEY, '1'); history.replaceState(null, '', '/');
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Integration tests must not contact the network.')));
   observers = [];
   vi.stubGlobal('IntersectionObserver', class {
@@ -83,7 +84,7 @@ function noWallet() { expect(wallet.render).not.toHaveBeenCalled(); expect(conta
 
 describe('guest public following timelines', () => {
   it('loads and paginates a public FID directly without a wallet or remembered exploration', async () => {
-    localStorage.removeItem('opencaster.explore');
+    localStorage.removeItem(EXPLORE_STORAGE_KEY);
     const first = cast('a', 20, 'Public first page'); const second = cast('b', 30, 'Public second page');
     vi.mocked(getFeed).mockImplementation(async options => ({ casts: [options.cursor ? second : first], next: options.cursor ? {} : { cursor: 'public-next' } }));
     await start('/following?fid=42');

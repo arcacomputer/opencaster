@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IDBFactory, IDBObjectStore as FakeIDBObjectStore } from 'fake-indexeddb';
 import { ed25519 } from '@noble/curves/ed25519.js';
-import { compareAndSwapSavedVault, decryptSignerVault, decryptSignerVaultWithPasskey, deleteSavedVault, encryptSignerVault, encryptSignerVaultWithPasskey, passkeyVault, readSavedVault, savedVaultMethod, validateSignerVault, writeSavedVault, VAULT_ITERATIONS, type VaultMetadata, type SignerVault } from './vault';
+import { compareAndSwapSavedVault, decryptSignerVault, decryptSignerVaultForBrowser, decryptSignerVaultWithPasskey, deleteSavedVault, encryptSignerVault, encryptSignerVaultForBrowser, encryptSignerVaultWithPasskey, passkeyVault, readSavedVault, savedVaultMethod, validateSignerVault, writeSavedVault, VAULT_ITERATIONS, type VaultMetadata, type SignerVault } from './vault';
 import { bytesToHex } from '@opencaster/protocol/signedKeyRequest';
 import { FULL_CLIENT_SCOPES, FULL_SOCIAL_SCOPES } from '@opencaster/client-core/pairing';
 import type { PasskeyDescriptor } from './passkey';
@@ -166,6 +166,64 @@ describe('PRF-wrapped device vault v2', () => {
   });
 });
 
+describe('remembered browser device vault v3', () => {
+  it('authenticates metadata and cipher parameters, binds the origin, and rejects damaged keys', async () => {
+    const vault = await encryptSignerVaultForBrowser(key, metadata);
+    const otherWrapper = await encryptSignerVaultForBrowser(key, metadata);
+    expect(otherWrapper.wrapperId).not.toBe(vault.wrapperId);
+    expect(vault.version).toBe(3);
+    expect(vault.key.type).toBe('secret');
+    expect(vault.key.extractable).toBe(false);
+    expect(vault.key.algorithm).toMatchObject({ name: 'AES-GCM', length: 256 });
+    expect(vault.key.usages).toEqual(expect.arrayContaining(['encrypt', 'decrypt']));
+    expect(vault.key.usages).toHaveLength(2);
+    expect(vault.ciphertext).toHaveLength(96);
+    expect(savedVaultMethod(vault)).toBe('browser');
+    expect(JSON.stringify(vault)).not.toContain(bytesToHex(key));
+    await expect(decryptSignerVaultForBrowser(vault, 'https://other.example')).rejects.toThrow('different website');
+    await expect(decryptSignerVaultForBrowser({ ...vault, metadata: { ...metadata, custodyAddress: `0x${'cd'.repeat(20)}` } }, ORIGIN)).rejects.toThrow('Could not restore');
+    await expect(decryptSignerVaultForBrowser({ ...vault, wrapperId: 'ff'.repeat(32) }, ORIGIN)).rejects.toThrow('Could not restore');
+    await expect(decryptSignerVaultForBrowser({ ...vault, cipher: { ...vault.cipher, iv: '00'.repeat(12) } }, ORIGIN)).rejects.toThrow('Could not restore');
+    await expect(decryptSignerVaultForBrowser({ ...vault, ciphertext: `${vault.ciphertext[0] === '0' ? '1' : '0'}${vault.ciphertext.slice(1)}` }, ORIGIN)).rejects.toThrow('Could not restore');
+    await expect(decryptSignerVaultForBrowser({ ...vault, key: {} }, ORIGIN)).rejects.toThrow('invalid encryption key');
+    const weakKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+    await expect(decryptSignerVaultForBrowser({ ...vault, key: weakKey }, ORIGIN)).rejects.toThrow('invalid encryption key');
+    await expect(decryptSignerVault(vault, PASSWORD, ORIGIN)).rejects.toThrow('browser-profile protection');
+    expect(() => passkeyVault(vault, ORIGIN, ORIGIN)).toThrow('browser-profile protection');
+    const recovered = await decryptSignerVaultForBrowser(vault, ORIGIN);
+    expect(recovered.privateKey).toEqual(key);
+    recovered.privateKey.fill(0);
+  });
+});
+
+describe('shared vault cipher and signer checks', () => {
+  it('applies the same AES-GCM cipher rules and signer binding to every vault version with its own message', async () => {
+    const generic = 'The saved device vault is invalid. You can forget it and authorize a new device.';
+    const browser = 'The saved browser device vault is invalid. You can forget it and authorize a new device.';
+    const vaults: [unknown, string][] = [
+      [await encryptSignerVault(key, metadata, PASSWORD), generic],
+      [await encryptSignerVaultWithPasskey(key, metadata, descriptor(), secret), generic],
+      [await encryptSignerVaultForBrowser(key, metadata), browser],
+    ];
+    for (const [vault, message] of vaults) {
+      const { cipher, ciphertext } = vault as SignerVault;
+      expect(cipher).toEqual({ name: 'AES-GCM', length: 256, iv: expect.stringMatching(/^[0-9a-f]{24}$/), tagLength: 128 });
+      expect(ciphertext).toMatch(/^[0-9a-f]{96}$/);
+      expect(validateSignerVault(vault)).toEqual(vault);
+      for (const altered of [
+        { cipher: { ...cipher, name: 'AES-CBC' } }, { cipher: { ...cipher, length: 128 } }, { cipher: { ...cipher, tagLength: 96 } },
+        { cipher: { ...cipher, iv: '00'.repeat(16) } }, { cipher: { ...cipher, iv: 'ZZ'.repeat(12) } }, { cipher: { ...cipher, extra: 1 } },
+        { cipher: [] }, { ciphertext: `${ciphertext}00` }, { ciphertext: ciphertext.toUpperCase() },
+      ]) expect(() => validateSignerVault({ ...(vault as object), ...altered })).toThrow(message);
+    }
+    const otherKey = new Uint8Array(32).fill(20);
+    for (const encrypt of [
+      () => encryptSignerVault(otherKey, metadata, PASSWORD), () => encryptSignerVault(new Uint8Array(31), metadata, PASSWORD),
+      () => encryptSignerVaultWithPasskey(otherKey, metadata, descriptor(), secret), () => encryptSignerVaultForBrowser(otherKey, metadata),
+    ]) await expect(encrypt()).rejects.toThrow('The device signer does not match its public key.');
+  });
+});
+
 function awaitablePasswordFixture(): SignerVault {
   return { kind: 'arca.hypersnap.device-vault', version: 1, metadata, kdf: { name: 'PBKDF2', hash: 'SHA-256', iterations: VAULT_ITERATIONS, salt: '00'.repeat(16) }, cipher: { name: 'AES-GCM', length: 256, iv: '00'.repeat(12), tagLength: 128 }, ciphertext: '00'.repeat(48) };
 }
@@ -253,6 +311,20 @@ describe('atomic device vault storage', () => {
     expect(await readSavedVault()).toEqual(winner);
     expect(await compareAndSwapSavedVault(old, storageFixture('ff'.repeat(32)))).toBe(false);
     expect(await readSavedVault()).toEqual(winner);
+  });
+
+  it('round-trips a non-exportable browser key through IndexedDB structured cloning', async () => {
+    const vault = await encryptSignerVaultForBrowser(key, metadata);
+    await writeSavedVault(vault);
+    const stored = await readSavedVault();
+    expect(stored).toMatchObject({ version: 3, wrapperId: vault.wrapperId });
+    expect((stored as { key: CryptoKey }).key).not.toBe(vault.key);
+    expect((stored as { key: CryptoKey }).key.extractable).toBe(false);
+    const cloned = structuredClone(stored);
+    const recovered = await decryptSignerVaultForBrowser(cloned, ORIGIN);
+    expect(recovered.metadata).toEqual(metadata);
+    expect(recovered.privateKey).toEqual(key);
+    recovered.privateKey.fill(0);
   });
 
   it('aborts a pending replacement without deleting the legacy vault, and only rolls back its exact committed wrapper', async () => {

@@ -27,7 +27,7 @@
 .onboarding__card .source-note { margin-top: 1.5rem; font-size: .75rem; line-height: 1.7; }
 .onboarding-domain-notice { margin: 0 0 1.3rem; padding: .85rem 1rem; border: .0625rem solid var(--border); border-radius: .65rem; color: var(--color-text-subtle); background: var(--surface-1); font-size: .8rem; line-height: 1.8; overflow-wrap: anywhere; }
 .onboarding-domain-notice strong { color: var(--color-text-strong); }
-.onboarding-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; margin: 0 0 1.8rem; padding: 1rem 0; list-style: none; border-block: .0625rem solid var(--border); }
+.onboarding-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; margin: 0 0 1.8rem; padding: 1rem 0; list-style: none; border-block: .0625rem solid var(--border); }
 .onboarding-steps > li { display: flex; gap: .4rem; align-items: flex-start; min-width: 0; font-size: .72rem; line-height: 1.5; color: var(--color-text-muted); }
 .onboarding-steps > li > span { display: grid; place-items: center; flex-shrink: 0; width: 1.5rem; height: 1.5rem; border: .0625rem solid var(--surface-4); border-radius: 50%; font-size: .66rem; }
 .onboarding-steps > li small { display: block; font-size: .6rem; color: var(--color-text-muted); }

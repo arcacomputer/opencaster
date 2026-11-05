@@ -5,9 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { getCast, getChannels, getConversation, getFeed, getInfo, getProfileFeed, getUser, type Cast, type ConversationNode, type User } from '@opencaster/client-core/api';
 import { contentPreferencesKey, emptyContentPreferences, hideCast } from './lib/contentPreferences';
+import { EXPLORE_STORAGE_KEY } from './lib/storageKeys';
 
 // Exercise the production conversation, cards, mention rendering and quotes.
 // All public responses are isolated fixtures; no account is connected.
+vi.mock('./lib/auth', () => ({
+  restoreRememberedSession: vi.fn().mockResolvedValue(null),
+}));
 vi.mock('@opencaster/client-core/api', async original => ({
   ...await original<typeof import('@opencaster/client-core/api')>(),
   getCast: vi.fn(), getChannels: vi.fn(), getConversation: vi.fn(), getFeed: vi.fn(), getInfo: vi.fn(), getProfileFeed: vi.fn(), getUser: vi.fn(),
@@ -26,7 +30,7 @@ let root: Root;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.clearAllMocks(); localStorage.clear(); sessionStorage.clear();
-  localStorage.setItem('opencaster.explore', '1');
+  localStorage.setItem(EXPLORE_STORAGE_KEY, '1');
   history.replaceState(null, '', '/');
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function (this: HTMLDialogElement) { this.open = true; });
