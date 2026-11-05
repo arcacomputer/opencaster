@@ -332,4 +332,25 @@ describe('uncached generic image fallback', () => {
     expect(assets.mock.calls.map(([asset]) => asset.url)).toEqual([FONT_URL, FALLBACK_URL, FONT_URL]);
     expect(renderSharePng).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('bypasses PNG cache reads and writes and uses no-store whenever a policy binding is present', async () => {
+    const { env, ctx } = fixture();
+    const cache = { match: vi.fn().mockResolvedValue(imageResponse()), put: vi.fn() };
+    vi.stubGlobal('caches', { default: cache });
+    const response = await handleShareImage(request(), { ...env, OPENCASTER_MODERATION: '{"version":1,"blockedFids":[],"blockedCasts":[],"blockedMedia":[]}' }, ctx);
+    expect(response.headers.get('X-Opencaster-Preview')).toBe('profile');
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(cache.match).not.toHaveBeenCalled(); expect(cache.put).not.toHaveBeenCalled();
+  });
+
+  it('does not serve a warm custom PNG when the configured policy is invalid', async () => {
+    const { env } = fixture();
+    const cache = { match: vi.fn().mockResolvedValue(imageResponse()), put: vi.fn() };
+    vi.stubGlobal('caches', { default: cache });
+    vi.mocked(loadShareData).mockResolvedValueOnce(undefined);
+    const response = await handleShareImage(request(), { ...env, OPENCASTER_MODERATION: '' });
+    expect(response.headers.get('X-Opencaster-Preview')).toBe('fallback');
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(cache.match).not.toHaveBeenCalled(); expect(cache.put).not.toHaveBeenCalled();
+  });
 });

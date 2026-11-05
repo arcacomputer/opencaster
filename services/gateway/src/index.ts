@@ -10,6 +10,7 @@ import { handleAnalyticsEvents, recordRequestMetric, type AnalyticsEnv } from '.
 import { fetchUpstream, InvalidUpstreamResponseError, parseUpstreamObject, resolveReadFallback, resolveUpstream, validTimelineCursor, type UpstreamConfig } from './upstream';
 import { withShareUrl } from './sharing';
 import { handleShareImage } from './shareImages';
+import { blocksCast, blocksFid, filterModeratedContent, ModerationFilterError, normalizeFid, resolveModeration, type ModerationPolicy } from './moderation';
 export { MediaUploadQuota } from './media';
 export interface Env extends MediaEnv, AnalyticsEnv {
   ASSETS: { fetch(request: Request): Promise<Response> };
@@ -140,6 +141,42 @@ function validQuery(params: URLSearchParams, endpoint: Endpoint): boolean {
     seen.add(name);
   }
   return (endpoint.required ?? []).every(name => seen.has(name)) && (!endpoint.validate || endpoint.validate(params));
+}
+
+const MODERATION_EXEMPT_PATHS = new Set([
+  '/v1/info', '/v1/signersByFid', '/v1/onChainIdRegistryEventByAddress', '/v1/fidByName',
+]);
+const SINGLE_USER_PATHS = new Set(['/v2/farcaster/user', '/v2/farcaster/user/by-username', '/v2/farcaster/user/custody-address']);
+const contentUnavailable = () => failure(403, 'content_unavailable', 'This content is unavailable on Opencaster.');
+
+function queryBlocked(path: string, params: URLSearchParams, policy: ModerationPolicy): boolean {
+  if (MODERATION_EXEMPT_PATHS.has(path) || SINGLE_USER_PATHS.has(path)) return false;
+  return ['fid', 'target_fid'].some(key => params.has(key) && blocksFid(policy, params.get(key)))
+    || ['identifier', 'target_hash'].some(key => params.has(key) && blocksCast(policy, params.get(key)));
+}
+
+function moderatedRead(bytes: Uint8Array<ArrayBuffer>, value: Record<string, unknown>, path: string, policy: ModerationPolicy): Response {
+  if (MODERATION_EXEMPT_PATHS.has(path)) return validatedJson(bytes);
+  if (SINGLE_USER_PATHS.has(path) && value.user && typeof value.user === 'object' && !Array.isArray(value.user)) {
+    const user = value.user as Record<string, unknown>;
+    if (blocksFid(policy, user.fid)) {
+      const fid = normalizeFid(user.fid);
+      const custody = typeof user.custody_address === 'string' && /^0x[a-f0-9]{40}$/i.test(user.custody_address) ? user.custody_address : undefined;
+      if (!fid || !custody) return contentUnavailable();
+      return json({ user: {
+        fid, custody_address: custody, username: '', display_name: 'Unavailable on Opencaster',
+        profile: { bio: { text: '' } }, follower_count: 0, following_count: 0,
+      } });
+    }
+  }
+  let filtered: ReturnType<typeof filterModeratedContent>;
+  try { filtered = filterModeratedContent(value, policy); }
+  catch (error) {
+    if (error instanceof ModerationFilterError) throw new InvalidUpstreamResponseError();
+    throw error;
+  }
+  if (filtered.rootRemoved || (path === '/v1/castsByFid' && filtered.removedNativeMessages > 0)) return contentUnavailable();
+  return json(filtered.value);
 }
 
 class RetryableReadError extends Error {}
@@ -315,6 +352,16 @@ async function proxy(request: Request, url: URL, env: Env, ctx?: WorkerExecution
   if ((origin && origin !== url.origin) || request.headers.get('Sec-Fetch-Site') === 'cross-site') return failure(403, 'origin_denied', 'Cross-site API requests are unavailable.');
   if (isWrite ? url.search !== '' : !validQuery(url.searchParams, endpoint)) return failure(400, 'invalid_query', 'Invalid API query.');
 
+  let moderation: ModerationPolicy | undefined;
+  if (!isWrite) {
+    const configured = resolveModeration(env);
+    if (configured.status === 'invalid' && !MODERATION_EXEMPT_PATHS.has(path)) return failure(503, 'moderation_unavailable', 'The gateway is temporarily unavailable.');
+    if (configured.status === 'enabled') {
+      moderation = configured.policy;
+      if (queryBlocked(path, url.searchParams, moderation)) return contentUnavailable();
+    }
+  }
+
   let config: UpstreamConfig;
   try { config = resolveUpstream(env); }
   catch { return failure(503, 'upstream_configuration_unavailable', 'The Hypersnap gateway is temporarily unavailable.'); }
@@ -349,7 +396,10 @@ async function proxy(request: Request, url: URL, env: Env, ctx?: WorkerExecution
       // Check the primary namespace first. The backup namespace is reached only
       // after a real primary failure, never as a substitute for a healthy node.
       const bytes = await bounded(controller.signal, () => cachedAggregate(aggregate, path, config, controller.signal));
-      if (bytes) return validatedJson(bytes);
+      if (bytes) {
+        if (!moderation) return validatedJson(bytes);
+        return moderatedRead(bytes, parseUpstreamObject(bytes, config), path, moderation);
+      }
     }
     const attemptController = new AbortController();
     const abort = () => attemptController.abort();
@@ -410,7 +460,7 @@ async function proxy(request: Request, url: URL, env: Env, ctx?: WorkerExecution
         }
         const bytes = await readResponse(MAX_RESPONSE_BYTES);
         const value = parseUpstreamObject(bytes, config);
-        const response = validatedJson(bytes);
+        const response = moderation ? moderatedRead(bytes, value, path, moderation) : validatedJson(bytes);
         // Only the authenticated gate can attest that its no-store header guards
         // transport authentication, not personalized data. Browser hints never count.
         const trustedAggregate = !!target.token && env.HYPERSNAP_AGGREGATE_CACHE === 'trusted-origin-v1'

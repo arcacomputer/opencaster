@@ -5,7 +5,9 @@ import type { Cast } from '@opencaster/client-core/api';
 import { castHistoryCursorKey, castHistoryHash, castHistoryMessageKey, validCastHistoryMessage } from '@opencaster/client-core/castHistory';
 import { renderMentionSegments } from '@opencaster/client-core/content';
 import { decodeFeed, type FeedDefinition } from '@opencaster/client-core/customFeeds';
+import { APP_ORIGIN, LEGACY_APP_ORIGIN } from '@opencaster/client-core/appOrigins';
 import { fetchUpstream, parseUpstreamObject, resolveReadFallback, resolveUpstream, type UpstreamConfig, type UpstreamEnv } from './upstream';
+import { blocksCast, blocksFid, blocksMedia, containsModeratedReference, resolveModeration, type ModerationPolicy } from './moderation';
 
 /** Only public display fields may cross the sharing boundary. */
 export interface ShareProfile {
@@ -192,6 +194,23 @@ function loadFeed(token: string): ShareFeed | undefined {
   return { name: text(definition.name, 64) || 'Custom feed', sources, rules, sourceCount: sources.length, definition };
 }
 
+function hasBlockedMedia(urlValue: string | undefined, policy: ModerationPolicy): boolean {
+  if (!urlValue) return false;
+  try {
+    const url = new URL(urlValue);
+    const match = [APP_ORIGIN, LEGACY_APP_ORIGIN].includes(url.origin) && /^\/media\/([a-f0-9]{64})$/.exec(url.pathname);
+    return !!match && blocksMedia(policy, match[1]);
+  } catch { return false; }
+}
+
+function blockedShareData(data: ShareData, policy: ModerationPolicy): boolean {
+  if (data.kind === 'profile') return blocksFid(policy, data.profile.fid) || hasBlockedMedia(data.profile.avatarUrl, policy);
+  if (data.kind === 'cast') return blocksFid(policy, data.profile.fid) || blocksCast(policy, data.hash)
+    || hasBlockedMedia(data.profile.avatarUrl, policy) || data.imageUrls?.some(url => hasBlockedMedia(url, policy)) === true;
+  if (data.kind === 'channel') return hasBlockedMedia(data.channel.imageUrl, policy);
+  return data.feed.definition.sources.some(source => (source.kind === 'user' || source.kind === 'following') && blocksFid(policy, source.fid));
+}
+
 async function loadCast(hash: string, read: PublicRead, expectedAuthor?: ShareProfile | number): Promise<ShareData | undefined> {
   const exactHash = hashValue(hash);
   if (!exactHash) return;
@@ -263,11 +282,15 @@ async function loadAlias(authorIdentifier: string, prefix: string, read: PublicR
 export async function loadShareData(route: AppRoute, env: UpstreamEnv, signal?: AbortSignal): Promise<ShareData | undefined> {
   if (route.kind !== 'profile' && route.kind !== 'cast' && route.kind !== 'cast-alias' && route.kind !== 'channel' && route.kind !== 'feed') return;
   if (signal?.aborted) return;
+  const moderation = resolveModeration(env);
+  if (moderation.status === 'invalid') return;
+  const policy = moderation.status === 'enabled' ? moderation.policy : undefined;
+  const finish = (data: ShareData | undefined) => data && (!policy || !blockedShareData(data, policy)) ? data : undefined;
   // Feed URLs contain their complete validated public definition; they work
   // even when the origin is unavailable or its private configuration is absent.
   if (route.kind === 'feed') {
     const feed = loadFeed(route.token);
-    return feed ? { kind: 'feed', feed } : undefined;
+    return finish(feed ? { kind: 'feed', feed } : undefined);
   }
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
@@ -275,7 +298,11 @@ export async function loadShareData(route: AppRoute, env: UpstreamEnv, signal?: 
   const timeout = setTimeout(() => controller.abort(new DOMException('Sharing lookup timed out', 'TimeoutError')), LOOKUP_TIMEOUT_MS);
   try {
     const primary = resolveUpstream(env);
-    const read = publicReader(primary, resolveReadFallback(env, primary), controller.signal);
+    const originalRead = publicReader(primary, resolveReadFallback(env, primary), controller.signal);
+    const read: PublicRead = async (path, params) => {
+      const response = await originalRead(path, params);
+      return policy && response && containsModeratedReference(response, policy) ? undefined : response;
+    };
     let result: ShareData | undefined;
     if (route.kind === 'profile' && route.identifier) {
       const profile = await loadProfile(route.identifier, read);
@@ -287,7 +314,7 @@ export async function loadShareData(route: AppRoute, env: UpstreamEnv, signal?: 
       if (channel) result = { kind: 'channel', channel };
     }
     controller.signal.throwIfAborted();
-    return result;
+    return finish(result);
   } catch { return; }
   finally {
     clearTimeout(timeout);

@@ -136,7 +136,8 @@ export function checkDevLog({ base, head, mergeBase = false, cwd = repoRoot }) {
       const commitTimestamp = git('show', '-s', '--format=%aI', sha);
       const commitDate = commitTimestamp.slice(0, 10);
       if (commitDate !== entry.date) throw new Error(`Use its recorded date ${commitDate}.`);
-      if (commitTimestamp !== entry.timestamp) throw new Error(`Use its recorded timestamp ${commitTimestamp}.`);
+      const normalizeUtcTimestamp = timestamp => typeof timestamp === 'string' ? timestamp.replace(/\+00:00$/, 'Z') : timestamp;
+      if (normalizeUtcTimestamp(commitTimestamp) !== normalizeUtcTimestamp(entry.timestamp)) throw new Error(`Use its recorded timestamp ${commitTimestamp}.`);
     } catch (error) {
       throw new Error(`Milestone ${entry.id}: source must be an existing implementation commit in this history, dated as recorded by Git. ${error.message}`);
     }

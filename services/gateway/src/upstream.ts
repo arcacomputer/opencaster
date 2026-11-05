@@ -1,5 +1,7 @@
+import type { ModerationEnv } from './moderation';
+
 /** Server-only node configuration. Never import this module into browser code. */
-export interface UpstreamEnv {
+export interface UpstreamEnv extends ModerationEnv {
   HYPERSNAP_ORIGIN?: string;
   HYPERSNAP_ORIGIN_TOKEN?: string;
   HYPERSNAP_READ_FALLBACK?: string;
