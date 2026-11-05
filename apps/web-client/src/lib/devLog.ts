@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'android-native-screens-listener-race-backport',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T00:47:59+00:00',
+    title: 'Harden Android screen-removal listener lifetime',
+    summary: 'Android now backports upstream synchronization and lifetime protections for the screen-removal listener in the pinned react-native-screens 4.23.0 dependency. The preserved crash signature strongly matches this known race, but one tombstone does not prove it caused the incident; runtime validation remains separate.',
+    changes: [
+      'Backport upstream commit 584fc86 across four native files and guard installation against missing or mismatched patches.',
+      'Compile the Android debug app; no Expo, React Native or iOS behavior changes.',
+      'Treat the crash signature as a strong match, not proof of cause; emulator/device runtime validation remains pending.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/8691756a08432bae72a8a41433fe118f34197b6c',
+    tag: 'Reliability',
+  },
+  {
     id: 'mobile-explicit-stack-back-controls',
     date: '2026-11-04',
     timestamp: '2026-11-04T13:08:15+00:00',
