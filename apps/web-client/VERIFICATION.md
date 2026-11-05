@@ -1,3 +1,90 @@
+# Inline linked posts and media deployed · 2026-11-02
+
+Release source [`8980e502`](https://github.com/arcacomputer/opencaster/commit/8980e502e596e2fdd78413aece6babf712bf04b9)
+was deployed at **2026-11-02 00:23:43 America/Santiago**
+(`2026-11-02T03:23:43.970639Z`) as Worker
+**`b0e657f6-4d9b-464c-814c-511dda7d7853`**, deployment
+`52b8b5ed-4ca9-4af8-b5b0-6e311c81576b`, at **100% traffic**. Source commits are
+published on `codex/inline-link-embeds`; the version tag is
+`inline-links-20261102-8980e502`.
+
+Authenticated metadata established the pre-release active Worker as
+`f1ce26f3-e3b1-4414-8680-9ec6740ebecd`, with the operational timeline-cursor fix
+already active. Its recorded source base was `a48ca29b8`, with code equivalent
+to the cursor implementation in `4c478e56f70948d1be5487975db2dfb7306ffad6`.
+The current upstream source and its milestone were merged before this release.
+A byte comparison of the active Worker module and the dry-run candidate found
+only the new, fixed provider frame origins in CSP; the timeline fix, origin
+validation, authentication, read backup and signed-write behavior are preserved.
+The active version was checked again immediately before upload.
+
+Root `yarn check:devlog` passed against both the recorded source base and the
+code-equivalent cursor commit. Root `yarn verify` passed **1,993 tests across
+78 files**, all workspace typechecks, the production browser build and offline
+signer build in **57.31 seconds**. The separate production browser build used
+Node **22.22.3**, Yarn **1.22.21** and the existing public WalletConnect build
+identifier, checked against the previous live bundle without printing it.
+
+The fresh external asset directory was
+`/tmp/arca-release-inline-links-20261102-daevvdjx`. Its **47 regular files**
+contained no symlinks, browser sourcemaps, cloud-sync duplicate names,
+identified debug markers, synthetic fixtures or preview wrappers. Wrangler
+**4.141.0** dry-run passed; that exact directory was deployed. Public reads
+confirmed the live `assets/index-BJeqDWAq.js` entry and matched all **46 non-HTML
+asset hashes**, with inspected local files unchanged. The deployed Worker module
+matches the dry run byte-for-byte. Authenticated before/after settings confirm
+that all existing bindings, compatibility settings, observability and migration
+settings are preserved, including the existing secret binding.
+
+The live reported cast at
+[`/purp/0x47e6a7e6`](https://opencaster.org/purp/0x47e6a7e6) rendered the X
+post's author, text and video preview in its native frame. The live `/devlog`
+showed **71 milestones**, including inline embeds and portable timeline
+continuations with their exact implementation links. The browser document had
+matching client and scroll widths. Public production checks used reads and
+navigation only; no wallet approval, signature, account write or upload was
+performed. The earlier local record covers X playback and narrow-screen layout;
+physical mobile devices and signed-in production flows were not exercised.
+Provider availability and embedding restrictions remain external dependencies.
+The analytics dashboard and signer download were not deployed. This is not an
+independent security audit. This record documents the release above and does
+not deploy a newer build.
+
+# Inline provider embeds · local verification
+
+Casts with supported URL attachments now render X posts and YouTube, Vimeo
+and Spotify players inside sandboxed provider frames. Provider scripts stay
+outside the application page. Other website attachments show their hostname
+and destination path. These are received protocol attachments; this change
+does not add composer link scraping or publish additional embeds automatically.
+
+Root `yarn verify` passed **1,981 tests across 77 files**, all workspace
+checks, the production browser build and offline signer build. The new coverage
+includes 70 provider URL cases and 15 browser-component tests for lazy loading,
+exact frame/origin/post message validation, bounded resizing, lifecycle states,
+timeout/retry, cleanup, media readiness and local-link navigation.
+
+A temporary read-only loopback fixture served production-built assets through
+the actual gateway headers, with synthetic public casts and no wallet. The
+exact X URL attached to the reported cast,
+`https://x.com/atrupar/status/2117076916637213166`, rendered its author, text and
+video inline. User-initiated video playback advanced past five seconds and was
+paused through the player. The documented Interior example also rendered.
+YouTube's developer example, Vimeo's player example and a Spotify track showed
+their native content and controls. Playback was exercised on X; the other
+providers were checked for rendering, not complete playback behavior.
+
+At a 320-pixel browser viewport, a two-attachment cast kept the X frame 279
+pixels wide and the document's client/scroll widths equal. The attachment strip
+retained its own horizontal scrolling. The viewport override was restored.
+A fresh external production build contained no synthetic fixture or preview
+wrapper markers. No production account action, upload, branch push or
+deployment was performed. Signed-in production flows and physical mobile
+browsers were not exercised. Provider availability, deleted/private content,
+embedding restrictions and future provider format changes remain external
+limits; every embed keeps its original link. This is not an independent
+security audit.
+
 # Local dev-log dates and times deployed · 2026-10-30
 
 Release source [`b3c807ce`](https://github.com/arcacomputer/opencaster/commit/b3c807cedcf67596d7de04529476b6df26eaab6a)
