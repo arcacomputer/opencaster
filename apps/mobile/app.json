@@ -14,7 +14,17 @@
       "bundleIdentifier": "org.opencaster.app"
     },
     "android": {
+      "allowBackup": false,
       "package": "org.opencaster.app"
-    }
+    },
+    "plugins": [
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true,
+          "faceIDPermission": false
+        }
+      ]
+    ]
   }
 }
