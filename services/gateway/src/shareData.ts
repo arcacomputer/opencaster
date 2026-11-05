@@ -1,7 +1,7 @@
 import { normalizeHypersnapEnsName } from '@opencaster/client-core/ensName';
 import type { AppRoute } from '@opencaster/client-core/navigation';
 import type { Cast } from '@opencaster/client-core/api';
-import { castHistoryCursorKey, castHistoryMessageKey, validCastHistoryMessage } from '@opencaster/client-core/castHistory';
+import { castHistoryCursorKey, castHistoryHash, castHistoryMessageKey, validCastHistoryMessage } from '@opencaster/client-core/castHistory';
 import { renderMentionSegments } from '@opencaster/client-core/content';
 import { decodeFeed, type FeedDefinition } from '@opencaster/client-core/customFeeds';
 import { fetchUpstream, parseUpstreamObject, resolveReadFallback, resolveUpstream, type UpstreamConfig, type UpstreamEnv } from './upstream';
@@ -255,7 +255,7 @@ async function loadAlias(authorIdentifier: string, prefix: string, read: PublicR
     let previousKey = cursor ? castHistoryCursorKey(cursor, profile.fid) : undefined;
     for (const message of history.messages) {
       if (!validCastHistoryMessage(message, profile.fid)) return;
-      const hash = `0x${hashValue(message.hash)}`;
+      const hash = castHistoryHash(message.hash);
       const key = castHistoryMessageKey(profile.fid, message.data.timestamp, hash);
       if (previousKey !== undefined && key >= previousKey) return;
       previousKey = key;

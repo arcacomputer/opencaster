@@ -4,7 +4,7 @@
  * Side-effect-free so the browser client and gateway apply the same rules.
  */
 const CURSOR = /^[A-Za-z0-9+/]{40}$/;
-const HASH = /^(?:0x)?[a-fA-F0-9]{40}$/;
+const HASH = /^(?:0x)?[a-f0-9]{40}$/i;
 
 export type CastHistoryMessageType = 'MESSAGE_TYPE_CAST_ADD' | 'MESSAGE_TYPE_CAST_REMOVE';
 export interface CastHistoryMessage {
@@ -28,8 +28,13 @@ export function castHistoryCursorKey(value: unknown, fid: number): string | unde
 
 /** Key of a validated history message, comparable with `castHistoryCursorKey`. */
 export function castHistoryMessageKey(fid: number, timestamp: number, hash: string): string {
+  return `03${fid.toString(16).padStart(8, '0')}01${timestamp.toString(16).padStart(8, '0')}${castHistoryHash(hash).slice(2)}`;
+}
+
+/** Lowercase `0x`-prefixed form of a history message hash. */
+export function castHistoryHash(hash: string): string {
   if (!HASH.test(hash)) throw new Error('Invalid cast hash.');
-  return `03${fid.toString(16).padStart(8, '0')}01${timestamp.toString(16).padStart(8, '0')}${hash.replace(/^0x/, '').toLowerCase()}`;
+  return `0x${hash.slice(-40).toLowerCase()}`;
 }
 
 /** A mainnet CastAdd/CastRemove history message authored by `fid`. */

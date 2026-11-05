@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { castHistoryCursorKey, castHistoryMessageKey, validCastHistoryMessage } from './castHistory';
+import { castHistoryCursorKey, castHistoryHash, castHistoryMessageKey, validCastHistoryMessage } from './castHistory';
 
 const HASH = 'ab'.repeat(20);
 const cursorFor = (fid: number, timestamp: number, hash = HASH, prefix = 0x03, type = 0x01) => {
@@ -16,6 +16,12 @@ describe('cast history keys', () => {
     expect(key).toBe(`030000002a01000003e8${HASH}`);
     expect(castHistoryMessageKey(42, 1000, `0x${HASH.toUpperCase()}`)).toBe(key);
     expect(castHistoryMessageKey(42, 1000, HASH)).toBe(key);
+    expect(castHistoryMessageKey(42, 1000, `0X${HASH}`)).toBe(key);
+  });
+
+  it('normalizes message hashes to lowercase 0x form', () => {
+    expect(castHistoryHash(HASH.toUpperCase())).toBe(`0x${HASH}`);
+    expect(castHistoryHash(`0X${HASH.toUpperCase()}`)).toBe(`0x${HASH}`);
   });
 
   it('rejects cursors for another author, prefix, message type or encoding', () => {
@@ -39,6 +45,7 @@ describe('cast history keys', () => {
 describe('validCastHistoryMessage', () => {
   it('accepts mainnet cast adds and removes by the author', () => {
     expect(validCastHistoryMessage(message(), 42)).toBe(true);
+    expect(validCastHistoryMessage(message({}, `0X${HASH.toUpperCase()}`), 42)).toBe(true);
     expect(validCastHistoryMessage(message({ type: 'MESSAGE_TYPE_CAST_REMOVE', castAddBody: undefined, castRemoveBody: {} }, HASH), 42)).toBe(true);
   });
 

@@ -5,7 +5,7 @@
 import { normalizeHypersnapEnsName } from './ensName';
 import { APP_ORIGIN, LEGACY_APP_ORIGIN } from './appOrigins';
 import { FARCASTER_EPOCH_SECONDS } from './farcasterEpoch';
-import { castHistoryCursorKey, castHistoryMessageKey, validCastHistoryMessage } from './castHistory';
+import { castHistoryCursorKey, castHistoryHash, castHistoryMessageKey, validCastHistoryMessage } from './castHistory';
 
 export interface User {
   fid: number;
@@ -1235,7 +1235,7 @@ export async function resolveCastAlias(options: {
         if (!validCastHistoryMessage(message, author.fid)) {
           throw new ApiError('The node returned invalid or unrelated cast history.', 502, 'invalid_response');
         }
-        const fullHash = `0x${hashValue(message.hash)}`;
+        const fullHash = castHistoryHash(message.hash);
         const key = castHistoryMessageKey(author.fid, message.data.timestamp, fullHash);
         if (previousHistoryKey !== undefined && key >= previousHistoryKey) throw new ApiError('The node returned out-of-order cast history.', 502, 'invalid_pagination');
         previousHistoryKey = key;
