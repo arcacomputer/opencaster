@@ -8,6 +8,7 @@ import { deleteSavedSession, type WalletSession } from './lib/auth';
 import { FULL_CLIENT_SCOPES } from '@opencaster/client-core/pairing';
 import { encodeFeed, type FeedDefinition } from '@opencaster/client-core/customFeeds';
 import { readCustomFeed } from './lib/customFeedReader';
+import { EXPLORE_STORAGE_KEY } from './lib/storageKeys';
 
 const wallet = vi.hoisted(() => ({ next: null as WalletSession | null }));
 vi.mock('./components/ConnectAccount', () => ({
@@ -36,7 +37,7 @@ function session(fid = 10, key = '1'): WalletSession {
 }
 let container: HTMLDivElement; let root: Root;
 beforeEach(() => {
-  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.resetAllMocks(); localStorage.clear(); sessionStorage.clear(); localStorage.setItem('opencaster.explore', '1'); wallet.next = null;
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.resetAllMocks(); localStorage.clear(); sessionStorage.clear(); localStorage.setItem(EXPLORE_STORAGE_KEY, '1'); wallet.next = null;
   history.replaceState(null, '', '/');
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Publishing integration tests must not contact the network.')));
   vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} });

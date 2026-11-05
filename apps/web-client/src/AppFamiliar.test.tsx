@@ -8,6 +8,7 @@ import { deleteSavedSession, type WalletSession } from './lib/auth';
 import { BOOKMARK_STORAGE_KEY, LEGACY_BOOKMARK_STORAGE_KEY } from './lib/bookmarks';
 import { contentPreferencesKey, emptyContentPreferences, readContentPreferences } from './lib/contentPreferences';
 import { FULL_CLIENT_SCOPES } from '@opencaster/client-core/pairing';
+import { EXPLORE_STORAGE_KEY } from './lib/storageKeys';
 
 // Only account authorization is synthetic. Local settings, cards, routes,
 // bookmark tools and reaction-profile dialogs are the production components.
@@ -37,7 +38,7 @@ let container: HTMLDivElement; let root: Root;
 let feedIntersection: IntersectionObserverCallback;
 let feedSentinel: Element;
 beforeEach(() => {
-  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.clearAllMocks(); localStorage.clear(); localStorage.setItem('opencaster.explore', '1'); wallet.next = null; history.replaceState(null, '', '/');
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.clearAllMocks(); localStorage.clear(); localStorage.setItem(EXPLORE_STORAGE_KEY, '1'); wallet.next = null; history.replaceState(null, '', '/');
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   vi.stubGlobal('IntersectionObserver', class {
     constructor(callback: IntersectionObserverCallback) { feedIntersection = callback; }

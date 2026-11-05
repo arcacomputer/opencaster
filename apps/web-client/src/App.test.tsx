@@ -9,6 +9,7 @@ import { uploadMedia } from '@opencaster/client-core/media';
 import { FULL_CLIENT_SCOPES, FULL_SOCIAL_SCOPES } from '@opencaster/client-core/pairing';
 import { castPermalink } from '@opencaster/client-core/navigation';
 import { contentPreferencesKey, emptyContentPreferences } from './lib/contentPreferences';
+import { EXPLORE_STORAGE_KEY } from './lib/storageKeys';
 
 const wallet = vi.hoisted(() => ({ next: null as WalletSession | null, signal: null as AbortSignal | null, initialFid: undefined as number | undefined, onConnect: null as ((value: WalletSession) => void) | null }));
 vi.mock('./components/ConnectAccount', () => ({
@@ -39,7 +40,7 @@ let container: HTMLDivElement;
 let root: Root;
 let feedObservers: { callback: IntersectionObserverCallback; observer: IntersectionObserver; target?: Element; disconnected: boolean }[];
 beforeEach(() => {
-  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.clearAllMocks(); localStorage.clear(); localStorage.setItem('opencaster.explore', '1'); sessionStorage.clear(); wallet.next = null; wallet.signal = null; wallet.initialFid = undefined; wallet.onConnect = null;
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.clearAllMocks(); localStorage.clear(); localStorage.setItem(EXPLORE_STORAGE_KEY, '1'); sessionStorage.clear(); wallet.next = null; wallet.signal = null; wallet.initialFid = undefined; wallet.onConnect = null;
   history.replaceState(null, '', '/');
   feedObservers = [];
   vi.stubGlobal('IntersectionObserver', class {
@@ -955,16 +956,16 @@ describe('feed-first social layout', () => {
 
 describe('signed-out landing and cast pages', () => {
   it('greets a new visitor at the root with sign-in, then remembers the choice to explore', async () => {
-    localStorage.removeItem('opencaster.explore');
+    localStorage.removeItem(EXPLORE_STORAGE_KEY);
     await start();
     expect(container.querySelector('.landing h1')?.textContent).toBe('Your people, your identity, your voice.'); expect(container.querySelector('.app')).toBeNull();
     await click(button('Explore without an account'));
     expect(container.querySelector('.landing')).toBeNull(); expect(container.querySelector('main .feed-heading')).not.toBeNull();
-    expect(localStorage.getItem('opencaster.explore')).toBe('1');
+    expect(localStorage.getItem(EXPLORE_STORAGE_KEY)).toBe('1');
   });
 
   it('opens the sign-in page from the landing and keeps shared links readable without it', async () => {
-    localStorage.removeItem('opencaster.explore');
+    localStorage.removeItem(EXPLORE_STORAGE_KEY);
     await start(); await click(button('Sign in'));
     expect(location.pathname).toBe('/connect'); expect(container.querySelector('[data-testid="synthetic-wallet"]')).not.toBeNull();
     await act(async () => root.unmount()); root = createRoot(container);
@@ -1021,7 +1022,7 @@ describe('persistent node support links', () => {
   });
 
   it('offers the same link in the signed-out landing footer', async () => {
-    localStorage.removeItem('opencaster.explore'); await start();
+    localStorage.removeItem(EXPLORE_STORAGE_KEY); await start();
     expect(supportLinks(container.querySelector('.landing__footer')!).map(link => link.href)).toEqual(['https://buy.stripe.com/cNi00i9dY4kD3JP7G57ss05']);
   });
 });
