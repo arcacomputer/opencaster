@@ -1,6 +1,7 @@
 import { normalizeHypersnapEnsName } from '@opencaster/client-core/ensName';
 import type { AppRoute } from '@opencaster/client-core/navigation';
 import type { Cast } from '@opencaster/client-core/api';
+import { castHistoryCursorKey, castHistoryHash, castHistoryMessageKey, validCastHistoryMessage } from '@opencaster/client-core/castHistory';
 import { renderMentionSegments } from '@opencaster/client-core/content';
 import { decodeFeed, type FeedDefinition } from '@opencaster/client-core/customFeeds';
 import { fetchUpstream, parseUpstreamObject, resolveReadFallback, resolveUpstream, type UpstreamConfig, type UpstreamEnv } from './upstream';
@@ -58,7 +59,7 @@ function text(value: unknown, limit: number, { preserveNewlines = false, preserv
   return Array.from(formatted).slice(0, limit).join('');
 }
 
-function avatarUrl(value: unknown): string | undefined {
+function publicHttpsUrl(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length > 2048 || /[\s\\]/.test(value)) return;
   try {
     const url = new URL(value);
@@ -74,7 +75,7 @@ function profileValue(value: unknown): ShareProfile | undefined {
   if (username !== '' && (!IDENTIFIER.test(username) || username === '.' || username === '..')) return;
   const profile = object(value.profile) ? value.profile : undefined;
   const bio = profile && object(profile.bio) ? text(profile.bio.text, 500) : '';
-  const avatar = avatarUrl(value.pfp_url);
+  const avatar = publicHttpsUrl(value.pfp_url);
   const count = (v: unknown): v is number => Number.isSafeInteger(v) && Number(v) >= 0;
   return {
     fid: value.fid, username, displayName: text(value.display_name, 80) || username || `FID ${value.fid}`, bio,
@@ -180,7 +181,7 @@ async function loadChannel(id: string, read: PublicRead): Promise<ShareChannel |
   const response = await read('/v2/farcaster/channel', new URLSearchParams({ id, type: 'id' }));
   const channel = response?.channel;
   if (!object(channel) || channel.id !== id || typeof channel.name !== 'string') return;
-  const image = avatarUrl(channel.image_url);
+  const image = publicHttpsUrl(channel.image_url);
   return {
     id, name: text(channel.name, 80) || id, description: text(channel.description, 500),
     ...(image ? { imageUrl: image } : {}),
@@ -221,7 +222,7 @@ async function loadCast(hash: string, read: PublicRead, expectedAuthor?: SharePr
   const author = profileValue(cast.author);
   if (!author || (expectedFid !== undefined && author.fid !== expectedFid)) return;
   const imageUrls = cast.embeds.flatMap(embed => {
-    const url = object(embed) ? avatarUrl(embed.url) : undefined;
+    const url = object(embed) ? publicHttpsUrl(embed.url) : undefined;
     return url ? [url] : [];
   }).slice(0, 2);
   // The API's raw protocol text omits mention labels. Reuse the browser's
@@ -230,19 +231,6 @@ async function loadCast(hash: string, read: PublicRead, expectedAuthor?: SharePr
     .map(segment => segment.kind === 'text' ? segment.text : `@${segment.user.username || segment.user.fid}`).join('');
   return { kind: 'cast', profile: typeof expectedAuthor === 'object' ? expectedAuthor : author, hash: `0x${exactHash}`, text: text(displayedText, 1200, { preserveNewlines: true }), timestamp: new Date(cast.timestamp).toISOString(),
     ...(imageUrls.length ? { imageUrls } : {}) };
-}
-
-/** Native v1 cursors are exact legacy User/FID/CastMessage/timestamp/hash
- * primary keys. Validate their author, exclusive ordering and last receipt. */
-function cursorKey(value: unknown, fid: number): string | undefined {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9+/]{40}$/.test(value)) return;
-  try {
-    const raw = atob(value);
-    if (raw.length !== 30 || btoa(raw) !== value || raw.charCodeAt(0) !== 3 || raw.charCodeAt(5) !== 1) return;
-    const cursorFid = raw.charCodeAt(1) * 0x1000000 + raw.charCodeAt(2) * 0x10000 + raw.charCodeAt(3) * 0x100 + raw.charCodeAt(4);
-    if (cursorFid !== fid) return;
-    return Array.from(raw, byte => byte.charCodeAt(0).toString(16).padStart(2, '0')).join('');
-  } catch { return; }
 }
 
 async function loadAlias(authorIdentifier: string, prefix: string, read: PublicRead): Promise<ShareData | undefined> {
@@ -264,24 +252,18 @@ async function loadAlias(authorIdentifier: string, prefix: string, read: PublicR
     if (cursor) params.set('pageToken', cursor);
     const history = await read('/v1/castsByFid', params);
     if (!history || !Array.isArray(history.messages) || history.messages.length > HISTORY_PAGE_SIZE) return;
-    let previousKey = cursor ? cursorKey(cursor, profile.fid) : undefined;
+    let previousKey = cursor ? castHistoryCursorKey(cursor, profile.fid) : undefined;
     for (const message of history.messages) {
-      if (!object(message) || !object(message.data)) return;
-      const hash = hashValue(message.hash);
-      const data = message.data;
-      if (!hash || data.fid !== profile.fid || !Number.isSafeInteger(data.timestamp) || Number(data.timestamp) < 0 || Number(data.timestamp) > 0xffffffff
-        || data.network !== 'FARCASTER_NETWORK_MAINNET'
-        || (data.type !== 'MESSAGE_TYPE_CAST_ADD' && data.type !== 'MESSAGE_TYPE_CAST_REMOVE')
-        || (data.type === 'MESSAGE_TYPE_CAST_ADD' && !object(data.castAddBody))
-        || (data.type === 'MESSAGE_TYPE_CAST_REMOVE' && !object(data.castRemoveBody))) return;
-      const key = `03${profile.fid.toString(16).padStart(8, '0')}01${Number(data.timestamp).toString(16).padStart(8, '0')}${hash}`;
+      if (!validCastHistoryMessage(message, profile.fid)) return;
+      const hash = castHistoryHash(message.hash);
+      const key = castHistoryMessageKey(profile.fid, message.data.timestamp, hash);
       if (previousKey !== undefined && key >= previousKey) return;
       previousKey = key;
-      if (data.type === 'MESSAGE_TYPE_CAST_ADD' && `0x${hash}`.startsWith(normalized)) matches.add(`0x${hash}`);
+      if (message.data.type === 'MESSAGE_TYPE_CAST_ADD' && hash.startsWith(normalized)) matches.add(hash);
     }
     const next = history.nextPageToken;
     if (next !== undefined && next !== '') {
-      if (!history.messages.length || !cursorKey(next, profile.fid) || cursorKey(next, profile.fid) !== previousKey) return;
+      if (!history.messages.length || castHistoryCursorKey(next, profile.fid) === undefined || castHistoryCursorKey(next, profile.fid) !== previousKey) return;
       cursor = next as string;
     } else cursor = undefined;
     if (matches.size > 1) return;

@@ -5,6 +5,7 @@
 import { normalizeHypersnapEnsName } from './ensName';
 import { isUploadedMediaLocation } from './appOrigins';
 import { FARCASTER_EPOCH_SECONDS } from './farcasterEpoch';
+import { castHistoryCursorKey, castHistoryHash, castHistoryMessageKey, validCastHistoryMessage } from './castHistory';
 import { isProfileTab, type ProfileTab } from './navigation';
 
 export interface User {
@@ -1117,25 +1118,8 @@ const CAST_LINK_BATCH_PAGES = 4;
 const CAST_LINK_MAX_MESSAGES = 100_000;
 const CAST_LINK_MAX_MATCHES = 25;
 
-/** Native v1 history uses the legacy User/CastMessage primary key. Hyper's
- * shadow User prefix (0x1e) is used by v2 feeds, not this v1 store. The fixed
- * key is [0x03][FID:u32 BE][0x01][timestamp:u32 BE][message hash:20].
- */
-function castHistoryCursorKey(value: unknown, fid: number): string | undefined {
-  if (typeof value !== 'string' || !value || value.length > 2048 || !BASE64_TOKEN.test(value)) return;
-  try {
-    const bytes = atob(value);
-    if (bytes.length !== 30 || btoa(bytes) !== value || bytes.charCodeAt(0) !== 0x03 || bytes.charCodeAt(5) !== 0x01) return;
-    const cursorFid = bytes.charCodeAt(1) * 0x1000000 + bytes.charCodeAt(2) * 0x10000 + bytes.charCodeAt(3) * 0x100 + bytes.charCodeAt(4);
-    if (cursorFid !== fid) return;
-    return Array.from(bytes, byte => byte.charCodeAt(0).toString(16).padStart(2, '0')).join('');
-  } catch { return; }
-}
 function castLinkCursor(value: unknown, fid: number): value is string {
   return castHistoryCursorKey(value, fid) !== undefined;
-}
-function castHistoryMessageKey(fid: number, timestamp: number, hash: string): string {
-  return `03${fid.toString(16).padStart(8, '0')}01${timestamp.toString(16).padStart(8, '0')}${hashValue(hash)}`;
 }
 function descendingCastHistoryCursors(seen: readonly string[], cursor: string, fid: number): boolean {
   let previous: string | undefined;
@@ -1249,16 +1233,11 @@ export async function resolveCastAlias(options: {
       scanned += checkedMessages.length;
       let previousHistoryKey = cursor ? castHistoryCursorKey(cursor, author.fid) : undefined;
       for (const [messageIndex, message] of history.messages.entries()) {
-        if (!isObject(message) || typeof message.hash !== 'string' || !HASH.test(message.hash) || !isObject(message.data)
-          || message.data.fid !== author.fid || !Number.isSafeInteger(message.data.timestamp) || Number(message.data.timestamp) < 0 || Number(message.data.timestamp) > 0xffffffff
-          || message.data.network !== 'FARCASTER_NETWORK_MAINNET'
-          || !['MESSAGE_TYPE_CAST_ADD', 'MESSAGE_TYPE_CAST_REMOVE'].includes(String(message.data.type))
-          || (message.data.type === 'MESSAGE_TYPE_CAST_ADD' && !isObject(message.data.castAddBody))
-          || (message.data.type === 'MESSAGE_TYPE_CAST_REMOVE' && !isObject(message.data.castRemoveBody))) {
+        if (!validCastHistoryMessage(message, author.fid)) {
           throw new ApiError('The node returned invalid or unrelated cast history.', 502, 'invalid_response');
         }
-        const fullHash = `0x${hashValue(message.hash)}`;
-        const key = castHistoryMessageKey(author.fid, Number(message.data.timestamp), fullHash);
+        const fullHash = castHistoryHash(message.hash);
+        const key = castHistoryMessageKey(author.fid, message.data.timestamp, fullHash);
         if (previousHistoryKey !== undefined && key >= previousHistoryKey) throw new ApiError('The node returned out-of-order cast history.', 502, 'invalid_pagination');
         previousHistoryKey = key;
         if (messageIndex < checkedMessages.length && message.data.type === 'MESSAGE_TYPE_CAST_ADD' && fullHash.startsWith(hashPrefix) && !hashes.has(fullHash)) {
