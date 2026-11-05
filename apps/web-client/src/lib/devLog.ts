@@ -26,9 +26,9 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     date: '2026-11-05',
     timestamp: '2026-11-05T03:32:36Z',
     title: 'Remove an unused hidden-cast helper',
-    summary: 'Content settings code drops a single-cast restore helper that no screen used. Hidden casts still clear all at once from content settings.',
+    summary: 'The content settings code no longer carries a single-cast restore helper that no screen used, so the hiding code is easier to maintain. Hidden casts still clear all at once from content settings.',
     changes: [
-      'Delete the unused per-cast unhide function and its test assertion; hiding casts, the 500-cast limit and Clear hidden casts behave as before.',
+      'Remove the unused per-cast unhide code path. Hiding a cast, the 500-cast limit and Clear hidden casts work exactly as before; this release adds no way to restore one hidden cast at a time.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/6e70320eb4747712218199c65d5cb25a9b687432',
     tag: 'Reliability',
