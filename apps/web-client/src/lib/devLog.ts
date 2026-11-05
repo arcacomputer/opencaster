@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'shared-request-deadline-constants',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:58Z',
+    title: 'One definition for authorization deadlines',
+    summary: 'Device authorization and revocation requests, their validation, and the "Approve before" times shown in Opencaster and the offline signer now all use the same shared 15-minute window and Farcaster epoch. Deadlines and countdowns are unchanged; this keeps them from drifting apart in future updates.',
+    changes: [
+      'Build request deadlines and expiry countdowns from shared constants and helpers instead of repeated numbers, with a test that pins the existing 15-minute window.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/279c971719e11cb122fa7c7286087b54d85fc135',
+    tag: 'Reliability',
+  },
+  {
     id: 'remove-unused-signed-key-request-helper',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:33:31Z',
