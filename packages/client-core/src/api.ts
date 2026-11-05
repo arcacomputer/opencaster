@@ -6,6 +6,7 @@ import { normalizeHypersnapEnsName } from './ensName';
 import { APP_ORIGIN, LEGACY_APP_ORIGIN } from './appOrigins';
 import { FARCASTER_EPOCH_SECONDS } from './farcasterEpoch';
 import { API_BASE, API_REQUEST_OPTIONS } from './apiBase';
+import { isProfileTab, type ProfileTab } from './navigation';
 
 export interface User {
   fid: number;
@@ -293,7 +294,7 @@ export async function getFeed(options: FeedOptions): Promise<FeedResponse> {
   return { casts, next: { cursor: nextCursor(next, options.cursor) } };
 }
 
-export type ProfileTab = 'casts' | 'replies' | 'media' | 'likes' | 'recasts';
+export type { ProfileTab };
 
 export interface ReactionTarget { fid: number; hash: string }
 export interface ReactionStatus extends ReactionTarget { viewerFid: number; liked: boolean; recasted: boolean }
@@ -833,7 +834,7 @@ export function hasImageEmbed(cast: Cast): boolean {
  * roots as replies and can skip results while truncating its fetched batch.
  */
 export async function getProfileFeed(options: { fid: number; tab: ProfileTab; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<FeedResponse> {
-  if (!['casts', 'replies', 'media', 'likes', 'recasts'].includes(options.tab)) throw new Error('Invalid profile tab.');
+  if (!isProfileTab(options.tab)) throw new Error('Invalid profile tab.');
   pageParams(options.cursor, options.limit);
   fidValue(options.fid);
   if (options.tab === 'likes' || options.tab === 'recasts') return getProfileReactions({ ...options, tab: options.tab });
@@ -1356,10 +1357,6 @@ export async function getSigners(fid: number, signal?: AbortSignal): Promise<Sig
     result.nextPageToken = page.nextPageToken;
   }
   return result;
-}
-
-export function getCustodyEvents(address: string, signal?: AbortSignal): Promise<{ fid: number; [key: string]: unknown }> {
-  return requestJson('/v1/onChainIdRegistryEventByAddress', new URLSearchParams({ address: addressValue(address) }), signal);
 }
 
 export function submitMessage(bytes: Uint8Array, signal?: AbortSignal): Promise<SubmitMessageResponse> {
