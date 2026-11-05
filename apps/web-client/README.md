@@ -79,6 +79,17 @@ CI validates that an entry exists and its source is real; release review still c
 
 ## Link previews
 
+URL attachments in casts display supported X posts and YouTube, Vimeo and
+Spotify players inline. They load near the viewport in sandboxed provider
+frames, without running provider scripts in the wallet page. X posts follow
+the app theme and request do-not-track mode; YouTube uses its privacy-enhanced
+player. Loading an embed still contacts its provider. Playback is user initiated.
+Each card retains an external link; blocked, deleted, private or unsupported
+content may require opening the original. Other website attachments display
+their hostname and destination path, without arbitrary website scraping.
+This applies to protocol URL attachments: ordinary text links and the
+composer's existing attachment/signing limits retain their current behavior.
+
 Shared links include Open Graph metadata for Telegram and other link-preview
 clients, plus an X large-image card. The initial HTML contains the title,
 description, image URL and image alt text; crawlers do not need JavaScript.
