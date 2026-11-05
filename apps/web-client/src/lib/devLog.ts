@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'preserve-signature-verification-causes',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:41Z',
+    title: 'Keep signature failure details for troubleshooting',
+    summary: 'When an imported device approval or revocation fails signature checks, the error now keeps the specific reason, such as a malformed signature versus a different wallet, for debugging. The message you see is unchanged.',
+    changes: [
+      'Attach the underlying reason to the existing approval and revocation signature errors so malformed or tampered files can be told apart from wrong-wallet approvals during support; verification rules and displayed text stay the same.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/342c2d976cfe9c7282dbe3a33d79561554854e9f',
+    tag: 'Reliability',
+  },
+  {
     id: 'remove-unused-signed-key-request-helper',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:33:31Z',
