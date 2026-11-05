@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'shared-cast-alias-history-checks',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:14Z',
+    title: 'One set of checks for short cast links',
+    summary: 'Short cast links and their share previews now use the same checks on an author’s cast history, so both judge the node’s history the same way. There is no visible change; short links still search the same bounded recent history.',
+    changes: [
+      'The browser’s short-link lookup and the gateway’s link previews now share one check of page order, page links and message fields, instead of keeping two copies that could drift apart.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/b98ae2b1a12c380dcf023ac910cfa700ca0e25bd',
+    tag: 'Reliability',
+  },
+  {
     id: 'shared-request-deadline-constants',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:44:58Z',
