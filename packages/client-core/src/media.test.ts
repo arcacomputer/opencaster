@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { bytesToHex } from '@opencaster/protocol/signedKeyRequest';
-import { createMediaUploadGrant, isMediaOrigin, MAX_MEDIA_BYTES, MEDIA_UPLOAD_HEADER, sha256Hex, uploadMedia, type MediaUploadInput } from './media';
+import { createMediaUploadGrant, isMediaOrigin, MAX_MEDIA_BYTES, MEDIA_SIZE_LABEL, MEDIA_TOO_LARGE_MESSAGE, MEDIA_UPLOAD_HEADER, sha256Hex, uploadMedia, type MediaUploadInput } from './media';
 import { isUploadedMediaUrl } from './appOrigins';
 
 const BASE = 'https://opencaster.org';
@@ -37,11 +37,16 @@ describe('the browser media upload boundary', () => {
     expect(JSON.parse(options.headers[MEDIA_UPLOAD_HEADER])).toMatchObject({ origin: BASE, fid: 1234, size: bytes.length, contentType: 'image/png' });
   });
 
+  it('derives the size limit text from the byte limit', () => {
+    expect(MEDIA_SIZE_LABEL).toBe('5 MiB');
+    expect(MEDIA_TOO_LARGE_MESSAGE).toBe('Choose an image up to 5 MiB.');
+  });
+
   it('rejects unsupported files, oversized files and unknown website origins before authorization', async () => {
     vi.stubGlobal('location', { origin: BASE });
     const sign = vi.fn(authorize);
     for (const bad of [new File(['<svg/>'], 'image.svg', { type: 'image/svg+xml' }), new File([], 'empty.png', { type: 'image/png' }), new File([new ArrayBuffer(MAX_MEDIA_BYTES + 1)], 'large.png', { type: 'image/png' })]) {
-      await expect(uploadMedia(bad, sign)).rejects.toThrow('5 MiB');
+      await expect(uploadMedia(bad, sign)).rejects.toThrow('Choose a JPEG, PNG, WebP or GIF image up to 5 MiB.');
     }
     vi.stubGlobal('location', { origin: 'https://attacker.example' });
     await expect(uploadMedia(file(), sign)).rejects.toThrow('opencaster.org');

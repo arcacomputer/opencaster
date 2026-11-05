@@ -281,7 +281,9 @@ describe('authenticated media uploads', () => {
     expect((await handleMediaRequest(upload(grant, changed), env)).status).toBe(400);
     const html = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
     expect((await handleMediaRequest(upload(await grantFor(html), html), env)).status).toBe(415);
-    expect((await handleMediaRequest(upload(grant, new Uint8Array(MAX_MEDIA_BYTES + 1)), env)).status).toBe(413);
+    const tooLarge = await handleMediaRequest(upload(grant, new Uint8Array(MAX_MEDIA_BYTES + 1)), env);
+    expect(tooLarge.status).toBe(413);
+    expect(await tooLarge.json()).toEqual({ code: 'image_too_large', message: 'Choose an image up to 5 MiB.' });
     expect(put).not.toHaveBeenCalled();
   });
 

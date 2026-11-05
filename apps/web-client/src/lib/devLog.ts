@@ -34,6 +34,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'shared-media-size-limit-text',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:34Z',
+    title: 'Keep image size messages in step with the upload limit',
+    summary: 'Image upload errors from the browser and the media gateway now take their size text from the same shared limit, so they cannot drift apart if the limit changes. The limit stays 5 MiB and every message reads exactly as before.',
+    changes: [
+      'Build the “up to 5 MiB” wording in upload validation, upload error and gateway rejection messages from the shared 5 MiB upload limit instead of repeating it by hand. No visible change.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/9bf92d35f1a478190191d024ed10985cfc43f505',
+    tag: 'Reliability',
+  },
+  {
     id: 'shared-profile-tab-list',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:44:32Z',
