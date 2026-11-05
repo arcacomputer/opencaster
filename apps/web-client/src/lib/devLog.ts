@@ -35,6 +35,31 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'shared-profile-tab-list',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:32Z',
+    title: 'Keep profile tabs consistent',
+    summary: 'Profile links, the profile tab bar and profile feed loading now share one list of tabs, so a future tab change cannot leave a link that opens a not-found page or a feed that refuses to load. There is no visible change: Casts, Replies, Photos, Likes and Recasts work as before.',
+    changes: [
+      'Profile route parsing, profile link building, profile feed requests and the profile tab bar accept the same five tabs from a single shared definition.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/154b34809f2c60a5371d8b327e0157326e5b011c',
+    tag: 'Reliability',
+  },
+  {
+    id: 'remove-unused-messenger-style-tokens',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:34:55Z',
+    title: 'Trim leftover messenger styling',
+    summary: 'The theme stylesheet drops about eighty color settings left over from the Quorum Desktop messenger that no Opencaster screen used.',
+    changes: [
+      'Remove unused rail, sidebar, chat, mobile-drawer, modal, form-field and mention colors, plus unused surface and accent shades, from the light, dark and accent themes.',
+      'Every color Opencaster screens read is unchanged, so light, dark and accent themes should look the same; the stylesheet is simply smaller and easier to maintain.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/7dff42772adaf30922e1d44e471551e5037da19e',
+    tag: 'Reliability',
+  },
+  {
     id: 'remove-unused-signed-key-request-helper',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:33:31Z',
