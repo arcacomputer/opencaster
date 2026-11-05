@@ -55,7 +55,7 @@ export function replaceTestMediaGuards(source, id, origin) {
   localUrl(origin, 'test origin');
   const normalized = id.split('?')[0].replaceAll('\\', '/');
   const media = variable => `(${variable}.origin === ${JSON.stringify(origin)} && /^\\/media\\/[a-f0-9]{64}$/.test(${variable}.pathname))`;
-  // App, MediaViewer and EditProfileDialog render images through this shared guard.
+  // App, CastCard, MediaViewer and EditProfileDialog render images through this shared guard.
   if (normalized.endsWith('/packages/client-core/src/safeUrl.ts')) source = source.replace("url.protocol === 'https:' && !url.username", `(url.protocol === 'https:' || ${media('url')}) && !url.username`);
   if (normalized.endsWith('/src/lib/social.ts')) source = source.replace("url.protocol !== 'https:' ||", `(url.protocol !== 'https:' && !${media('url')}) ||`);
   if (normalized.endsWith('/src/lib/auth.ts')) source = source.replace(/url\.protocol !== 'https:' \|\| ((?:!!)?url\.username)/, (_match, credentials) => `(url.protocol !== 'https:' && !${media('url')}) || ${credentials}`);

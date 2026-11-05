@@ -34,6 +34,19 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Security',
   },
   {
+    id: 'split-app-shell-components',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:48:23Z',
+    title: 'Reorganize the main client screen',
+    summary: 'The navigation sidebar, page header, home feed tabs, cast cards and conversation replies now live in their own focused components. Nothing changes on screen; feeds, threads, Back/Forward and saved theme and Explore choices behave exactly as before.',
+    changes: [
+      'Back/Forward and in-app navigation now share one list of dialogs to close, so a future dialog cannot stay open on one path but not the other.',
+      'Conversation threads keep the same 150-cast limit, now defined once, and saved theme and Explore settings keep their existing browser storage names.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/05657a4d9687333f4875d02276af7ac537ea0617',
+    tag: 'Reliability',
+  },
+  {
     id: 'shared-uploaded-image-links',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:47:39Z',
@@ -67,6 +80,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'Each sign-in and device-settings step uses the same handling for its busy state, progress text, cancellation and stale results, keeping each step’s existing behavior.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/833f2f16df824bcad0b1dd388a4fd8f737a36990',
+    tag: 'Reliability',
+  },
+  {
+    id: 'shared-people-list-loading',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:59Z',
+    title: 'Share one loader for people lists',
+    summary: 'Follower and following lists, cast likes and recasts, channel participants, suggested people and quote casts now load through one shared paged reader, so cancellation and stale-response handling stay consistent across them. There is no visible change.',
+    changes: [
+      'Each list keeps its existing limits and messages: up to 1,000 profiles across 40 node pages for cast reactions, the first 500 for channel participants, and no fixed limit for follower and following lists, which stop when the node repeats a page.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/2acd8e64f3b42f05a20fd8af80640df914908526',
     tag: 'Reliability',
   },
   {
@@ -140,6 +165,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'Bookmarked casts and saved channel shortcuts share one channel validator while keeping their existing stored formats, including bookmark URL length and shortcut member counts.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/ae9b13567292525eede9e43db8912800e13e1195',
+    tag: 'Reliability',
+  },
+  {
+    id: 'share-card-title-layout',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:01Z',
+    title: 'Keep profile and channel share titles aligned',
+    summary: 'Profile and channel share images now lay out their large title from one shared rule, so future typography adjustments keep both kinds of link previews consistent. Shared images look exactly as before.',
+    changes: [
+      'Profile and channel link-preview images use the same title sizing, two-line wrapping and spacing; a test pins the existing one- and two-line positions so the rendered artwork does not change.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/3267e97d599dba5d68d6887e23dc5c9f8c647ae3',
     tag: 'Reliability',
   },
   {

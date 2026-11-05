@@ -119,7 +119,7 @@ node URL or production R2 bucket is never accepted by this harness.
 The exported `viteTestOriginPlugin` rewrites the two production website origins
 to the configured loopback origin **only in the separate test build**. It also
 permits that exact origin's `/media/<sha256>` URLs through the shared
-safe-HTTPS image guard (`client-core/safeUrl`, used by the App image renderer,
+safe-HTTPS image guard (`client-core/safeUrl`, used by the cast-card image renderer,
 media viewer, avatars and the profile-picture preview), the profile-picture
 validator and cast embed validator, and rewrites the hosted-image recognition
 regex. Other HTTP origins and paths remain

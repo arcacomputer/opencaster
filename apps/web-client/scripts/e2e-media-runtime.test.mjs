@@ -9,7 +9,7 @@ const origin = 'http://127.0.0.1:5187';
 const media = `${origin}/media/${'a'.repeat(64)}`;
 const appPath = fileURLToPath(new URL('../src/App.tsx', import.meta.url));
 const app = await fs.readFile(appPath, 'utf8');
-const transformed = replaceTestMediaGuards(replaceTestOrigins(app, origin), appPath, origin);
+const castCard = await fs.readFile(fileURLToPath(new URL('../src/components/CastCard.tsx', import.meta.url)), 'utf8');
 const originsPath = fileURLToPath(new URL('../../../packages/client-core/src/appOrigins.ts', import.meta.url));
 const originsSource = await fs.readFile(originsPath, 'utf8');
 const publicOrigin = (source, name) => source.match(new RegExp(`^export const ${name} = '([^']+)';$`, 'm'))?.[1];
@@ -101,9 +101,9 @@ describe('isolated media harness URL transformations', () => {
     expect(replaceTestMediaGuards(guard, guardPath, primaryOrigin)).toBe(guard);
   });
 
-  it('routes App, viewer and profile-preview images through the shared guard and image classifier', async () => {
-    expect(app).toContain('hasImageEmbed({ ...cast, embeds: [{ url }] })');
-    for (const relative of ['../src/App.tsx', '../src/components/MediaViewer.tsx', '../src/components/EditProfileDialog.tsx']) {
+  it('routes cast-card, viewer and profile-preview images through the shared guard and image classifier', async () => {
+    expect(castCard).toContain('hasImageEmbed({ ...cast, embeds: [{ url }] })');
+    for (const relative of ['../src/App.tsx', '../src/components/CastCard.tsx', '../src/components/MediaViewer.tsx', '../src/components/EditProfileDialog.tsx']) {
       const source = await fs.readFile(fileURLToPath(new URL(relative, import.meta.url)), 'utf8');
       expect(source).toContain("import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';");
       expect(source).not.toMatch(/(?:url|parsed)\.protocol === 'https:'/);
