@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'shared-safe-https-url-guard',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:50:20Z',
+    title: 'One safety rule for remote images and links',
+    summary: 'Avatars, channel images, banners, cast attachments, the image viewer, pending casts, bookmarks and saved channels now check remote URLs with one shared rule: HTTPS only, with no embedded username or password. There is no visible change; future tightening applies everywhere at once.',
+    changes: [
+      'Each place keeps its current behavior, including whether it shows the normalized address or the exact saved text and its existing length limit; link-preview embeds keep their stricter separate rule.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/907b953be7237d5fe9a9b4fa91468ebc5ae04225',
+    tag: 'Security',
+  },
+  {
     id: 'remove-unused-signed-key-request-helper',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:33:31Z',
