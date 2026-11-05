@@ -1,6 +1,7 @@
 import { useId, useState, type FormEvent } from 'react';
 import { IconEye, IconVolumeOff, IconX } from '@tabler/icons-react';
 import { addMutedWord, normalizeMutedWord, removeMutedWord, unmuteAccount, type ContentPreferences } from '../lib/contentPreferences';
+import { errorMessage } from '../lib/errors';
 import { Button, Input } from './ui';
 import '../content-settings.scss';
 
@@ -25,7 +26,7 @@ function ContentSettingsForm({ preferences, onChange, fid }: ContentSettingsProp
     try {
       const next = addMutedWord(preferences, word);
       onChange(next); setWord(''); setError(''); setStatus('Word or phrase added to these browser preferences.');
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'This word or phrase could not be added.'); }
+    } catch (cause) { setError(errorMessage(cause, 'This word or phrase could not be added.')); }
   }
   return <section className="content-settings" aria-labelledby={`${prefix}-heading`}>
     <header><p className="content-settings__eyebrow">ON THIS BROWSER</p><h2 id={`${prefix}-heading`}>Content preferences</h2>
@@ -39,7 +40,7 @@ function ContentSettingsForm({ preferences, onChange, fid }: ContentSettingsProp
         <div className="content-settings__add"><Input id={`${prefix}-word`} value={word} maxLength={1_024} onChange={event => {
           const value = event.target.value; setWord(value); setStatus('');
           try { if (value.trim()) normalizeMutedWord(value); setError(''); }
-          catch (cause) { setError(cause instanceof Error ? cause.message : 'Use a shorter word or phrase.'); }
+          catch (cause) { setError(errorMessage(cause, 'Use a shorter word or phrase.')); }
         }} aria-describedby={`${prefix}-word-help${error ? ` ${prefix}-error` : ''}`} aria-invalid={Boolean(error)} autoComplete="off" /><Button type="submit">Mute phrase</Button></div>
         <p id={`${prefix}-word-help`} className="content-settings__note">Up to 80 characters and 256 UTF-8 bytes each. Matching uses plain text, including punctuation.</p>
         {error ? <p id={`${prefix}-error`} role="alert" className="content-settings__error">{error}</p> : null}

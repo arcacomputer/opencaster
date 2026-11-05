@@ -3,6 +3,7 @@ import { IconChevronRight, IconRefresh, IconUsers } from '@tabler/icons-react';
 import { getCastQuotes, getChannelMembers, getSuggestedUsers, type Cast, type Channel, type User } from '@opencaster/client-core/api';
 import { profilePath } from '@opencaster/client-core/navigation';
 import { Button, Modal } from './ui';
+import { errorMessage } from '../lib/errors';
 import '../community.scss';
 
 type CommunityPage<T> = { items: T[]; cursor?: string | null };
@@ -36,7 +37,7 @@ function useCommunityRead<T>(key: string, enabled: boolean, read: (cursor: strin
         return { key, items: [...entries.values()].slice(0, MAX_PARTICIPANTS), cursor: repeated || capped ? undefined : page.cursor || undefined, busy: false, loaded: true, error: '', status: repeated ? 'The node repeated its continuation. Refresh to check the available list again.' : capped ? 'Showing the first 500 participants. Refresh to start again.' : '' };
       });
     } catch (cause) {
-      if (!request.signal.aborted && run === generation.current && currentKey.current === capturedKey) setState(current => ({ ...current, busy: false, error: cause instanceof Error ? cause.message.slice(0, 240) : 'These public results are unavailable.' }));
+      if (!request.signal.aborted && run === generation.current && currentKey.current === capturedKey) setState(current => ({ ...current, busy: false, error: errorMessage(cause, 'These public results are unavailable.') }));
     } finally { if (run === generation.current) requesting.current = false; }
   }, [enabled, key]);
   useEffect(() => {

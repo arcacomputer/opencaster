@@ -3,6 +3,7 @@ import { IconChevronRight, IconRefresh } from '@tabler/icons-react';
 import { getCastReactionPeople, type Cast, type CastReactionPeopleType, type User } from '@opencaster/client-core/api';
 import { profilePath } from '@opencaster/client-core/navigation';
 import { Button, Modal } from './ui';
+import { errorMessage } from '../lib/errors';
 import '../cast-reaction-people.scss';
 
 export interface CastReactionPeopleProps {
@@ -60,7 +61,7 @@ export default function CastReactionPeople({ cast, initialType = 'likes', onClos
         return { key, users: [...users.values()].slice(0, MAX_PEOPLE), cursor: repeated || capped ? undefined : page.next.cursor || undefined, busy: false, loaded: true, error: '', status: repeated ? 'The node repeated an earlier page. Refresh to check its current view again.' : capped ? 'This view reached its limit of 1,000 profiles or 40 node pages. Refresh to start again.' : '' };
       });
     } catch (cause) {
-      if (!request.signal.aborted && run === generation.current && currentKey.current === capturedKey) setState(current => ({ ...current, busy: false, error: cause instanceof Error ? cause.message.slice(0, 240) : 'These public profiles are unavailable.' }));
+      if (!request.signal.aborted && run === generation.current && currentKey.current === capturedKey) setState(current => ({ ...current, busy: false, error: errorMessage(cause, 'These public profiles are unavailable.') }));
     } finally { if (run === generation.current) requesting.current = false; }
   }, [cast.author.fid, cast.hash, key, type]);
   useEffect(() => {

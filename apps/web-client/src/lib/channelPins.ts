@@ -7,8 +7,8 @@ export const CHANNEL_PINS_STORAGE_KEY = 'arca.hypersnap.channels.saved.v1';
 const MAX_STORED_BYTES = 256 * 1024;
 interface PinStorage { getItem(key: string): string | null; setItem(key: string, value: string): void }
 
-function safeHttps(value: unknown): string | undefined {
-  if (typeof value !== 'string' || value.length > 1_024) return;
+function safeHttps(value: unknown, maxLength: number): string | undefined {
+  if (typeof value !== 'string' || value.length > maxLength) return;
   try {
     const url = new URL(value);
     // Parent URLs are protocol identifiers, so preserve their exact bytes.
@@ -16,19 +16,28 @@ function safeHttps(value: unknown): string | undefined {
   } catch { /* An unusable optional image or URL does not invalidate the ID. */ }
 }
 
-function snapshot(value: unknown): Channel | undefined {
+// Defaults are the channel-pin storage format; other stored formats (bookmarks)
+// pass their own compatibility settings.
+export interface ChannelSnapshotOptions {
+  maxUrlLength?: number;
+  includeMemberCount?: boolean;
+  /** Keep a whitespace-only name instead of falling back to the ID. */
+  keepBlankName?: boolean;
+}
+
+export function channelSnapshot(value: unknown, { maxUrlLength = 1_024, includeMemberCount = true, keepBlankName = false }: ChannelSnapshotOptions = {}): Channel | undefined {
   if (!value || typeof value !== 'object' || !('id' in value) || typeof value.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(value.id)) return;
   const input = value as Record<string, unknown>;
-  const parent = safeHttps(input.parent_url);
-  const image = safeHttps(input.image_url);
+  const parent = safeHttps(input.parent_url, maxUrlLength);
+  const image = safeHttps(input.image_url, maxUrlLength);
   return {
     id: value.id,
-    name: typeof input.name === 'string' && input.name.trim() ? input.name.slice(0, 128) : value.id,
-    url: safeHttps(input.url) ?? '',
+    name: typeof input.name === 'string' && (keepBlankName ? input.name : input.name.trim()) ? input.name.slice(0, 128) : value.id,
+    url: safeHttps(input.url, maxUrlLength) ?? '',
     ...(parent ? { parent_url: parent } : {}),
     ...(image ? { image_url: image } : {}),
     ...(typeof input.description === 'string' ? { description: input.description.slice(0, 512) } : {}),
-    ...(Number.isSafeInteger(input.member_count) && Number(input.member_count) >= 0 ? { member_count: Number(input.member_count) } : {}),
+    ...(includeMemberCount && Number.isSafeInteger(input.member_count) && Number(input.member_count) >= 0 ? { member_count: Number(input.member_count) } : {}),
   };
 }
 
@@ -36,7 +45,7 @@ function snapshots(values: readonly unknown[]): Channel[] {
   const result: Channel[] = [];
   const seen = new Set<string>();
   for (const value of values.slice(0, 500)) {
-    const pin = snapshot(value);
+    const pin = channelSnapshot(value);
     if (!pin || seen.has(pin.id)) continue;
     result.push(pin); seen.add(pin.id);
     if (result.length === CHANNEL_PIN_LIMIT) break;
@@ -63,7 +72,7 @@ export function writeChannelPins(channels: readonly Channel[], storage?: Pick<Pi
 
 export function toggleChannelPin(channels: readonly Channel[], channel: Channel): Channel[] {
   const current = snapshots(channels);
-  const pin = snapshot(channel);
+  const pin = channelSnapshot(channel);
   if (!pin) throw new Error('This channel has no usable shortcut identifier.');
   if (current.some(item => item.id === pin.id)) return current.filter(item => item.id !== pin.id);
   if (current.length >= CHANNEL_PIN_LIMIT) throw new Error(`Save up to ${CHANNEL_PIN_LIMIT} channels on this browser. Remove a saved channel before adding another.`);

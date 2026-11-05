@@ -1,4 +1,5 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
+import { readLimited } from '@opencaster/client-core/boundedRead';
 import { MAX_MEDIA_BYTES, MEDIA_TOO_LARGE_MESSAGE, MEDIA_UPLOAD_HEADER, isMediaType, mediaGrantPayload, parseMediaUploadGrant, sha256Hex, type MediaType, type MediaUploadGrant } from '@opencaster/client-core/media';
 import { MEDIA_PATH, mediaUrl } from '@opencaster/client-core/appOrigins';
 import { hexToBytes } from '@opencaster/protocol/signedKeyRequest';
@@ -37,30 +38,6 @@ function success(value: unknown): Response {
 }
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 
-async function readLimited(body: ReadableStream<Uint8Array> | null, limit: number, signal?: AbortSignal): Promise<Uint8Array> {
-  if (!body) throw new Error('Missing body');
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  const reader = body.getReader();
-  const cancel = () => { void reader.cancel().catch(() => undefined); };
-  signal?.addEventListener('abort', cancel, { once: true });
-  try {
-    while (true) {
-      if (signal?.aborted) { cancel(); throw new Error('Registry deadline exceeded'); }
-      const item = await reader.read();
-      if (signal?.aborted) throw new Error('Registry deadline exceeded');
-      if (item.done) break;
-      length += item.value.byteLength;
-      if (length > limit) { cancel(); throw new Error('Body too large'); }
-      chunks.push(item.value);
-    }
-  } finally { signal?.removeEventListener('abort', cancel); reader.releaseLock(); }
-  const bytes = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-  return bytes;
-}
-
 /** Header signatures are checked before the node request or durable storage.
  * Revoked/expired keys never authorize a new upload, even if the browser kept it. */
 async function activeSigner(grant: MediaUploadGrant, env: MediaEnv): Promise<boolean> {
@@ -79,7 +56,7 @@ async function activeSigner(grant: MediaUploadGrant, env: MediaEnv): Promise<boo
       void response.body?.cancel().catch(() => undefined);
       throw new Error('Registry unavailable');
     }
-    const value: unknown = JSON.parse(new TextDecoder().decode(await readLimited(response.body, MAX_REGISTRY_BYTES, controller.signal)));
+    const value: unknown = JSON.parse(new TextDecoder().decode(await readLimited(response.body, MAX_REGISTRY_BYTES, { signal: controller.signal })));
     if (!object(value) || !Array.isArray(value.signers) || value.signers.length > 1000) throw new Error('Invalid registry');
     // Fail closed on a truncated list. An account with more keys may revoke old
     // keys first; pagination cannot silently turn an incomplete view into trust.
