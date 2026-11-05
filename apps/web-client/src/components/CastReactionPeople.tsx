@@ -5,6 +5,7 @@ import { profilePath } from '@opencaster/client-core/navigation';
 import { LOADING_CANCELLED, usePagedRead } from '../lib/usePagedRead';
 import { Button, Modal } from './ui';
 import '../cast-reaction-people.scss';
+import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
 
 export interface CastReactionPeopleProps {
   cast: Pick<Cast, 'hash' | 'author'>;
@@ -21,8 +22,7 @@ const REACTION_PEOPLE_READ = {
 };
 function Person({ user, onProfile }: { user: User; onProfile(user: User): void }) {
   const [failedImage, setFailedImage] = useState('');
-  let image: string | undefined;
-  try { const url = new URL(user.pfp_url ?? ''); if (url.protocol === 'https:' && !url.username && !url.password) image = url.href; } catch { /* Initials remain available. */ }
+  const image = safeHttpsUrl(user.pfp_url);
   function visit(event: MouseEvent<HTMLAnchorElement>) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     event.preventDefault(); onProfile(user);

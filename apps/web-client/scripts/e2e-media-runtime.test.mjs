@@ -9,9 +9,6 @@ const origin = 'http://127.0.0.1:5187';
 const media = `${origin}/media/${'a'.repeat(64)}`;
 const appPath = fileURLToPath(new URL('../src/App.tsx', import.meta.url));
 const app = await fs.readFile(appPath, 'utf8');
-const castDisplayPath = fileURLToPath(new URL('../src/lib/castDisplay.ts', import.meta.url));
-const castDisplay = await fs.readFile(castDisplayPath, 'utf8');
-const transformed = replaceTestMediaGuards(replaceTestOrigins(castDisplay, origin), castDisplayPath, origin);
 const castCard = await fs.readFile(fileURLToPath(new URL('../src/components/CastCard.tsx', import.meta.url)), 'utf8');
 const originsPath = fileURLToPath(new URL('../../../packages/client-core/src/appOrigins.ts', import.meta.url));
 const originsSource = await fs.readFile(originsPath, 'utf8');
@@ -82,34 +79,35 @@ describe('isolated media harness URL transformations', () => {
     expect(production(new URL(media))).toBe(false);
     for (const productionOrigin of [primaryOrigin, legacyOrigin]) expect(production(new URL(`${productionOrigin}/media/${'a'.repeat(64)}`))).toBe(true);
   });
-  it('admits only the configured loopback hashed media path through the actual cast URL expression', () => {
-    const expression = transformed.match(/return (.*?) \? url\.href : undefined;/)?.[1];
+  it('admits only the configured loopback hashed media path through the shared safe-HTTPS guard', async () => {
+    const guardPath = fileURLToPath(new URL('../../../packages/client-core/src/safeUrl.ts', import.meta.url));
+    const guard = await fs.readFile(guardPath, 'utf8');
+    const condition = /if \((.*?)\) return preserve/;
+    const expression = replaceTestMediaGuards(replaceTestOrigins(guard, origin), guardPath, origin).match(condition)?.[1];
     expect(expression).toBeTruthy();
     // Evaluate only this fixed, first-party boolean URL expression; no app or
     // browser runtime is created and no protocol/authentication code is stubbed.
     const accepted = new Function('url', `return ${expression};`);
     expect(accepted(new URL(media))).toBe(true);
     for (const rejected of [
-      `${origin}/not-media/${'a'.repeat(64)}`, `${origin}/media/${'a'.repeat(63)}`,
-      `http://localhost:5187/media/${'a'.repeat(64)}`, `http://127.0.0.1:5188/media/${'a'.repeat(64)}`,
-      `http://attacker.example/media/${'a'.repeat(64)}`, 'javascript:alert(1)',
+      `${origin}/not-media/${'a'.repeat(64)}`, `${origin}/media/${'a'.repeat(63)}`, `${media}/extra`,
+      `http://localhost:5187/media/${'a'.repeat(64)}`, `http://127.0.0.1:5188/media/${'a'.repeat(64)}`, `http://127x0x0x1:5187/media/${'a'.repeat(64)}`,
+      `http://attacker.example/media/${'a'.repeat(64)}`, `http://user@127.0.0.1:5187/media/${'a'.repeat(64)}`, 'javascript:alert(1)',
     ]) expect(accepted(new URL(rejected))).toBe(false);
     expect(accepted(new URL('https://example.com/image.png'))).toBe(true);
-    const original = castDisplay.match(/return (.*?) \? url\.href : undefined;/)?.[1];
+    const original = guard.match(condition)?.[1];
+    expect(guard).toContain("url.protocol === 'https:' && !url.username && !url.password");
     expect(new Function('url', `return ${original};`)(new URL(media))).toBe(false);
+    expect(replaceTestMediaGuards(guard, guardPath, primaryOrigin)).toBe(guard);
   });
 
-  it('uses the shared image classifier and admits only exact loopback media in the viewer', async () => {
+  it('routes cast-card, viewer and profile-preview images through the shared guard and image classifier', async () => {
     expect(castCard).toContain('hasImageEmbed({ ...cast, embeds: [{ url }] })');
-    const viewerPath = fileURLToPath(new URL('../src/components/MediaViewer.tsx', import.meta.url));
-    const viewer = await fs.readFile(viewerPath, 'utf8');
-    const transformedViewer = replaceTestMediaGuards(replaceTestOrigins(viewer, origin), viewerPath, origin);
-    const expression = transformedViewer.match(/return (\(url\.protocol.*?)\; } catch/)?.[1];
-    expect(expression).toBeTruthy();
-    const accepted = new Function('url', `return ${expression};`);
-    expect(accepted(new URL(media))).toBe(true);
-    for (const rejected of [`http://127x0x0x1:5187/media/${'a'.repeat(64)}`, `http://127.0.0.1:5188/media/${'a'.repeat(64)}`, `${media}/extra`, `${origin}/media/${'a'.repeat(63)}`, `http://user@127.0.0.1:5187/media/${'a'.repeat(64)}`]) expect(accepted(new URL(rejected))).toBe(false);
-    expect(viewer).toContain("url.protocol === 'https:' && !url.username && !url.password");
+    for (const relative of ['../src/App.tsx', '../src/components/CastCard.tsx', '../src/components/MediaViewer.tsx', '../src/components/EditProfileDialog.tsx']) {
+      const source = await fs.readFile(fileURLToPath(new URL(relative, import.meta.url)), 'utf8');
+      expect(source).toContain("import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';");
+      expect(source).not.toMatch(/(?:url|parsed)\.protocol === 'https:'/);
+    }
   });
 
   it('transforms extracted shared sources in both build adapters while excluding dependencies and paths outside the workspaces', async () => {

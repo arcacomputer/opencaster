@@ -1,4 +1,5 @@
 import type { Channel } from '@opencaster/client-core/api';
+import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
 
 // Local shortcut snapshots only. These platform-independent validation helpers
 // are migration candidates for a future shared Hypersnap client package.
@@ -7,14 +8,8 @@ export const CHANNEL_PINS_STORAGE_KEY = 'arca.hypersnap.channels.saved.v1';
 const MAX_STORED_BYTES = 256 * 1024;
 interface PinStorage { getItem(key: string): string | null; setItem(key: string, value: string): void }
 
-function safeHttps(value: unknown, maxLength: number): string | undefined {
-  if (typeof value !== 'string' || value.length > maxLength) return;
-  try {
-    const url = new URL(value);
-    // Parent URLs are protocol identifiers, so preserve their exact bytes.
-    if (url.protocol === 'https:' && !url.username && !url.password) return value;
-  } catch { /* An unusable optional image or URL does not invalidate the ID. */ }
-}
+// Parent URLs are protocol identifiers, so preserve their exact bytes.
+const safeHttps = (value: unknown, maxLength: number) => safeHttpsUrl(value, { maxLength, preserve: true });
 
 // Defaults are the channel-pin storage format; other stored formats (bookmarks)
 // pass their own compatibility settings.

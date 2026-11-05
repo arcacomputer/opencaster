@@ -1,4 +1,5 @@
 import type { Cast, User } from '@opencaster/client-core/api';
+import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
 import { channelSnapshot } from './channelPins';
 
 // Public local snapshots only. Validation/filtering can move to a future shared
@@ -16,10 +17,7 @@ const fid = (value: unknown): value is number => Number.isSafeInteger(value) && 
 const text = (value: unknown, length: number) => typeof value === 'string' ? value.slice(0, length) : '';
 const count = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : 0;
 export function bookmarkHash(value: unknown): string | undefined { return typeof value === 'string' && /^(?:0x)?[a-fA-F0-9]{40}$/.test(value) ? `0x${value.replace(/^0x/, '').toLowerCase()}` : undefined; }
-function https(value: unknown): string | undefined {
-  if (typeof value !== 'string' || value.length > 2048) return;
-  try { const url = new URL(value); if (url.protocol === 'https:' && !url.username && !url.password) return value; } catch { /* Discard an unusable optional URL. */ }
-}
+const https = (value: unknown) => safeHttpsUrl(value, { maxLength: 2048, preserve: true });
 function userSnapshot(value: unknown): User | undefined {
   if (!object(value) || !fid(value.fid)) return;
   const username = typeof value.username === 'string' && (value.username === '' || value.username === `fid:${value.fid}` || /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(value.username)) ? value.username : '';

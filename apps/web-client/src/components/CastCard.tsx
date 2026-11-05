@@ -14,14 +14,15 @@ import { emptyContentPreferences, getContentFilterReason, type ContentPreference
 import { matchesParentCast, parentCastReference } from '../lib/castContext';
 import { textLinks } from '../lib/textLinks';
 import { quorumSocialPath } from '../lib/socialLinks';
-import { castPreviewText, relativeTime, safeUrl, short } from '../lib/castDisplay';
+import { castPreviewText, relativeTime, short } from '../lib/castDisplay';
+import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
 
 export const ContentControls = createContext<{ preferences: ContentPreferences; revealed: ReadonlySet<string>; reveal(hash: string): void }>({ preferences: emptyContentPreferences(), revealed: new Set(), reveal() {} });
 export const ParentCastRead = createContext<typeof getCast>(getCast);
 export type ReplyPresentation = { parent?: Cast; replyPreview?: boolean };
 export function Avatar({ user, large = false }: { user?: User; large?: boolean }) {
   const [failedUrl, setFailedUrl] = useState('');
-  const url = safeUrl(user?.pfp_url);
+  const url = safeHttpsUrl(user?.pfp_url);
   return <span className={`avatar ${large ? 'avatar--large' : ''}`}>{url && failedUrl !== url ? <img src={url} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailedUrl(url)} /> : (user?.display_name || user?.username || 'O').slice(0, 2).toUpperCase()}</span>;
 }
 export function LinkedText({ text, onNavigate }: { text: string; onNavigate(path: string): void }) {
@@ -37,11 +38,11 @@ export function LinkedText({ text, onNavigate }: { text: string; onNavigate(path
   })}</>;
 }
 function CastText({ cast, onProfile, onNavigate }: { cast: Cast; onProfile(user: User): void; onNavigate(path: string): void }) {
-  const attachmentUrls = useMemo(() => cast.embeds?.filter((embed): embed is { url: string } => 'url' in embed && !!safeUrl(embed.url)).slice(0, 2).map(embed => safeUrl(embed.url)) ?? [], [cast.embeds]);
+  const attachmentUrls = useMemo(() => cast.embeds?.filter((embed): embed is { url: string } => 'url' in embed && !!safeHttpsUrl(embed.url)).slice(0, 2).map(embed => safeHttpsUrl(embed.url)) ?? [], [cast.embeds]);
   const { text, mentioned_profiles: mentionedProfiles, mentioned_profiles_ranges: mentionedRanges } = cast;
   const segments = useMemo(() => renderMentionSegments({ text, mentioned_profiles: mentionedProfiles, mentioned_profiles_ranges: mentionedRanges }), [text, mentionedProfiles, mentionedRanges]);
   const hiddenLines = useMemo(() => new Set(segments.map(segment => segment.kind === 'text' ? segment.text : '\ufffc').join('').split('\n').flatMap((line, index) => {
-    const url = safeUrl(line.trim());
+    const url = safeHttpsUrl(line.trim());
     return url && attachmentUrls.includes(url) ? [index] : [];
   })), [segments, attachmentUrls]);
   let lineIndex = 0;
@@ -106,13 +107,13 @@ function QuotedCast({ target, onThread, getCastPath }: { getCastPath(cast: Cast)
   }, [readParentCast, target.hash, target.fid]);
   const reason = cast && !controls.revealed.has(bookmarkHash(cast.hash)!) ? getContentFilterReason(cast, controls.preferences) : undefined;
   if (reason) return <div className="filtered-cast"><p>Quoted cast filtered: {reason}</p><Button variant="ghost" onClick={() => controls.reveal(cast!.hash)}>Show this quote for this view</Button></div>;
-  const quoteImages = cast?.embeds.filter((embed): embed is { url: string } => 'url' in embed && !!safeUrl(embed.url) && hasImageEmbed({ ...cast, embeds: [embed] })).slice(0, 2) ?? [];
+  const quoteImages = cast?.embeds.filter((embed): embed is { url: string } => 'url' in embed && !!safeHttpsUrl(embed.url) && hasImageEmbed({ ...cast, embeds: [embed] })).slice(0, 2) ?? [];
   return <a data-analytics="cast-open" className="quoted-cast" href={cast ? getCastPath(cast) : castPath(target.hash)} onClick={event => { if (cast) localClick(event, () => onThread(cast)); }}>
       {cast ? <><span className="quoted-cast__author"><Avatar user={cast.author} /><strong>{cast.author.username || cast.author.display_name || `FID ${target.fid}`}</strong><time dateTime={cast.timestamp}>{relativeTime(cast.timestamp)}</time></span><span className="quoted-cast__text">{castPreviewText(cast)}</span>{quoteImages.length > 0 && <span className="quoted-cast__images">{quoteImages.map(embed => <img key={embed.url} src={embed.url} alt="Image attached to quoted cast" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={event => { event.currentTarget.hidden = true; }} />)}</span>}</> : <span>{unavailable ? 'Quoted cast unavailable or deleted' : 'Loading quoted cast…'}</span>}
   </a>;
 }
 export const CastCard = memo(function CastCard({ cast, dark, featured = false, fullHashLinks = false, parent, replyPreview = true, getCastPath, onProfile, onNavigate, onThread, onShare, onQuote, onDelete, reactionActor, onCastHash, onImages, onOptions, session, onSignIn, saved, onSave, notify }: { cast: Cast; dark: boolean; featured?: boolean; fullHashLinks?: boolean; getCastPath(cast: Cast): string; onProfile(user: User): void; onNavigate(path: string): void; onThread(cast: Cast): void; onShare(cast: Cast): void; onQuote(cast: Cast): void; onDelete(cast: Cast): void; reactionActor?: User; onCastHash(hash: string): void; onImages(images: CastImage[], initialIndex: number): void; onOptions(cast: Cast): void; session: WalletSession | null; onSignIn(): void; saved: boolean; onSave(cast: Cast): void; notify(text: string): void } & ReplyPresentation) {
-  const urls = useMemo(() => cast.embeds?.filter((embed): embed is { url: string } => 'url' in embed && !!safeUrl(embed.url)).slice(0, 2) ?? [], [cast.embeds]);
+  const urls = useMemo(() => cast.embeds?.filter((embed): embed is { url: string } => 'url' in embed && !!safeHttpsUrl(embed.url)).slice(0, 2) ?? [], [cast.embeds]);
   const isImage = (url: string) => hasImageEmbed({ ...cast, embeds: [{ url }] });
   const images = useMemo(() => urls.filter(embed => isImage(embed.url)).map((embed, index) => ({ url: embed.url, alt: `Image ${index + 1} attached to cast by @${cast.author.username || cast.author.fid}` })), [urls, cast]);
   const [expanded, setExpanded] = useState(false);

@@ -5,6 +5,7 @@ import { profilePath } from '@opencaster/client-core/navigation';
 import { usePagedRead } from '../lib/usePagedRead';
 import { Button, Modal } from './ui';
 import '../social.scss';
+import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
 
 export interface FollowPage { users: User[]; next: { cursor?: string | null } }
 export interface FollowPageOptions { fid: number; kind: 'followers' | 'following'; cursor?: string | null; signal?: AbortSignal }
@@ -20,11 +21,6 @@ const FOLLOW_LIST_READ = {
   repeatedStatus: 'You have reached the end of the available list.',
   errorFallback: 'This list could not be loaded.',
 };
-
-function safeImage(url: string): boolean {
-  try { const parsed = new URL(url); return parsed.protocol === 'https:' && !parsed.username && !parsed.password; }
-  catch { return false; }
-}
 
 export default function FollowListDialog({ user, kind, loadPage, onProfile, onClose }: Props) {
   const { items: users, cursor, busy, error, loaded, status, cancel, more, retry } = usePagedRead<User>(`${user.fid}:${kind}`, true, async (nextCursor, signal) => {
@@ -42,7 +38,7 @@ export default function FollowListDialog({ user, kind, loadPage, onProfile, onCl
     <div className="follow-list" aria-busy={busy}>
       <p className="social-intro">{kind === 'followers' ? 'People following this profile on Hypersnap.' : 'People this profile follows on Hypersnap.'}</p>
       {users.length > 0 && <ul className="follow-list__people">{users.map(person => <li key={person.fid}><a href={profilePath(person.fid)} onClick={event => visit(event, person)}>
-        {person.pfp_url && safeImage(person.pfp_url) ? <img src={person.pfp_url} alt="" width={44} height={44} loading="lazy" referrerPolicy="no-referrer" /> : <span className="follow-list__fallback" aria-hidden="true">{(person.display_name || person.username || String(person.fid)).slice(0, 1).toUpperCase()}</span>}
+        {person.pfp_url && safeHttpsUrl(person.pfp_url) ? <img src={person.pfp_url} alt="" width={44} height={44} loading="lazy" referrerPolicy="no-referrer" /> : <span className="follow-list__fallback" aria-hidden="true">{(person.display_name || person.username || String(person.fid)).slice(0, 1).toUpperCase()}</span>}
         <span className="follow-list__identity"><strong>{person.display_name || person.username || `FID ${person.fid}`}</strong><span>@{person.username || person.fid}</span>{person.profile?.bio?.text && <span className="follow-list__bio">{person.profile.bio.text}</span>}</span><IconChevronRight size={17} aria-hidden="true" />
       </a></li>)}</ul>}
       {loaded && !users.length && !busy && !error && <div className="social-empty"><IconUsers size={28} /><p>{kind === 'followers' ? 'No followers to show yet.' : 'No followed profiles to show yet.'}</p></div>}

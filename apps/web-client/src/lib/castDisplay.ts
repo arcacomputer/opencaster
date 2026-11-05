@@ -3,9 +3,6 @@ import type { Cast } from '@opencaster/client-core/api';
 
 const compactNumber = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 export const short = (value: number = 0) => compactNumber.format(value);
-export function safeUrl(value?: string): string | undefined {
-  try { const url = new URL(value ?? ''); return url.protocol === 'https:' && !url.username && !url.password ? url.href : undefined; } catch { return undefined; }
-}
 export function relativeTime(timestamp: string) {
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(timestamp).getTime()) / 60000));
   if (minutes < 1) return 'now';

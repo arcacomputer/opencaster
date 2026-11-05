@@ -5,6 +5,7 @@ import { profilePath } from '@opencaster/client-core/navigation';
 import { LOADING_CANCELLED, usePagedRead, type PagedRead } from '../lib/usePagedRead';
 import { Button, Modal } from './ui';
 import '../community.scss';
+import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
 
 const COMMUNITY_READ = {
   maxItems: 500,
@@ -18,8 +19,7 @@ function localProfile(event: MouseEvent<HTMLAnchorElement>, visit: () => void) {
 }
 function Person({ user, onProfile }: { user: User; onProfile(user: User): void }) {
   const [failedImage, setFailedImage] = useState('');
-  let image: string | undefined;
-  try { const url = new URL(user.pfp_url ?? ''); if (url.protocol === 'https:' && !url.username && !url.password) image = url.href; } catch { /* Initials remain available. */ }
+  const image = safeHttpsUrl(user.pfp_url);
   return <li className="community-person"><a href={profilePath(user.fid)} onClick={event => localProfile(event, () => onProfile(user))}>
     {image && image !== failedImage ? <img src={image} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailedImage(image!)} /> : <span className="community-person__avatar" aria-hidden="true">{(user.display_name || user.username || String(user.fid)).slice(0, 1).toUpperCase()}</span>}
     <span className="community-person__identity"><strong>{user.display_name || user.username || `FID ${user.fid}`}</strong><span>@{user.username || user.fid}</span>{user.profile?.bio?.text ? <small>{user.profile.bio.text}</small> : null}</span><IconChevronRight size={16} aria-hidden="true" />
