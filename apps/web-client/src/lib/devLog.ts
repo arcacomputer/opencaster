@@ -71,6 +71,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'shared-api-request-rules',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:17Z',
+    title: 'Keep app and gateway request checks in step',
+    summary: 'The app and the Opencaster gateway now read their request formats and page limits from one shared definition, so a lookup the app allows is never rejected by the gateway as an invalid query. Accepted values and limits are unchanged; there is no visible change.',
+    changes: [
+      'Cast hashes, wallet addresses, channel IDs, pagination cursors, search text and per-list page sizes are defined once and used by both the app and the gateway allowlist.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/6b21f26844eb44b27be7817d1489bd9c06235775',
+    tag: 'Reliability',
+  },
+  {
     id: 'shared-cast-alias-history-checks',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:45:14Z',

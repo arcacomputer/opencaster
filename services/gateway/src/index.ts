@@ -4,6 +4,7 @@
 import { handleMediaRequest, type MediaEnv } from './media';
 import { APP_ORIGIN } from '@opencaster/client-core/appOrigins';
 import { normalizeHypersnapEnsName } from '@opencaster/client-core/ensName';
+import { API_LIMITS, CAST_HASH, CHANNEL_ID, PAGE_CURSOR, WALLET_ADDRESS, validDecimalCursor, validPageToken, validSearchQuery } from '@opencaster/client-core/apiRules';
 import { handleAnalyticsEvents, recordRequestMetric, type AnalyticsEnv } from './analytics';
 import { fetchUpstream, InvalidUpstreamResponseError, parseUpstreamObject, resolveReadFallback, resolveUpstream, validTimelineCursor, type UpstreamConfig } from './upstream';
 import { withShareUrl } from './sharing';
@@ -71,18 +72,18 @@ type QueryRules = Record<string, Rule>;
 const integer = (max: number, min = 1): Rule => value => /^\d{1,16}$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) >= min && Number(value) <= max;
 const fid = integer(Number.MAX_SAFE_INTEGER);
 const fidList = (max: number): Rule => value => { const fids = value.split(','); return fids.length <= max && new Set(fids).size === fids.length && fids.every(fid); };
-const address: Rule = value => /^0x[a-fA-F0-9]{40}$/.test(value);
-const hash: Rule = value => /^(?:0x)?[a-fA-F0-9]{40}$/.test(value);
+const address: Rule = value => WALLET_ADDRESS.test(value);
+const hash: Rule = value => CAST_HASH.test(value);
 const username: Rule = value => /^[a-zA-Z0-9_.-]{1,128}$/.test(value);
 const ensName: Rule = value => { try { return normalizeHypersnapEnsName(value).name === value; } catch { return false; } };
-const channel: Rule = value => /^[a-zA-Z0-9_-]{1,64}$/.test(value);
-// eslint-disable-next-line no-control-regex -- Gateway search validation intentionally rejects ASCII control characters.
-const searchQuery: Rule = value => !!value.trim() && new TextEncoder().encode(value).length <= 256 && !/[\u0000-\u001f\u007f]/.test(value);
-const cursor: Rule = value => /^[a-zA-Z0-9_+/=:-]{1,2048}$/.test(value);
-const pagination: QueryRules = { limit: integer(100), cursor };
-const followPagination: QueryRules = { limit: integer(100), cursor: value => /^\d{1,20}$/.test(value) && BigInt(value) <= 0xffffffffffffffffn };
+const channel: Rule = value => CHANNEL_ID.test(value);
+const searchQuery: Rule = validSearchQuery;
+const cursor: Rule = value => PAGE_CURSOR.test(value);
+const pageLimit = integer(API_LIMITS.page);
+const pagination: QueryRules = { limit: pageLimit, cursor };
+const followPagination: QueryRules = { limit: pageLimit, cursor: validDecimalCursor };
 const reactionType: Rule = value => value === 'Like' || value === 'Recast';
-const reactionPageToken: Rule = value => value.length > 0 && value.length <= 2048 && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
+const reactionPageToken: Rule = validPageToken;
 const castHistoryPageToken: Rule = value => { try { return reactionPageToken(value) && btoa(atob(value)) === value; } catch { return false; } };
 
 interface Endpoint { required?: string[]; query: QueryRules; validate?: (params: URLSearchParams) => boolean }
@@ -94,12 +95,12 @@ const READ_ENDPOINTS: Record<string, Endpoint> = {
   '/v1/onChainIdRegistryEventByAddress': { required: ['address'], query: { address } },
   '/v1/linkById': { required: ['fid', 'link_type', 'target_fid'], query: { fid, link_type: value => value === 'follow', target_fid: fid } },
   '/v1/reactionById': { required: ['fid', 'reaction_type', 'target_fid', 'target_hash'], query: { fid, reaction_type: reactionType, target_fid: fid, target_hash: hash } },
-  '/v1/reactionsByFid': { required: ['fid', 'reaction_type', 'pageSize', 'reverse'], query: { fid, reaction_type: reactionType, pageSize: integer(100), pageToken: reactionPageToken, reverse: value => value === 'true' || value === 'false' } },
-  '/v1/reactionsByCast': { required: ['target_fid', 'target_hash', 'reaction_type', 'pageSize', 'reverse'], query: { target_fid: fid, target_hash: hash, reaction_type: reactionType, pageSize: integer(25), pageToken: reactionPageToken, reverse: value => value === 'true' } },
+  '/v1/reactionsByFid': { required: ['fid', 'reaction_type', 'pageSize', 'reverse'], query: { fid, reaction_type: reactionType, pageSize: pageLimit, pageToken: reactionPageToken, reverse: value => value === 'true' || value === 'false' } },
+  '/v1/reactionsByCast': { required: ['target_fid', 'target_hash', 'reaction_type', 'pageSize', 'reverse'], query: { target_fid: fid, target_hash: hash, reaction_type: reactionType, pageSize: integer(API_LIMITS.castReactions), pageToken: reactionPageToken, reverse: value => value === 'true' } },
   '/v2/farcaster/user': { required: ['fid'], query: { fid } },
-  '/v2/farcaster/user/bulk': { required: ['fids'], query: { fids: fidList(100) } },
+  '/v2/farcaster/user/bulk': { required: ['fids'], query: { fids: fidList(API_LIMITS.bulkUsers) } },
   '/v2/farcaster/user/by-username': { required: ['username'], query: { username } },
-  '/v2/farcaster/user/search': { required: ['q'], query: { q: searchQuery, limit: integer(100) } },
+  '/v2/farcaster/user/search': { required: ['q'], query: { q: searchQuery, limit: pageLimit } },
   '/v2/farcaster/user/custody-address': { required: ['custody_address'], query: { custody_address: address } },
   '/v2/farcaster/user/followers': { required: ['fid'], query: { ...followPagination, fid } },
   '/v2/farcaster/user/following': { required: ['fid'], query: { ...followPagination, fid } },
@@ -108,16 +109,16 @@ const READ_ENDPOINTS: Record<string, Endpoint> = {
   '/v2/farcaster/feed/user/casts': { required: ['fid'], query: { ...pagination, fid: integer(0xffffffff) }, validate: params => !params.has('cursor') || validTimelineCursor(params.get('cursor')!, params.get('fid')!) },
   '/v2/farcaster/feed/channels': { required: ['channel_ids'], query: { ...pagination, channel_ids: channel } },
   '/v2/farcaster/cast': { required: ['identifier'], query: { identifier: hash, type: value => value === 'hash', fid } },
-  '/v2/farcaster/cast/search': { required: ['q'], query: { q: searchQuery, limit: integer(100) } },
+  '/v2/farcaster/cast/search': { required: ['q'], query: { q: searchQuery, limit: pageLimit } },
   '/v2/farcaster/cast/conversation': { required: ['identifier', 'type'], query: { identifier: hash, type: value => value === 'hash', reply_depth: integer(3, 0) } },
   '/v2/farcaster/notifications': { required: ['fid'], query: { ...pagination, fid } },
   '/v2/farcaster/channel': { required: ['id', 'type'], query: { id: channel, type: value => value === 'id' } },
   '/v2/farcaster/channel/all': { query: pagination },
-  '/v2/farcaster/channel/trending': { query: { limit: integer(100) } },
-  '/v2/farcaster/channel/search': { required: ['q'], query: { q: searchQuery, limit: integer(100) } },
-  '/v2/farcaster/following/suggested': { required: ['fid', 'limit'], query: { fid, limit: integer(20) } },
-  '/v2/farcaster/channel/members': { required: ['channel_id', 'limit'], query: { channel_id: channel, limit: integer(25), cursor: followPagination.cursor } },
-  '/v2/farcaster/cast/quotes': { required: ['identifier', 'type', 'limit'], query: { identifier: hash, type: value => value === 'hash', limit: integer(25) } },
+  '/v2/farcaster/channel/trending': { query: { limit: pageLimit } },
+  '/v2/farcaster/channel/search': { required: ['q'], query: { q: searchQuery, limit: pageLimit } },
+  '/v2/farcaster/following/suggested': { required: ['fid', 'limit'], query: { fid, limit: integer(API_LIMITS.suggestedUsers) } },
+  '/v2/farcaster/channel/members': { required: ['channel_id', 'limit'], query: { channel_id: channel, limit: integer(API_LIMITS.channelMembers), cursor: followPagination.cursor } },
+  '/v2/farcaster/cast/quotes': { required: ['identifier', 'type', 'limit'], query: { identifier: hash, type: value => value === 'hash', limit: integer(API_LIMITS.castQuotes) } },
 };
 
 // Global reads whose responses never depend on the viewer. They are shared at

@@ -1,5 +1,6 @@
 import { APP_ORIGIN } from '@opencaster/client-core/appOrigins';
 import { CUSTOM_FEED_TOKEN_LIMIT, decodeFeed, encodeFeed } from '@opencaster/client-core/customFeeds';
+import { CHANNEL_ID } from '@opencaster/client-core/apiRules';
 import type { AppRoute } from '@opencaster/client-core/navigation';
 import { loadShareData, type ShareData } from './shareData';
 import { buildShareSvg } from './shareLayout';
@@ -29,8 +30,8 @@ export function shareImageRoute(url: URL): AppRoute | undefined {
     return definition ? { kind: 'feed', token: encodeFeed(definition) } : undefined;
   }
   if (url.search) return;
-  const channel = /^\/_share\/v1\/channel\/([a-zA-Z0-9_-]{1,64})\.png$/.exec(url.pathname);
-  if (channel) return { kind: 'channel', channel: channel[1] };
+  const channel = /^\/_share\/v1\/channel\/(.+)\.png$/.exec(url.pathname);
+  if (channel && CHANNEL_ID.test(channel[1])) return { kind: 'channel', channel: channel[1] };
   const profile = /^\/_share\/v1\/profile\/([1-9]\d{0,9})\.png$/.exec(url.pathname);
   const cast = /^\/_share\/v1\/cast\/([1-9]\d{0,9})\/([a-f0-9]{40})\.png$/.exec(url.pathname);
   const fid = Number(profile?.[1] ?? cast?.[1]);
