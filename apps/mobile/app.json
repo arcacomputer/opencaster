@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "OpenCaster",
+    "slug": "opencaster",
+    "scheme": "opencaster",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "platforms": [
+      "android",
+      "ios"
+    ],
+    "ios": {
+      "bundleIdentifier": "org.opencaster.app"
+    },
+    "android": {
+      "package": "org.opencaster.app"
+    }
+  }
+}

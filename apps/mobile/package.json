@@ -1,0 +1,31 @@
+{
+  "name": "@opencaster/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "main": "expo/AppEntry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "typecheck": "tsc --noEmit",
+    "test": "yarn --cwd ../.. test apps/mobile",
+    "build": "yarn typecheck && expo export --platform all --output-dir dist"
+  },
+  "dependencies": {
+    "@opencaster/client-core": "0.2.1",
+    "@react-navigation/native": "7.5.1",
+    "@react-navigation/native-stack": "7.21.0",
+    "expo": "~55.0.32",
+    "expo-dev-client": "~55.0.41",
+    "react": "19.2.0",
+    "react-native": "0.83.10",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.23.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@types/react": "~19.2.0",
+    "typescript": "^5.9.3"
+  }
+}

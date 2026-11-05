@@ -6,6 +6,7 @@ import { normalizeHypersnapEnsName } from './ensName';
 import { isUploadedMediaLocation } from './appOrigins';
 import { FARCASTER_EPOCH_SECONDS } from './farcasterEpoch';
 import { castHistoryCursorKey, castHistoryHash, castHistoryMessageKey, validCastHistoryMessage } from './castHistory';
+import { API_BASE, API_REQUEST_OPTIONS } from './apiBase';
 import { isProfileTab, type ProfileTab } from './navigation';
 
 export interface User {
@@ -121,7 +122,6 @@ export class ApiError extends Error {
   }
 }
 
-const API_BASE = '/api';
 const REQUEST_TIMEOUT_MS = 25_000;
 const SUBMISSION_UNKNOWN = 'Submission status is unknown. Check your profile or signer state before trying again.';
 const HASH = /^(?:0x)?[a-fA-F0-9]{40}$/;
@@ -158,6 +158,24 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+function namedError(message: string, name: string): Error {
+  const error = new Error(message);
+  error.name = name;
+  return error;
+}
+
+function abortError(signal?: AbortSignal): Error {
+  return signal?.reason instanceof Error ? signal.reason : namedError('The operation was aborted.', 'AbortError');
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw abortError(signal);
+}
+
+function isNamedError(value: unknown, name: string): boolean {
+  return value instanceof Error && value.name === name;
+}
+
 function publicUser(value: unknown): value is User {
   return isObject(value) && Number.isSafeInteger(value.fid) && Number(value.fid) > 0 && typeof value.username === 'string';
 }
@@ -169,7 +187,8 @@ function nextCursor(value: unknown, previous?: string | null): string | null {
   // all-null array. The isolated node has one shard; production can have more.
   if (/^(?:[a-f0-9]{2})+$/i.test(value)) {
     try {
-      const decoded: unknown = JSON.parse(new TextDecoder().decode(Uint8Array.from(value.match(/../g)!, byte => parseInt(byte, 16))));
+      const decodedText = value.match(/../g)!.map(byte => String.fromCharCode(parseInt(byte, 16))).join('');
+      const decoded: unknown = JSON.parse(decodedText);
       if (Array.isArray(decoded) && decoded.length > 0 && decoded.every(token => token === null)) return null;
     } catch { /* Most valid cursors are opaque binary keys, not JSON. */ }
   }
@@ -188,18 +207,18 @@ function searchQuery(value: string): string {
  * undefined; caller cancellation always rethrows the caller's abort reason.
  */
 async function withDeadline<T>(signal: AbortSignal | undefined, timeoutLabel: string, timeoutMessage: string | undefined, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
-  signal?.throwIfAborted();
+  throwIfAborted(signal);
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   signal?.addEventListener('abort', abort, { once: true });
-  const timeout = setTimeout(() => controller.abort(new DOMException(timeoutLabel, 'TimeoutError')), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(namedError(timeoutLabel, 'TimeoutError')), REQUEST_TIMEOUT_MS);
   try {
     return await run(controller.signal);
   } catch (error) {
-    const timedOut = controller.signal.aborted && !signal?.aborted && controller.signal.reason instanceof DOMException && controller.signal.reason.name === 'TimeoutError';
+    const timedOut = controller.signal.aborted && !signal?.aborted && isNamedError(controller.signal.reason, 'TimeoutError');
     controller.abort(error); // Cancel any work still pending on this deadline.
     if (timedOut && timeoutMessage !== undefined) throw new ApiError(timeoutMessage, 504, 'timeout');
-    signal?.throwIfAborted();
+    throwIfAborted(signal);
     throw error;
   } finally {
     clearTimeout(timeout);
@@ -213,12 +232,12 @@ async function requestJson<T>(path: string, params?: URLSearchParams, signal?: A
     return await withDeadline(signal, 'Request timed out', body ? undefined : 'The node took too long to respond. Try again.', async deadline => {
       const query = params?.toString();
       const response = await fetch(`${API_BASE}${path}${query ? `?${query}` : ''}`, {
+        ...API_REQUEST_OPTIONS,
         method: body ? 'POST' : 'GET',
-        headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/octet-stream' } : {}) },
+        headers: { ...API_REQUEST_OPTIONS.headers, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/octet-stream' } : {}) },
         body: body ? new Uint8Array(body).buffer : undefined,
         signal: deadline,
         credentials: 'omit',
-        cache: 'no-store',
         referrerPolicy: 'no-referrer',
       });
       const result: unknown = await response.json().catch(() => null);
@@ -325,13 +344,13 @@ async function mapPublicReads<T, R>(items: T[], read: (item: T, signal: AbortSig
   try {
     await Promise.all(Array.from({ length: Math.min(4, items.length) }, async () => {
       while (index < items.length) {
-        controller.signal.throwIfAborted();
+        throwIfAborted(controller.signal);
         const current = index++;
         try { results[current] = await read(items[current], controller.signal); }
         catch (error) { controller.abort(error); throw error; }
       }
     }));
-    controller.signal.throwIfAborted();
+    throwIfAborted(controller.signal);
     return results;
   } finally { signal?.removeEventListener('abort', abort); }
 }
@@ -383,7 +402,7 @@ function startFlight<T>(load: (signal: AbortSignal) => Promise<T>): { flight: Pu
 
 /** Each caller gets its own copy, so later edits cannot alter the memo. */
 async function awaitShared<V>(entry: PublicReadEntry<V>, signal?: AbortSignal): Promise<V> {
-  signal?.throwIfAborted();
+  throwIfAborted(signal);
   const { flight } = entry;
   flight.waiters++;
   let onAbort: (() => void) | undefined;
@@ -499,7 +518,7 @@ export async function getCastReactionPeople(options: { target: ReactionTarget; t
     }
     const cursor = reactionCursor(response.nextPageToken, options.cursor);
     const users = await getPublicUsers([...actorFids], deadline);
-    deadline.throwIfAborted();
+    throwIfAborted(deadline);
     return { users, next: { cursor } };
   });
 }
@@ -674,7 +693,7 @@ export function clearReactionStatusCache(): void {
  * Results are cached per viewer and target; `fresh` always reads the node. */
 export async function getReactionStatus(viewerFid: number, target: ReactionTarget, type: ReactionKind, signal?: AbortSignal, options?: { fresh?: boolean; castTimestamp?: string }): Promise<boolean> {
   const key = reactionStatusKey(viewerFid, target, type);
-  signal?.throwIfAborted();
+  throwIfAborted(signal);
   let entry = options?.fresh ? undefined : reactionStatusCache.get(key);
   if (entry && entry.expires <= Date.now()) { reactionStatusCache.delete(key); entry = undefined; }
   if (entry) storeReactionStatus(key, entry);
@@ -684,7 +703,7 @@ export async function getReactionStatus(viewerFid: number, target: ReactionTarge
       const { key: windowKey, entry: windowEntry } = getReactionWindowRead(viewerFid, type);
       let window: ReactionWindow | undefined;
       try { window = await awaitReactionWindow(windowKey, windowEntry, signal); }
-      catch { signal?.throwIfAborted(); }
+      catch { throwIfAborted(signal); }
       if (window && reactionWindowCache.get(windowKey) === windowEntry) {
         entry = reactionStatusCache.get(key);
         if (entry && entry.expires <= Date.now()) { reactionStatusCache.delete(key); entry = undefined; }
@@ -753,7 +772,7 @@ async function readProfileReactions(options: { fid: number; tab: 'likes' | 'reca
   const seen = new Set<string>();
   if (cursor) reactionCursor(cursor);
   for (let page = 0; page < 5; page++) {
-    options.signal?.throwIfAborted();
+    throwIfAborted(options.signal);
     if (cursor) {
       if (seen.has(cursor)) throw new ApiError('The node returned invalid reaction pagination.', 502, 'invalid_response');
       seen.add(cursor);
@@ -875,10 +894,10 @@ export async function searchCasts(options: { query: string; limit?: number; sign
           if (!(error instanceof ApiError && error.status === 404 && error.code === 'cast_not_found')) throw error;
         }
       }
-      throw deadline.reason ?? new DOMException('Search cancelled.', 'AbortError');
+      throw abortError(deadline);
     };
     await Promise.all(Array.from({ length: Math.min(4, hits.length) }, worker));
-    if (deadline.aborted) throw deadline.reason ?? new DOMException('Search cancelled.', 'AbortError');
+    throwIfAborted(deadline);
     // The current index ignores cursors and always returns its ranked top N.
     return { casts: hydrated.filter((cast): cast is Cast => cast !== undefined), next: { cursor: null } };
   });
@@ -986,11 +1005,11 @@ async function getUserByEnsName(input: string, signal?: AbortSignal): Promise<Us
   const { name, type } = normalizeHypersnapEnsName(input);
   return withDeadline(signal, 'Account name lookup timed out', 'Account name lookup took too long to respond. Try again.', async deadline => {
     const proof = await requestJson<{ fid?: unknown }>('/v1/fidByName', new URLSearchParams({ name, type }), deadline);
-    if (deadline.aborted) throw deadline.reason ?? new DOMException('Account lookup cancelled.', 'AbortError');
+    throwIfAborted(deadline);
     if (!Number.isSafeInteger(proof.fid) || Number(proof.fid) < 1 || Number(proof.fid) > 0xffffffff) throw new ApiError('The node returned an invalid account name proof.', 502, 'invalid_response');
     const fid = proof.fid as number;
     const user = await getUser({ fid }, deadline);
-    if (deadline.aborted) throw deadline.reason ?? new DOMException('Account lookup cancelled.', 'AbortError');
+    throwIfAborted(deadline);
     if (user.fid !== fid) throw new ApiError('The node returned a different account for this name proof.', 502, 'invalid_response');
     return user;
   });
@@ -1101,10 +1120,10 @@ function castLinkFid(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) > 0 && Number(value) <= 0xffffffff;
 }
 async function getAuthorCast(fid: number, hash: string, signal: AbortSignal): Promise<Cast> {
-  signal.throwIfAborted();
+  throwIfAborted(signal);
   const fullHash = hashValue(hash);
   const response = await requestJson<{ cast?: unknown }>('/v2/farcaster/cast', new URLSearchParams({ identifier: fullHash, type: 'hash', fid: String(fid) }), signal);
-  signal.throwIfAborted();
+  throwIfAborted(signal);
   const cast = response.cast;
   if (!isObject(cast) || typeof cast.hash !== 'string' || !HASH.test(cast.hash) || hashValue(cast.hash) !== fullHash
     || !isObject(cast.author) || cast.author.fid !== fid || typeof cast.text !== 'string'
@@ -1143,13 +1162,13 @@ export async function resolveCastAlias(options: {
   }
   return withDeadline(options.signal, 'Cast link lookup timed out.', 'Cast link lookup took too long. Try again.', async deadline => {
     const author = await getUser(numericAuthor ? { fid: Number(authorIdentifier) } : { username: authorIdentifier }, deadline);
-    deadline.throwIfAborted();
+    throwIfAborted(deadline);
     if (!castLinkFid(author.fid) || (numericAuthor && author.fid !== Number(authorIdentifier))) throw new ApiError('The node returned a different or invalid author.', 502, 'invalid_response');
     if (state && state.fid !== author.fid) throw new ApiError('This username now belongs to a different account. Start the lookup again.', 409, 'account_changed');
     if (hashPrefix.length === 42) {
       try { return { author, candidates: [await getAuthorCast(author.fid, hashPrefix, deadline)], complete: true, scanned: 0 }; }
       catch (error) {
-        deadline.throwIfAborted();
+        throwIfAborted(deadline);
         if (error instanceof ApiError && error.status === 404 && error.code === 'cast_not_found') return { author, candidates: [], complete: true, scanned: 0 };
         throw error;
       }
@@ -1168,17 +1187,17 @@ export async function resolveCastAlias(options: {
       const matches = await mapPublicReads(pending, async (hash, signal) => {
         try { return await getAuthorCast(author.fid, hash, signal); }
         catch (error) {
-          signal.throwIfAborted();
+          throwIfAborted(signal);
           if (error instanceof ApiError && error.status === 404 && error.code === 'cast_not_found') return null;
           throw error;
         }
       }, deadline);
-      deadline.throwIfAborted();
+      throwIfAborted(deadline);
       matches.forEach((cast, index) => hydrated.set(pending[index], cast));
       return [...hashes].flatMap(hash => { const cast = hydrated.get(hash); return cast ? [cast] : []; });
     };
     for (let page = 0; page < CAST_LINK_BATCH_PAGES; page++) {
-      deadline.throwIfAborted();
+      throwIfAborted(deadline);
       if (scanned >= CAST_LINK_MAX_MESSAGES || seenCursors.size >= CAST_LINK_MAX_MESSAGES / CAST_LINK_PAGE_SIZE) { limited = true; break; }
       if (cursor) {
         if (seenCursors.has(cursor)) throw new ApiError('The node repeated a cast-history cursor.', 502, 'invalid_pagination');
@@ -1187,7 +1206,7 @@ export async function resolveCastAlias(options: {
       const params = new URLSearchParams({ fid: String(author.fid), pageSize: String(CAST_LINK_PAGE_SIZE), reverse: 'true' });
       if (cursor) params.set('pageToken', cursor);
       const history = await requestJson<{ messages?: unknown; nextPageToken?: unknown }>('/v1/castsByFid', params, deadline);
-      deadline.throwIfAborted();
+      throwIfAborted(deadline);
       if (!Array.isArray(history.messages) || history.messages.length > CAST_LINK_PAGE_SIZE) throw new ApiError('The node returned invalid author history.', 502, 'invalid_response');
       const remaining = CAST_LINK_MAX_MESSAGES - scanned;
       const checkedMessages = history.messages.slice(0, remaining);
@@ -1216,14 +1235,14 @@ export async function resolveCastAlias(options: {
       }
       if (options.onProgress && hashes.size) {
         const candidates = await hydrateCandidates();
-        deadline.throwIfAborted();
+        throwIfAborted(deadline);
         if (candidates.length) options.onProgress({ author, candidates, complete: false, scanned });
       }
       if (!cursor) break;
       if (limited || scanned >= CAST_LINK_MAX_MESSAGES) { limited = true; break; }
     }
     const candidates = await hydrateCandidates();
-    deadline.throwIfAborted();
+    throwIfAborted(deadline);
     return { author, candidates, complete, scanned, ...(limited ? { limited: true } : {}),
       ...(!complete && !limited && cursor ? { continuation: { authorIdentifier, hashPrefix, fid: author.fid, cursor, seenCursors: [...seenCursors], hashes: candidates.map(cast => cast.hash), scanned } } : {}) };
   });
