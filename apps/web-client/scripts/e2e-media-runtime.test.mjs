@@ -9,7 +9,10 @@ const origin = 'http://127.0.0.1:5187';
 const media = `${origin}/media/${'a'.repeat(64)}`;
 const appPath = fileURLToPath(new URL('../src/App.tsx', import.meta.url));
 const app = await fs.readFile(appPath, 'utf8');
-const transformed = replaceTestMediaGuards(replaceTestOrigins(app, origin), appPath, origin);
+const castDisplayPath = fileURLToPath(new URL('../src/lib/castDisplay.ts', import.meta.url));
+const castDisplay = await fs.readFile(castDisplayPath, 'utf8');
+const transformed = replaceTestMediaGuards(replaceTestOrigins(castDisplay, origin), castDisplayPath, origin);
+const castCard = await fs.readFile(fileURLToPath(new URL('../src/components/CastCard.tsx', import.meta.url)), 'utf8');
 const originsPath = fileURLToPath(new URL('../../../packages/client-core/src/appOrigins.ts', import.meta.url));
 const originsSource = await fs.readFile(originsPath, 'utf8');
 const publicOrigin = (source, name) => source.match(new RegExp(`^export const ${name} = '([^']+)';$`, 'm'))?.[1];
@@ -79,7 +82,7 @@ describe('isolated media harness URL transformations', () => {
     expect(production(new URL(media))).toBe(false);
     for (const productionOrigin of [primaryOrigin, legacyOrigin]) expect(production(new URL(`${productionOrigin}/media/${'a'.repeat(64)}`))).toBe(true);
   });
-  it('admits only the configured loopback hashed media path through the actual App URL expression', () => {
+  it('admits only the configured loopback hashed media path through the actual cast URL expression', () => {
     const expression = transformed.match(/return (.*?) \? url\.href : undefined;/)?.[1];
     expect(expression).toBeTruthy();
     // Evaluate only this fixed, first-party boolean URL expression; no app or
@@ -92,12 +95,12 @@ describe('isolated media harness URL transformations', () => {
       `http://attacker.example/media/${'a'.repeat(64)}`, 'javascript:alert(1)',
     ]) expect(accepted(new URL(rejected))).toBe(false);
     expect(accepted(new URL('https://example.com/image.png'))).toBe(true);
-    const original = app.match(/return (.*?) \? url\.href : undefined;/)?.[1];
+    const original = castDisplay.match(/return (.*?) \? url\.href : undefined;/)?.[1];
     expect(new Function('url', `return ${original};`)(new URL(media))).toBe(false);
   });
 
   it('uses the shared image classifier and admits only exact loopback media in the viewer', async () => {
-    expect(app).toContain('hasImageEmbed({ ...cast, embeds: [{ url }] })');
+    expect(castCard).toContain('hasImageEmbed({ ...cast, embeds: [{ url }] })');
     const viewerPath = fileURLToPath(new URL('../src/components/MediaViewer.tsx', import.meta.url));
     const viewer = await fs.readFile(viewerPath, 'utf8');
     const transformedViewer = replaceTestMediaGuards(replaceTestOrigins(viewer, origin), viewerPath, origin);

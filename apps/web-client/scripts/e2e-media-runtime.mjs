@@ -55,7 +55,7 @@ export function replaceTestMediaGuards(source, id, origin) {
   localUrl(origin, 'test origin');
   const normalized = id.split('?')[0].replaceAll('\\', '/');
   const media = variable => `(${variable}.origin === ${JSON.stringify(origin)} && /^\\/media\\/[a-f0-9]{64}$/.test(${variable}.pathname))`;
-  if (normalized.endsWith('/src/App.tsx')) {
+  if (normalized.endsWith('/src/lib/castDisplay.ts')) {
     source = source.replace("url.protocol === 'https:' ? url.href", `(url.protocol === 'https:' || ${media('url')}) ? url.href`);
     source = source.replace("url.protocol === 'https:' && !url.username", `(url.protocol === 'https:' || ${media('url')}) && !url.username`);
   }

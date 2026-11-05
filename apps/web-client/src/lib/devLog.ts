@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'split-app-shell-components',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:48:23Z',
+    title: 'Reorganize the main client screen',
+    summary: 'The navigation sidebar, page header, home feed tabs, cast cards and conversation replies now live in their own focused components. Nothing changes on screen; feeds, threads, Back/Forward and saved theme and Explore choices behave exactly as before.',
+    changes: [
+      'Back/Forward and in-app navigation now share one list of dialogs to close, so a future dialog cannot stay open on one path but not the other.',
+      'Conversation threads keep the same 150-cast limit, now defined once, and saved theme and Explore settings keep their existing browser storage names.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/05657a4d9687333f4875d02276af7ac537ea0617',
+    tag: 'Reliability',
+  },
+  {
     id: 'shared-uploaded-image-links',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:47:39Z',
