@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'offline-signer-typed-approval-errors',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:24Z',
+    title: 'Keep offline signer error messages consistent',
+    summary: 'The offline signer now marks which approval failures it shows you directly, so future wording changes cannot silently replace them with a generic message. What you see today does not change.',
+    changes: [
+      'An invalid recovery phrase and a phrase that does not match the request’s custody address still show their specific instructions; every other approval failure still shows the generic “check your request” message.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/1b978b4a7fdc619163f1bd93fc6fe67458bb4e52',
+    tag: 'Reliability',
+  },
+  {
     id: 'remove-unused-signed-key-request-helper',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:33:31Z',
