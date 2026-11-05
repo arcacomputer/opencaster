@@ -6,6 +6,9 @@ import { bytesToHex } from '@opencaster/protocol/signedKeyRequest';
 import { APP_ORIGIN, APP_ORIGINS } from './appOrigins';
 
 export const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
+export const MEDIA_SIZE_LABEL = `${MAX_MEDIA_BYTES / (1024 * 1024)} MiB`;
+export const MEDIA_TOO_LARGE_MESSAGE = `Choose an image up to ${MEDIA_SIZE_LABEL}.`;
+const INVALID_MEDIA_FILE_MESSAGE = `Choose a JPEG, PNG, WebP or GIF image up to ${MEDIA_SIZE_LABEL}.`;
 export const MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
 export type MediaType = typeof MEDIA_TYPES[number];
 export interface MediaUploadInput { origin: string; sha256: string; size: number; contentType: MediaType }
@@ -25,7 +28,7 @@ export function isMediaOrigin(value: unknown): value is string {
 }
 function validInput(value: MediaUploadInput): void {
   if (!isMediaOrigin(value.origin) || !/^[a-f0-9]{64}$/.test(value.sha256) || !Number.isSafeInteger(value.size)
-    || value.size < 1 || value.size > MAX_MEDIA_BYTES || !isMediaType(value.contentType)) throw new Error('Choose a JPEG, PNG, WebP or GIF image up to 5 MiB.');
+    || value.size < 1 || value.size > MAX_MEDIA_BYTES || !isMediaType(value.contentType)) throw new Error(INVALID_MEDIA_FILE_MESSAGE);
 }
 
 /** Exact fields and canonical encoding prevent the upload permission from
@@ -74,7 +77,7 @@ export async function uploadMedia(file: File, authorize: (input: MediaUploadInpu
   if (signal?.aborted) throw new DOMException('Upload cancelled.', 'AbortError');
   const origin = globalThis.location?.origin;
   if (!isMediaOrigin(origin)) throw new Error('Image uploads are available on opencaster.org.');
-  if (!isMediaType(file.type) || file.size < 1 || file.size > MAX_MEDIA_BYTES) throw new Error('Choose a JPEG, PNG, WebP or GIF image up to 5 MiB.');
+  if (!isMediaType(file.type) || file.size < 1 || file.size > MAX_MEDIA_BYTES) throw new Error(INVALID_MEDIA_FILE_MESSAGE);
   const bytes = new Uint8Array(await file.arrayBuffer());
   const sha256 = await sha256Hex(bytes);
   if (signal?.aborted) throw new DOMException('Upload cancelled.', 'AbortError');
@@ -98,7 +101,7 @@ export async function uploadMedia(file: File, authorize: (input: MediaUploadInpu
     const messages: Record<number, string> = {
       400: 'The image could not be validated. Choose a different image.', 401: 'Your device authorization expired. Reconnect before uploading.',
       403: 'This device is not authorized to upload. Reconnect your account.', 409: 'This upload authorization was already used. Choose the image again.',
-      413: 'Choose an image up to 5 MiB.', 415: 'Choose a valid JPEG, PNG, WebP or GIF image.',
+      413: MEDIA_TOO_LARGE_MESSAGE, 415: 'Choose a valid JPEG, PNG, WebP or GIF image.',
       429: 'The upload limit has been reached. Try again tomorrow.', 503: 'Image uploads are temporarily unavailable.',
     };
     throw new Error(messages[response.status] || 'The upload status could not be confirmed. Check your attachment before trying again.');

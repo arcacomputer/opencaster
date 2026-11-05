@@ -34,6 +34,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Security',
   },
   {
+    id: 'shared-request-deadline-constants',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:58Z',
+    title: 'One definition for authorization deadlines',
+    summary: 'Device authorization and revocation requests, their validation, and the "Approve before" times shown in Opencaster and the offline signer now all use the same shared 15-minute window and Farcaster epoch. Deadlines and countdowns are unchanged; this keeps them from drifting apart in future updates.',
+    changes: [
+      'Build request deadlines and expiry countdowns from shared constants and helpers instead of repeated numbers, with a test that pins the existing 15-minute window.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/279c971719e11cb122fa7c7286087b54d85fc135',
+    tag: 'Reliability',
+  },
+  {
     id: 'gateway-upstream-error-table',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:44:58Z',
@@ -43,6 +55,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'Each disabled-index route (cast search, channels, channel feeds, suggested profiles, recent activity) has a single entry for its node message and user text, so a newly supported route cannot pair with the wrong message.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/25d1cce9b8fc4d85b176cf79a999233d3491fb42',
+    tag: 'Reliability',
+  },
+  {
+    id: 'shared-media-size-limit-text',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:34Z',
+    title: 'Keep image size messages in step with the upload limit',
+    summary: 'Image upload errors from the browser and the media gateway now take their size text from the same shared limit, so they cannot drift apart if the limit changes. The limit stays 5 MiB and every message reads exactly as before.',
+    changes: [
+      'Build the “up to 5 MiB” wording in upload validation, upload error and gateway rejection messages from the shared 5 MiB upload limit instead of repeating it by hand. No visible change.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/9bf92d35f1a478190191d024ed10985cfc43f505',
     tag: 'Reliability',
   },
   {
