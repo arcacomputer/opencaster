@@ -10,6 +10,7 @@
  */
 
 import { blake3 } from '@noble/hashes/blake3.js';
+import { FARCASTER_EPOCH_MS } from './farcasterEpoch';
 import { ProtoWriter } from './protoWire';
 
 // ---------------------------------------------------------------------------
@@ -81,8 +82,7 @@ export enum CastType {
   TEN_K_CAST = 2,
 }
 
-/** Farcaster epoch (ms): 2021-01-01 00:00:00 UTC. */
-export const FARCASTER_EPOCH_MS = 1609459200000;
+export { FARCASTER_EPOCH_MS };
 
 /** Convert a JS Date or ms-since-epoch to Farcaster epoch seconds. */
 export function farcasterTimestamp(now: number = Date.now()): number {

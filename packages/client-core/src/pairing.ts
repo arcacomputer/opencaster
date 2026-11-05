@@ -19,6 +19,11 @@ export const PAIRING_REQUEST_MAX_BYTES = 16_384;
 export const PAIRING_WINDOW_SECONDS = 15 * 60;
 export const PAIRING_ORIGINS = APP_ORIGINS;
 
+/** Farcaster-epoch deadline for a request created at Unix second `createdAt`. */
+export function pairingDeadline(createdAt: number): number {
+  return createdAt - FARCASTER_EPOCH_SECONDS + PAIRING_WINDOW_SECONDS;
+}
+
 export interface PairingRequest {
   kind: 'arca.hypersnap.signer.request';
   version: 1;
@@ -103,7 +108,7 @@ export function validatePairingRequest(value: unknown, nowMs = Date.now()): Pair
   if (value.kind !== 'arca.hypersnap.signer.request' || value.version !== 1 || typeof value.origin !== 'string' || !PAIRING_ORIGINS.includes(value.origin as typeof PAIRING_ORIGINS[number])) throw new Error('This authorization is not for a supported Arca client.');
   if (!checkString(value.requestId, HEX32) || !checkString(value.publicKey, HEX32) || !checkString(value.custodyAddress, ADDRESS)) throw new Error('The authorization contains an invalid account, request ID, or posting key.');
   if (!integer(value.fid, 1) || !integer(value.nonce, 1, 0xffffffff) || !integer(value.createdAt, FARCASTER_EPOCH_SECONDS) || !integer(value.deadline, 1)) throw new Error('The authorization contains invalid account or timing fields.');
-  if (value.createdAt > now + 60 || value.deadline !== value.createdAt - FARCASTER_EPOCH_SECONDS + PAIRING_WINDOW_SECONDS) throw new Error('The authorization has invalid timing. Check your device clock and create a new request.');
+  if (value.createdAt > now + 60 || value.deadline !== pairingDeadline(value.createdAt)) throw new Error('The authorization has invalid timing. Check your device clock and create a new request.');
   if (value.deadline <= now - FARCASTER_EPOCH_SECONDS) throw new Error('This authorization request has expired. Create a new request in Opencaster.');
   const scopes = validatePairingScopes(value.scopes);
   if (value.ttl !== PAIRING_TTL_SECONDS) throw new Error('Arca Signer only approves a seven-day inactivity window.');

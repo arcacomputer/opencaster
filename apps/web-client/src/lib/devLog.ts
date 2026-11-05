@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'shared-request-deadline-constants',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:58Z',
+    title: 'One definition for authorization deadlines',
+    summary: 'Device authorization and revocation requests, their validation, and the "Approve before" times shown in Opencaster and the offline signer now all use the same shared 15-minute window and Farcaster epoch. Deadlines and countdowns are unchanged; this keeps them from drifting apart in future updates.',
+    changes: [
+      'Build request deadlines and expiry countdowns from shared constants and helpers instead of repeated numbers, with a test that pins the existing 15-minute window.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/279c971719e11cb122fa7c7286087b54d85fc135',
+    tag: 'Reliability',
+  },
+  {
     id: 'gateway-upstream-error-table',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:44:58Z',
@@ -46,6 +58,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'shared-media-size-limit-text',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:34Z',
+    title: 'Keep image size messages in step with the upload limit',
+    summary: 'Image upload errors from the browser and the media gateway now take their size text from the same shared limit, so they cannot drift apart if the limit changes. The limit stays 5 MiB and every message reads exactly as before.',
+    changes: [
+      'Build the “up to 5 MiB” wording in upload validation, upload error and gateway rejection messages from the shared 5 MiB upload limit instead of repeating it by hand. No visible change.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/9bf92d35f1a478190191d024ed10985cfc43f505',
+    tag: 'Reliability',
+  },
+  {
     id: 'shared-profile-tab-list',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:44:32Z',
@@ -58,6 +82,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'offline-signer-typed-approval-errors',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:24Z',
+    title: 'Keep offline signer error messages consistent',
+    summary: 'The offline signer now marks which approval failures it shows you directly, so future wording changes cannot silently replace them with a generic message. What you see today does not change.',
+    changes: [
+      'An invalid recovery phrase and a phrase that does not match the request’s custody address still show their specific instructions; every other approval failure still shows the generic “check your request” message.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/1b978b4a7fdc619163f1bd93fc6fe67458bb4e52',
+    tag: 'Reliability',
+  },
+  {
     id: 'share-images-only-feed-check',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:44:10Z',
@@ -67,6 +103,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'Images only feed filtering reuses the shared image-embed check instead of a separate copy of the same host, extension and Opencaster media rules.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/79dafd7bd8f630841de3b5846c12089df5acc34a',
+    tag: 'Reliability',
+  },
+  {
+    id: 'rename-share-preview-url-check',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:43:59Z',
+    title: 'Clarify the share-preview image link check',
+    summary: 'Link previews keep accepting the same public HTTPS profile, channel and cast images as before; the shared check is now named for what it does, so future avatar-only rules cannot accidentally change channel or cast images. No visible change.',
+    changes: [
+      'Rename the gateway helper that validates public HTTPS image links for profile avatars, channel images and cast attachments in share previews.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/b34af316009df8af109d5bffa06d486ab7bc56ef',
     tag: 'Reliability',
   },
   {
