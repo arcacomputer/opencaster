@@ -57,6 +57,18 @@ describe('offline authorization transfer boundary', () => {
     expect(() => verifyPairingApproval(changed, { ...approval, requestHash: hashPairingRequest(changed) }, now)).toThrow('signatures');
     expect(() => verifyPairingApproval(req, { ...approval, custodySignature: `${approval.custodySignature.slice(0, -2)}00` }, now)).toThrow();
   });
+  it('keeps the generic signature message while preserving the specific failure as its cause', () => {
+    const req = request(); const approval = approve(req);
+    const failure = (change: Partial<PairingApproval>, request = req) => { try { verifyPairingApproval(request, { ...approval, ...change }, now); } catch (error) { return error as Error; } throw new Error('expected failure'); };
+    const generic = 'The approval signatures do not authorize this wallet and posting key.';
+    const badRecovery = failure({ custodySignature: `${approval.custodySignature.slice(0, -2)}00` });
+    expect(badRecovery.message).toBe(generic);
+    expect(badRecovery.cause).toMatchObject({ message: 'The approval has an invalid signature recovery ID.' });
+    const changed = { ...req, nonce: req.nonce + 1 };
+    const wrongWallet = failure({ requestHash: hashPairingRequest(changed) }, changed);
+    expect(wrongWallet.message).toBe(generic);
+    expect(wrongWallet.cause).toMatchObject({ message: 'custody mismatch' });
+  });
   it('rejects extra approval fields and non-signature content before use', () => {
     const approval = approve(request());
     expect(() => validatePairingApproval({ ...approval, mnemonic: 'must never exist' })).toThrow();
@@ -101,6 +113,14 @@ describe('offline custody revocation transfer', () => {
     for (const changed of [{ ...req, fid: 42 }, { ...req, publicKey: bytesToHex(randomBytes(32)) }, { ...req, nonce: req.nonce + 1 }, { ...req, createdAt: req.createdAt + 1, deadline: req.deadline + 1 }]) {
       expect(() => verifyRevocationApproval(changed, { ...approval, requestHash: hashRevocationRequest(changed) }, now)).toThrow('signature');
     }
+  });
+
+  it('preserves the specific revocation signature failure as the generic error cause', () => {
+    const req = revocationRequest(); const approval = revocationApproval(req);
+    let failure: Error | undefined;
+    try { verifyRevocationApproval(req, { ...approval, custodySignature: `${approval.custodySignature.slice(0, -2)}00` }, now); } catch (error) { failure = error as Error; }
+    expect(failure?.message).toBe('The revocation signature does not authorize removal of this wallet and posting key.');
+    expect(failure?.cause).toMatchObject({ message: 'The approval has an invalid signature recovery ID.' });
   });
 
   it('never accepts grant signatures, another signature type or additional secret fields', () => {
