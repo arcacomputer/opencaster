@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'remove-unused-signer-approval-wrappers',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:33:25Z',
+    title: 'Simplify the offline signer approval code',
+    summary: 'The offline signer keeps a single approval entry point, removing two unused wrappers without changing what it signs or which requests it accepts.',
+    changes: [
+      'Remove the unused grant-only and revocation-only approval helpers; the desktop signer already approves every request through the same validated path.',
+      'Approval checks, permission limits and recovery-phrase handling are unchanged, and tests continue to cover pairing, revocation and mismatched request kinds.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/637bcb1b1d9f0f4e3392b5276156b23a88600a42',
+    tag: 'Security',
+  },
+  {
     id: 'preserve-haatz-primary-session-release',
     date: '2026-11-05',
     timestamp: '2026-11-05T00:32:01Z',
