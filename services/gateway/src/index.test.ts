@@ -285,6 +285,23 @@ describe('the fixed Hypersnap gateway', () => {
     }
   });
 
+  it('maps each disabled index to its own feature text and ignores another index message', async () => {
+    for (const [path, upstreamMessage, text] of [
+      ['/v2/farcaster/cast/search?q=hello', 'Search indexing not available', 'Cast search is not enabled on this Hypersnap node.'],
+      ['/v2/farcaster/channel/all', 'Channels indexing not enabled', 'The channel index is not enabled on this Hypersnap node.'],
+      ['/v2/farcaster/feed/channels?channel_ids=test', 'Channel feed service not available', 'Channel feeds are not enabled on this Hypersnap node.'],
+      ['/v2/farcaster/following/suggested?fid=7&limit=6', 'Social graph indexing not enabled', 'Suggested profiles are unavailable on this Hypersnap node.'],
+      ['/v2/farcaster/notifications?fid=3', 'Hub query service not available', 'Recent activity is unavailable on this Hypersnap node.'],
+    ]) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ message: upstreamMessage }, 503)));
+      expect(await (await handleRequest(new Request(`${BASE}/api${path}`), env)).json()).toEqual({ code: 'feature_unavailable', message: text });
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ message: 'Channels indexing not enabled' }, 503)));
+    const response = await handleRequest(new Request(`${BASE}/api/v2/farcaster/notifications?fid=3`), env);
+    expect(response.status).toBe(502);
+    expect((await response.json() as { code: string }).code).toBe('upstream_error');
+  });
+
   it('keeps generic upstream outages distinct from disabled-index responses', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ message: 'Sensitive database failure' }, 503)));
     const response = await handleRequest(new Request(`${BASE}/api/v2/farcaster/cast/search?q=hello`), env);

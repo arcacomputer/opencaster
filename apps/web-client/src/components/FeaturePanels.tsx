@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import { IconBell, IconBookmark, IconChevronRight, IconHash, IconHeart, IconMessageCircle, IconRefresh, IconSearch, IconUsers, IconWorld } from '@tabler/icons-react';
 import { getChannels, getNotifications, searchCasts, searchUsers, type ActivityItem, type Cast, type Channel, type User } from '@opencaster/client-core/api';
-import { castPath, profilePath } from '@opencaster/client-core/navigation';
+import { castPath, PROFILE_TABS, profilePath, type ProfileTab } from '@opencaster/client-core/navigation';
 import { Button, Input } from './ui';
 import '../feature.scss';
 import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
@@ -266,7 +266,6 @@ export function ChannelHeader({ channel, onCompose, saved = false, onToggleSave,
   </div>;
 }
 
-export type ProfileTab = 'casts' | 'replies' | 'media' | 'likes' | 'recasts';
 export function ProfileTabs({ fid, tab, onChange, hrefForTab }: { fid: number; tab: ProfileTab; onChange(tab: ProfileTab): void; hrefForTab?(tab: ProfileTab): string }) {
-  return <nav className="feature-tabs feature-profile-tabs" aria-label="Profile content">{(['casts', 'replies', 'media', 'likes', 'recasts'] as const).map(value => <a data-analytics={`profile-tab-${value}`} key={value} href={hrefForTab?.(value) ?? `${profilePath(fid)}${value === 'casts' ? '' : `?tab=${value}`}`} aria-current={tab === value ? 'page' : undefined} onClick={event => localClick(event, () => onChange(value))}>{value === 'casts' ? 'Casts' : value === 'replies' ? 'Replies' : value === 'media' ? 'Photos' : value === 'likes' ? 'Likes' : 'Recasts'}</a>)}</nav>;
+  return <nav className="feature-tabs feature-profile-tabs" aria-label="Profile content">{PROFILE_TABS.map(value => <a data-analytics={`profile-tab-${value}`} key={value} href={hrefForTab?.(value) ?? `${profilePath(fid)}${value === 'casts' ? '' : `?tab=${value}`}`} aria-current={tab === value ? 'page' : undefined} onClick={event => localClick(event, () => onChange(value))}>{value === 'casts' ? 'Casts' : value === 'replies' ? 'Replies' : value === 'media' ? 'Photos' : value === 'likes' ? 'Likes' : 'Recasts'}</a>)}</nav>;
 }
