@@ -1,0 +1,13 @@
+.rich-embed { border: 1px solid var(--border); border-radius: .75rem; overflow: hidden; background: var(--surface-00); min-width: 0; align-self: flex-start; }
+.cast__attachments--multiple > .rich-embed--x { flex-basis: 100%; }
+.rich-embed__frame { display: block; width: 100%; border: 0; background: var(--surface-00); }
+.rich-embed--youtube .rich-embed__frame, .rich-embed--vimeo .rich-embed__frame { aspect-ratio: 16 / 9; min-height: 200px; }
+.rich-embed__status { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; padding: 1rem; font-size: .8rem; color: var(--color-text-subtle); }
+.rich-embed__status .button { font-size: .8rem; }
+.rich-embed__original { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .7rem .85rem; border-top: 1px solid var(--border); color: var(--color-text-subtle); font-size: .75rem; }
+.rich-embed__original:hover { color: var(--accent); }
+.cast__attachments .link-embed.link-embed--destination { flex-direction: row; align-items: center; gap: .75rem; padding: .9rem; align-self: flex-start; }
+.link-embed--destination .link-embed__icon { flex: 0 0 auto; color: var(--color-text-subtle); }
+.link-embed.link-embed--destination .link-embed__caption { flex: 1; min-width: 0; padding: 0 1.25rem 0 0; }
+.link-embed--destination .link-embed__caption strong { overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; font-weight: 500; }
+.link-embed--destination .link-embed__arrow { top: 50%; bottom: auto; transform: translateY(-50%); }
