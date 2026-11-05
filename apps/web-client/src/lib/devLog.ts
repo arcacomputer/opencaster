@@ -131,6 +131,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'share-card-title-layout',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:01Z',
+    title: 'Keep profile and channel share titles aligned',
+    summary: 'Profile and channel share images now lay out their large title from one shared rule, so future typography adjustments keep both kinds of link previews consistent. Shared images look exactly as before.',
+    changes: [
+      'Profile and channel link-preview images use the same title sizing, two-line wrapping and spacing; a test pins the existing one- and two-line positions so the rendered artwork does not change.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/3267e97d599dba5d68d6887e23dc5c9f8c647ae3',
+    tag: 'Reliability',
+  },
+  {
     id: 'shared-request-deadline-constants',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:44:58Z',
