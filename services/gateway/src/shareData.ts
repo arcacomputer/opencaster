@@ -1,6 +1,7 @@
 import { normalizeHypersnapEnsName } from '@opencaster/client-core/ensName';
 import type { AppRoute } from '@opencaster/client-core/navigation';
 import type { Cast } from '@opencaster/client-core/api';
+import { castHistoryCursorKey, castHistoryHash, castHistoryMessageKey, validCastHistoryMessage } from '@opencaster/client-core/castHistory';
 import { renderMentionSegments } from '@opencaster/client-core/content';
 import { decodeFeed, type FeedDefinition } from '@opencaster/client-core/customFeeds';
 import { fetchUpstream, parseUpstreamObject, resolveReadFallback, resolveUpstream, type UpstreamConfig, type UpstreamEnv } from './upstream';
@@ -232,19 +233,6 @@ async function loadCast(hash: string, read: PublicRead, expectedAuthor?: SharePr
     ...(imageUrls.length ? { imageUrls } : {}) };
 }
 
-/** Native v1 cursors are exact legacy User/FID/CastMessage/timestamp/hash
- * primary keys. Validate their author, exclusive ordering and last receipt. */
-function cursorKey(value: unknown, fid: number): string | undefined {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9+/]{40}$/.test(value)) return;
-  try {
-    const raw = atob(value);
-    if (raw.length !== 30 || btoa(raw) !== value || raw.charCodeAt(0) !== 3 || raw.charCodeAt(5) !== 1) return;
-    const cursorFid = raw.charCodeAt(1) * 0x1000000 + raw.charCodeAt(2) * 0x10000 + raw.charCodeAt(3) * 0x100 + raw.charCodeAt(4);
-    if (cursorFid !== fid) return;
-    return Array.from(raw, byte => byte.charCodeAt(0).toString(16).padStart(2, '0')).join('');
-  } catch { return; }
-}
-
 async function loadAlias(authorIdentifier: string, prefix: string, read: PublicRead): Promise<ShareData | undefined> {
   if (!/^0x(?:[a-f0-9]{2}){4,20}$/i.test(prefix)) return;
   const normalized = prefix.toLowerCase();
@@ -264,24 +252,18 @@ async function loadAlias(authorIdentifier: string, prefix: string, read: PublicR
     if (cursor) params.set('pageToken', cursor);
     const history = await read('/v1/castsByFid', params);
     if (!history || !Array.isArray(history.messages) || history.messages.length > HISTORY_PAGE_SIZE) return;
-    let previousKey = cursor ? cursorKey(cursor, profile.fid) : undefined;
+    let previousKey = cursor ? castHistoryCursorKey(cursor, profile.fid) : undefined;
     for (const message of history.messages) {
-      if (!object(message) || !object(message.data)) return;
-      const hash = hashValue(message.hash);
-      const data = message.data;
-      if (!hash || data.fid !== profile.fid || !Number.isSafeInteger(data.timestamp) || Number(data.timestamp) < 0 || Number(data.timestamp) > 0xffffffff
-        || data.network !== 'FARCASTER_NETWORK_MAINNET'
-        || (data.type !== 'MESSAGE_TYPE_CAST_ADD' && data.type !== 'MESSAGE_TYPE_CAST_REMOVE')
-        || (data.type === 'MESSAGE_TYPE_CAST_ADD' && !object(data.castAddBody))
-        || (data.type === 'MESSAGE_TYPE_CAST_REMOVE' && !object(data.castRemoveBody))) return;
-      const key = `03${profile.fid.toString(16).padStart(8, '0')}01${Number(data.timestamp).toString(16).padStart(8, '0')}${hash}`;
+      if (!validCastHistoryMessage(message, profile.fid)) return;
+      const hash = castHistoryHash(message.hash);
+      const key = castHistoryMessageKey(profile.fid, message.data.timestamp, hash);
       if (previousKey !== undefined && key >= previousKey) return;
       previousKey = key;
-      if (data.type === 'MESSAGE_TYPE_CAST_ADD' && `0x${hash}`.startsWith(normalized)) matches.add(`0x${hash}`);
+      if (message.data.type === 'MESSAGE_TYPE_CAST_ADD' && hash.startsWith(normalized)) matches.add(hash);
     }
     const next = history.nextPageToken;
     if (next !== undefined && next !== '') {
-      if (!history.messages.length || !cursorKey(next, profile.fid) || cursorKey(next, profile.fid) !== previousKey) return;
+      if (!history.messages.length || castHistoryCursorKey(next, profile.fid) === undefined || castHistoryCursorKey(next, profile.fid) !== previousKey) return;
       cursor = next as string;
     } else cursor = undefined;
     if (matches.size > 1) return;

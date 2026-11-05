@@ -2,6 +2,7 @@
  * this worker accepts public queries or signed wire bytes.
  */
 import { handleMediaRequest, type MediaEnv } from './media';
+import { APP_ORIGIN } from '@opencaster/client-core/appOrigins';
 import { normalizeHypersnapEnsName } from '@opencaster/client-core/ensName';
 import { API_LIMITS, CAST_HASH, CHANNEL_ID, PAGE_CURSOR, WALLET_ADDRESS, validDecimalCursor, validPageToken, validSearchQuery } from '@opencaster/client-core/apiRules';
 import { handleAnalyticsEvents, recordRequestMetric, type AnalyticsEnv } from './analytics';
@@ -14,7 +15,7 @@ export interface Env extends MediaEnv, AnalyticsEnv {
   HYPERSNAP_AGGREGATE_CACHE?: string;
 }
 
-const CANONICAL_ORIGIN = 'https://opencaster.org';
+const CANONICAL_ORIGIN = APP_ORIGIN;
 const LEGACY_HOST = 'quorum.arca.computer';
 const STATIC_ASSET_PATHS = new Set([
   '/index.html', '/favicon.ico', '/robots.txt', '/sitemap.xml',
@@ -495,7 +496,7 @@ async function routeRequest(request: Request, env: Env, ctx?: WorkerExecutionCon
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       // Redirecting a signed write changes its origin and can taint the browser
       // Origin header. Leave its body untouched and require a fresh connection.
-      return json({ code: 'site_moved', message: 'Opencaster has moved to https://opencaster.org. Reopen that site and reconnect before submitting.' }, 409, { Location: destination.href, Link: `<${CANONICAL_ORIGIN}>; rel="canonical"` });
+      return json({ code: 'site_moved', message: `Opencaster has moved to ${CANONICAL_ORIGIN}. Reopen that site and reconnect before submitting.` }, 409, { Location: destination.href, Link: `<${CANONICAL_ORIGIN}>; rel="canonical"` });
     }
     const headers = new Headers({ Location: destination.href, 'Cache-Control': 'no-store' });
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
