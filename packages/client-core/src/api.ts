@@ -1339,10 +1339,6 @@ export async function getSigners(fid: number, signal?: AbortSignal): Promise<Sig
   return result;
 }
 
-export function getCustodyEvents(address: string, signal?: AbortSignal): Promise<{ fid: number; [key: string]: unknown }> {
-  return requestJson('/v1/onChainIdRegistryEventByAddress', new URLSearchParams({ address: addressValue(address) }), signal);
-}
-
 export function submitMessage(bytes: Uint8Array, signal?: AbortSignal): Promise<SubmitMessageResponse> {
   if (bytes.byteLength < 1 || bytes.byteLength > 65_536) throw new Error('Signed message must be between 1 byte and 64 KiB.');
   return requestJson('/v1/submitMessage', undefined, signal, bytes);
