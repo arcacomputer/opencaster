@@ -89,6 +89,7 @@ export function ConversationScreen({ navigation, route }: Props) {
         renderItem={({ item }) => (
           <CastCard
             cast={item.cast}
+            onReport={() => navigation.push('Support', { kind: 'post', fid: item.cast.author.fid, hash: item.cast.hash })}
             depth={item.depth}
             onAuthorPress={fid => navigation.push('Profile', { fid })}
             onThreadPress={nextHash => navigation.push('Conversation', { hash: nextHash })}
