@@ -9,7 +9,7 @@ import {
   type SignerApproval,
   type SignerRequest,
 } from '@opencaster/client-core/pairing';
-import { approveSignerRequest } from './approve';
+import { approveSignerRequest, SignerUserError } from './approve';
 import { isAllowedResource, validateApproveInput } from './policy';
 import type { NativeResult, PairingDisplay } from './bridge';
 
@@ -116,9 +116,7 @@ ipcMain.handle('arca:approve', async (event, ...args): Promise<NativeResult<true
     return success(true);
   } catch (error) {
     currentApproval = null;
-    const message = error instanceof Error ? error.message : '';
-    if (message === 'Enter a valid 24-word English recovery phrase. Check its spelling and word order.'
-        || message === 'This recovery phrase does not match the custody address in the request. No approval was created.') return failure(message);
+    if (error instanceof SignerUserError) return failure(error.message);
     return failure('Approval failed. Check your request is current and contains the expected account.');
   } finally {
     // eslint-disable-next-line no-useless-assignment -- Best-effort local reference release; JavaScript strings cannot be reliably erased.
