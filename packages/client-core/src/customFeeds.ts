@@ -1,5 +1,4 @@
-import type { Cast, TrendingTimeWindow } from './api';
-import { isUploadedMediaLocation } from './appOrigins';
+import { hasImageEmbed, type Cast, type TrendingTimeWindow } from './api';
 
 /** Public feed recipes only; saved recipes are shared by this browser's accounts. */
 export const CUSTOM_FEED_SOURCE_LIMIT = 8;
@@ -86,22 +85,10 @@ export function normalizeFeedDefinition(value: unknown): FeedDefinition | undefi
   return definition;
 }
 
-function hasImage(cast: Cast): boolean {
-  return cast.embeds.some(embed => {
-    if (!('url' in embed)) return false;
-    try {
-      const url = new URL(embed.url);
-      return url.protocol === 'https:' && (/\.(png|jpe?g|webp|gif)$/i.test(url.pathname)
-        || ['imagedelivery.net', 'imagedelivery.cloud'].includes(url.hostname)
-        || isUploadedMediaLocation(url));
-    } catch { return false; }
-  });
-}
-
 /** Phrase inclusion means any matching literal phrase in this cast's own text. */
 export function feedMatches(cast: Cast, definition: FeedDefinition): boolean {
   if (definition.filters.hideReplies && cast.parent_hash) return false;
-  if (definition.filters.imagesOnly && !hasImage(cast)) return false;
+  if (definition.filters.imagesOnly && !hasImageEmbed(cast)) return false;
   const text = normalizedText(cast.text);
   return (!definition.filters.includeWords.length || definition.filters.includeWords.some(phrase => text.includes(normalizedText(phrase))))
     && !definition.filters.excludeWords.some(phrase => text.includes(normalizedText(phrase)));
