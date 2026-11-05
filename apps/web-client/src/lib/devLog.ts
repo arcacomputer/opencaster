@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'remove-unused-channel-profile-options',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:32:45Z',
+    title: 'Simpler channel and profile headers',
+    summary: 'Channel headers and profile tabs drop internal options that no screen used, with no visible change.',
+    changes: [
+      'Remove the unused channel-compose button option from channel headers; it was never shown, so composing from a channel page works as before.',
+      'Profile tabs always link to the standard profile addresses they already used.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/b578e9f81d8cb8c31c0dfa0c19739c5bb2ed4ee2',
+    tag: 'Reliability',
+  },
+  {
     id: 'preserve-haatz-primary-session-release',
     date: '2026-11-05',
     timestamp: '2026-11-05T00:32:01Z',
