@@ -1,4 +1,5 @@
 import { APP_ORIGIN } from '@opencaster/client-core/appOrigins';
+import { readLimited } from '@opencaster/client-core/boundedRead';
 import { CUSTOM_FEED_TOKEN_LIMIT, decodeFeed, encodeFeed } from '@opencaster/client-core/customFeeds';
 import { CHANNEL_ID } from '@opencaster/client-core/apiRules';
 import type { AppRoute } from '@opencaster/client-core/navigation';
@@ -47,22 +48,7 @@ function fontFor(env: ShareImageEnv): Promise<Uint8Array> {
     const load = (async () => {
       const response = await env.ASSETS.fetch(new Request(`${APP_ORIGIN}/InterVariable.ttf`));
       if (response.status !== 200 || !response.body) { void response.body?.cancel().catch(() => undefined); throw new Error('Font unavailable'); }
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let size = 0;
-      try {
-        while (true) {
-          const item = await reader.read();
-          if (item.done) break;
-          size += item.value.length;
-          if (size > 1_000_000) { void reader.cancel().catch(() => undefined); throw new Error('Font too large'); }
-          chunks.push(item.value);
-        }
-      } finally { reader.releaseLock(); }
-      const bytes = new Uint8Array(size);
-      let offset = 0;
-      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-      return bytes;
+      return readLimited(response.body, 1_000_000);
     })();
     let timer: ReturnType<typeof setTimeout> | undefined;
     pending = Promise.race([load, new Promise<never>((_resolve, reject) => {

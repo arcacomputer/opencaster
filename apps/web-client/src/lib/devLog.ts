@@ -34,6 +34,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'shared-bounded-body-reader',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:46:50Z',
+    title: 'One size-limited reader for gateway responses',
+    summary: 'The gateway and the operator analytics dashboard now read every size-limited request and response through one shared reader, so size limits and timeouts behave the same for posting, image uploads, link previews and analytics. There is no visible change; the existing limits and error messages stay the same.',
+    changes: [
+      'Node replies, signed messages, image uploads, share previews, analytics events and dashboard sign-in keys use the same limit, timeout and cancellation rules instead of seven separate copies.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/6e68950da903f5c7543824638739fbd24c8e65d1',
+    tag: 'Reliability',
+  },
+  {
     id: 'unify-sign-in-step-handling',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:46:28Z',
