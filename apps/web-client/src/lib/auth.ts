@@ -1,6 +1,6 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { ApiError, clearReactionStatusCache, getCast, getFollowStatus, getReactionStatus, getSigners, getUser, invalidateReactionStatus, primeReactionStatus, submitMessage, type Signer, type SignersResponse, type User } from '@opencaster/client-core/api';
-import { PAIRING_SCOPES, PAIRING_TTL_SECONDS, validatePairingRequest, validatePairingScopes, verifyPairingApproval, validateRevocationRequest, verifyRevocationApproval, type PairingApproval, type PairingRequest, type RevocationRequest, type RevocationApproval } from '@opencaster/client-core/pairing';
+import { PAIRING_SCOPES, PAIRING_TTL_SECONDS, PAIRING_WINDOW_SECONDS, pairingDeadline, validatePairingRequest, validatePairingScopes, verifyPairingApproval, validateRevocationRequest, verifyRevocationApproval, type PairingApproval, type PairingRequest, type RevocationRequest, type RevocationApproval } from '@opencaster/client-core/pairing';
 import { buildSignedMessage, CastType, farcasterTimestamp, MessageType, ReactionType, SignatureScheme, type MessageDataInput } from '@opencaster/protocol/messageBuilder';
 import { abiEncodeSignedKeyRequestMetadata, bytesToHex, hexToBytes } from '@opencaster/protocol/signedKeyRequest';
 import { compareAndSwapSavedVault, decryptSignerVault, decryptSignerVaultForBrowser, decryptSignerVaultWithPasskey, deleteSavedVault, encryptSignerVault, encryptSignerVaultForBrowser, encryptSignerVaultWithPasskey, passkeyVault, readSavedVault, savedVaultMethod, validateSignerVault, type SavedSessionMethod, type StoredSignerVault, type VaultMetadata } from './vault';
@@ -167,7 +167,7 @@ export async function preparePairing(lookup: { fid?: number; username?: string; 
       requestId: bytesToHex(crypto.getRandomValues(new Uint8Array(32))), createdAt,
       fid: user.fid, custodyAddress: custody, publicKey: bytesToHex(ed25519.getPublicKey(privateKey)),
       scopes: requestedScopes, ttl: PAIRING_TTL_SECONDS,
-      nonce: nonceAfter(registry.currentUserNonce), deadline: createdAt - 1609459200 + 900,
+      nonce: nonceAfter(registry.currentUserNonce), deadline: pairingDeadline(createdAt),
     });
     Object.freeze(request.scopes);
     Object.freeze(request);
@@ -712,7 +712,7 @@ function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetada
         kind: 'arca.hypersnap.signer.revoke.request', version: 1,
         origin: metadata.origin, requestId: bytesToHex(crypto.getRandomValues(new Uint8Array(32))), createdAt,
         fid: metadata.fid, custodyAddress: metadata.custodyAddress, publicKey: metadata.publicKey,
-        nonce: nonceAfter(registry.currentUserNonce), deadline: createdAt - 1609459200 + 900,
+        nonce: nonceAfter(registry.currentUserNonce), deadline: pairingDeadline(createdAt),
       });
       Object.freeze(request);
       let ended = false;
@@ -772,7 +772,7 @@ function createSession(user: User, privateKey: Uint8Array, metadata: VaultMetada
           const nonce = nonceAfter(registry.requesterFidNonces?.[String(metadata.requestFid)]);
           const { envelope } = await buildSignedMessage({
             type: MessageType.KEY_REMOVE, fid: metadata.fid,
-            body: { keyRemoveBody: { key: publicKey, signature: new Uint8Array(), signatureType: 2, deadline: farcasterTimestamp() + 900, nonce } },
+            body: { keyRemoveBody: { key: publicKey, signature: new Uint8Array(), signatureType: 2, deadline: farcasterTimestamp() + PAIRING_WINDOW_SECONDS, nonce } },
           }, { scheme: SignatureScheme.ED25519, publicKey, sign });
           assertActive(options.signal);
           if (disposed) throw new Error('Your session has ended.');
