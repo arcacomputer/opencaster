@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'gateway-upstream-error-table',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:58Z',
+    title: 'Keep node error messages consistent',
+    summary: 'The gateway now recognizes known Hypersnap error responses from one ordered list, so missing casts, channels, follows, reactions and ENS names, rate limits, and disabled node features keep showing the same clear messages. There is no visible change; unrecognized node errors still show the generic message without exposing raw node text.',
+    changes: [
+      'Each disabled-index route (cast search, channels, channel feeds, suggested profiles, recent activity) has a single entry for its node message and user text, so a newly supported route cannot pair with the wrong message.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/25d1cce9b8fc4d85b176cf79a999233d3491fb42',
+    tag: 'Reliability',
+  },
+  {
     id: 'remove-unused-signed-key-request-helper',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:33:31Z',
