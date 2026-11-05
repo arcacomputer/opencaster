@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Button, Input } from '@opencaster/web-ui/ui';
+import { farcasterToUnixSeconds } from '@opencaster/client-core/farcasterEpoch';
 import type { PairingDisplay } from './bridge';
 
 function Icon({ children, className = '' }: { children: ReactNode; className?: string }) {
@@ -51,7 +52,7 @@ export function Signer() {
   }, []);
 
   // Request deadline is the Farcaster epoch; createdAt is regular Unix time.
-  const remaining = display ? Math.max(0, display.request.deadline + 1609459200 - Math.floor(now / 1000)) : 0;
+  const remaining = display ? Math.max(0, farcasterToUnixSeconds(display.request.deadline) - Math.floor(now / 1000)) : 0;
   const expired = display !== null && remaining <= 0;
 
   async function loadRequest() {
