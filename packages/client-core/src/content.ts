@@ -4,7 +4,11 @@ import type { Cast, User } from './api';
 // shared Hypersnap client package. They never resolve identities over a network.
 export type MentionSegment = { kind: 'text'; text: string } | { kind: 'mention'; user: User };
 export interface ComposedCastContent { text: string; mentions: number[]; mentionsPositions: number[] }
-const MAX_MENTIONS = 10;
+export const MAX_CAST_BYTES = 1024;
+/** Casts longer than this many UTF-8 bytes are sent as LONG_CAST. */
+export const LONG_CAST_THRESHOLD_BYTES = 320;
+export const MAX_CAST_EMBEDS = 2;
+export const MAX_MENTIONS = 10;
 const USERNAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const encoder = new TextEncoder();
 
@@ -68,7 +72,7 @@ function endsToken(text: string, at: number): boolean {
  * Offsets count UTF-8 bytes in the stripped protocol text, including repeated
  * mentions at one insertion point. Unselected or edited labels remain literal. */
 export function composeCastContent(text: string, mentionedUsers: User[]): ComposedCastContent {
-  if (typeof text !== 'string' || !Array.isArray(mentionedUsers) || mentionedUsers.length > MAX_MENTIONS) throw new Error('Select up to 10 profiles to mention.');
+  if (typeof text !== 'string' || !Array.isArray(mentionedUsers) || mentionedUsers.length > MAX_MENTIONS) throw new Error(`Select up to ${MAX_MENTIONS} profiles to mention.`);
   for (const character of text) {
     const code = character.charCodeAt(0);
     if (character.length === 1 && code >= 0xd800 && code <= 0xdfff) throw new Error('The cast contains an incomplete Unicode character.');
@@ -94,7 +98,7 @@ export function composeCastContent(text: string, mentionedUsers: User[]): Compos
     if (at < consumed || !startsToken(text, at) || blocked.some(range => at >= range.start && at < range.end)) continue;
     const selected = candidates.find(([name]) => text.slice(at + 1, at + 1 + name.length).toLowerCase() === name && endsToken(text, at + 1 + name.length));
     if (!selected) continue;
-    if (mentions.length === MAX_MENTIONS) throw new Error('A cast can contain up to 10 mentions.');
+    if (mentions.length === MAX_MENTIONS) throw new Error(`A cast can contain up to ${MAX_MENTIONS} mentions.`);
     const [name, user] = selected;
     const preceding = text.slice(consumed, at);
     stripped += preceding;
