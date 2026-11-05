@@ -46,6 +46,19 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'shared-api-request-deadline',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:46Z',
+    title: 'Consistent cancellation and timeouts for node reads',
+    summary: 'Search, reaction lists, profile reaction history, account-name lookup and cast short-link lookup now share one 25-second deadline rule. Leaving a screen cancels its request the same way everywhere, and slow reads keep their existing "took too long" messages.',
+    changes: [
+      'A request cancelled before it starts now reports the same cancellation everywhere instead of three different forms; search no longer substitutes its own cancellation error.',
+      'Timeout messages, the 25-second limit and uncertain-submission handling are unchanged; no visible change otherwise.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/8baf8df8597f52af37b438c69f04d080b73f09ad',
+    tag: 'Reliability',
+  },
+  {
     id: 'shared-cast-alias-history-checks',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:45:14Z',
