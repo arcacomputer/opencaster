@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'compact-dev-log-details',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T10:35:44-03:00',
+    title: 'Dev log highlights, with details on demand',
+    summary: 'Scan short updates and open More details for the full explanation and code link.',
+    changes: [
+      'Keep each milestone’s date, topic, headline and summary visible, with its full changes and source link in an independently expandable section.',
+      'Shorten the introduction and tighten entry spacing while preserving the history, topic filters, ordering and local dates. Details also open with the keyboard.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/8eda8ca6533c58632bd7deb504d5bfb30cbe6496',
+    tag: 'Reliability',
+  },
+  {
     id: 'inline-external-link-embeds',
     date: '2026-11-02',
     timestamp: '2026-11-02T00:11:32-03:00',
