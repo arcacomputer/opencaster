@@ -1,0 +1,3 @@
+/** Farcaster epoch: 2021-01-01 00:00:00 UTC. */
+export const FARCASTER_EPOCH_SECONDS = 1_609_459_200;
+export const FARCASTER_EPOCH_MS = FARCASTER_EPOCH_SECONDS * 1000;
