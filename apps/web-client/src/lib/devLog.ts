@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'signer-shared-derivation-constants',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:20Z',
+    title: 'Keep offline signer details in sync',
+    summary: 'The offline signer now shows its derivation path and limits recovery-phrase input from the same values it uses to sign and validate approvals, so the displayed details cannot drift from actual behavior. No visible change today.',
+    changes: [
+      'The technical-details derivation path and the recovery-phrase length limit in the signer window come from the shared signer constants instead of separate copies.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/71df283bb3b2e7de5be6495192ce707a7e048e97',
+    tag: 'Reliability',
+  },
+  {
     id: 'remove-unused-signed-key-request-helper',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:33:31Z',
