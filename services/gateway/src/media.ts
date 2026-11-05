@@ -1,5 +1,5 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
-import { MAX_MEDIA_BYTES, MEDIA_UPLOAD_HEADER, isMediaType, mediaGrantPayload, parseMediaUploadGrant, sha256Hex, type MediaType, type MediaUploadGrant } from '@opencaster/client-core/media';
+import { MAX_MEDIA_BYTES, MEDIA_TOO_LARGE_MESSAGE, MEDIA_UPLOAD_HEADER, isMediaType, mediaGrantPayload, parseMediaUploadGrant, sha256Hex, type MediaType, type MediaUploadGrant } from '@opencaster/client-core/media';
 import { hexToBytes } from '@opencaster/protocol/signedKeyRequest';
 import { fetchUpstream, resolveUpstream, type UpstreamEnv } from './upstream';
 
@@ -169,7 +169,7 @@ export async function handleMediaRequest(request: Request, env: MediaEnv): Promi
   catch { return failure(503, 'registry_unavailable', 'Signer authorization could not be checked.'); }
   let bytes: Uint8Array;
   try { bytes = await readLimited(request.body, MAX_MEDIA_BYTES); }
-  catch { return failure(413, 'image_too_large', 'Choose an image up to 5 MiB.'); }
+  catch { return failure(413, 'image_too_large', MEDIA_TOO_LARGE_MESSAGE); }
   if (bytes.byteLength !== grant.size || await sha256Hex(bytes) !== grant.sha256) return failure(400, 'image_mismatch', 'The image does not match its authorization.');
   try { validateImage(bytes, grant.contentType); }
   catch { return failure(415, 'invalid_image', 'Choose a valid JPEG, PNG, WebP or GIF image.'); }
