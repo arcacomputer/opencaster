@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "yarn workspace @opencaster/web-client dev",
     "build": "yarn workspace @opencaster/protocol build && yarn workspace @opencaster/client-core build && yarn workspace @opencaster/web-ui build && yarn workspace @opencaster/web-client build && yarn workspace @opencaster/gateway build && yarn workspace @opencaster/analytics build && yarn signer:build && yarn workspace @opencaster/mobile build",
+    "postinstall": "node scripts/check-patches.mjs && patch-package --error-on-fail",
     "preview": "yarn workspace @opencaster/web-client preview",
     "test": "vitest run",
     "typecheck": "yarn workspaces run typecheck",
@@ -33,7 +34,9 @@
     "typescript": "^5.9.3",
     "vitest": "^4.1.12",
     "vite": "^7.1.0",
-    "happy-dom": "21.0.4"
+    "happy-dom": "21.0.4",
+    "patch-package": "8.0.1",
+    "postinstall-postinstall": "2.1.0"
   },
   "resolutions": {
     "react": "19.2.0",
