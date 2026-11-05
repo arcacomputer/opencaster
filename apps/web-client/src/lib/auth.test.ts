@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { ApiError, clearReactionStatusCache, getCast, getFollowStatus, getReactionStatus, getSigners, getUser, invalidateReactionStatus, primeReactionStatus, submitMessage, type Cast, type SignersResponse, type User } from '@opencaster/client-core/api';
-import { deleteSavedSession, getSavedSessionMethod, hasSavedSession, preparePairing, restoreRememberedSession, unlockSavedSession, unlockSavedSessionWithPasskey, type PendingPairing, type PendingRevocation } from './auth';
+import { deleteSavedSession, getSavedSessionMethod, preparePairing, restoreRememberedSession, unlockSavedSession, unlockSavedSessionWithPasskey, type PendingPairing, type PendingRevocation } from './auth';
 import { FULL_CLIENT_SCOPES, FULL_SOCIAL_SCOPES, hashPairingRequest, hashRevocationRequest, type PairingApproval, type RevocationApproval } from '@opencaster/client-core/pairing';
 import { blake3_20 } from '@opencaster/protocol/messageBuilder';
 import { addressFromCustodyPrivateKey, bytesToHex, hexToBytes, keyAddDigest, keyRemoveDigest, signedKeyRequestDigest, signEip712Digest } from '@opencaster/protocol/signedKeyRequest';
@@ -927,8 +927,8 @@ describe('offline approved per-device authentication', () => {
     expect(JSON.stringify(saved)).not.toContain('synthetic-device-password');
     session.dispose();
     expect(deleteSavedVault).not.toHaveBeenCalled();
-    expect(await hasSavedSession(session.publicKey)).toBe(true);
-    expect(await hasSavedSession('00'.repeat(32))).toBe(false);
+    expect(await getSavedSessionMethod(session.publicKey)).toBe('password');
+    expect(await getSavedSessionMethod('00'.repeat(32))).toBeUndefined();
     const unlocked = await unlockSavedSession('synthetic-device-password', { origin: ORIGIN });
     expect(unlocked.publicKey).toBe(session.publicKey);
     unlocked.dispose();
@@ -1026,7 +1026,7 @@ describe('offline approved per-device authentication', () => {
       await expect(restoreRememberedSession({ origin: ORIGIN })).rejects.toThrow();
     }
     expect(deleteSavedVault).not.toHaveBeenCalled();
-    expect(await hasSavedSession()).toBe(true);
+    expect(await getSavedSessionMethod()).toBe('browser');
   });
 
   it('wipes decrypted bytes after network failure, cancellation, or a deletion race without erasing the vault', async () => {
@@ -1121,7 +1121,7 @@ describe('offline approved per-device authentication', () => {
 
   it('delegates matching-key deletion atomically and can explicitly forget corrupt vaults', async () => {
     vi.mocked(readSavedVault).mockResolvedValue({ corrupt: true });
-    expect(await hasSavedSession()).toBe(true);
+    await expect(getSavedSessionMethod()).rejects.toThrow();
     await deleteSavedSession('ab'.repeat(32));
     expect(deleteSavedVault).toHaveBeenLastCalledWith('ab'.repeat(32));
     await deleteSavedSession();
