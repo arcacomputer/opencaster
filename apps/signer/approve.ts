@@ -21,9 +21,9 @@ import {
   signEip712Digest,
   signedKeyRequestDigest,
 } from '@opencaster/protocol/signedKeyRequest';
+import { CUSTODY_DERIVATION_PATH, PHRASE_MAX_LENGTH } from './constants';
 
-export const CUSTODY_DERIVATION_PATH = "m/44'/60'/0'/0/0";
-export const PHRASE_MAX_LENGTH = 512;
+export { CUSTODY_DERIVATION_PATH, PHRASE_MAX_LENGTH };
 
 /**
  * The only seed-handling operation. No network, storage, logging, or wallet
