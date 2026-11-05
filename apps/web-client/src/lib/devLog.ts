@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'preserve-haatz-primary-session-release',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T00:32:01Z',
+    title: 'Keep the current API while sign-in improves',
+    summary: 'Website releases preserve the active Haatz API during the private-node reinstall, alongside remembered sign-in and the existing inline media embeds.',
+    changes: [
+      'Keep Haatz as the configured primary with aggregate caching disabled, matching the active production settings rather than switching back to the private node during deployment.',
+      'Retain inline X posts and supported media players when integrating the remembered-browser sign-in update.',
+      'Returning to the private node remains a separate, explicitly approved operational change. This release does not perform a node cutback or claim that the reinstall is complete.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/3f8f9f7b7bbdd02a34a0139231435e1a1c7b946e',
+    tag: 'Reliability',
+  },
+  {
     id: 'safe-sign-out-storage-failures',
     date: '2026-11-04',
     timestamp: '2026-11-04T11:33:29Z',
