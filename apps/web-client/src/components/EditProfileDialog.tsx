@@ -5,6 +5,7 @@ import { profileChanges, type ProfileField, type ProfilePatch, type ProfileUpdat
 import { profileDraft, type ProfileValues } from '../lib/profileDraft';
 import { Button, Input, Modal } from './ui';
 import '../social.scss';
+import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
 
 export type { ProfileField } from '../lib/social';
 export type ProfileChanges = ProfilePatch;
@@ -17,11 +18,6 @@ type Values = ProfileValues;
 const byteLength = (value: string) => new TextEncoder().encode(value).length;
 const errorMessage = (error: unknown) => error instanceof Error ? error.message.slice(0, 240) : 'This action could not be completed.';
 const profileValues = (user: User): Values => ({ displayName: user.display_name ?? '', bio: user.profile?.bio?.text ?? '', pfpUrl: user.pfp_url ?? '' });
-
-function safeImage(url: string): boolean {
-  try { const parsed = new URL(url); return parsed.protocol === 'https:' && !parsed.username && !parsed.password; }
-  catch { return false; }
-}
 
 interface Props {
   user: User;
@@ -79,7 +75,7 @@ export default function EditProfileDialog({ user, onSave, onUpload, onReload, on
     try {
       const uploaded = await onUpload(file, controller.signal);
       if (run !== generation.current || controller.signal.aborted) return;
-      if (!safeImage(uploaded.url) || byteLength(uploaded.url) > LIMITS.pfpUrl) throw new Error('The uploaded image did not return a usable public URL.');
+      if (!safeHttpsUrl(uploaded.url) || byteLength(uploaded.url) > LIMITS.pfpUrl) throw new Error('The uploaded image did not return a usable public URL.');
       setValues(current => ({ ...current, pfpUrl: uploaded.url }));
       setStatus('Image uploaded. Choose Save changes to use it on your profile.');
     } catch (cause) {
@@ -169,7 +165,7 @@ export default function EditProfileDialog({ user, onSave, onUpload, onReload, on
     <form className="edit-profile" noValidate onSubmit={event => void save(event)}>
       <p className="social-intro">Update how you appear on Hypersnap. Your username and account identity stay the same.</p>
       <div className="edit-profile__image-row">
-        <div className="edit-profile__preview">{safeImage(values.pfpUrl) && brokenImage !== values.pfpUrl ? <img src={values.pfpUrl} alt="Profile image preview" referrerPolicy="no-referrer" onError={() => setBrokenImage(values.pfpUrl)} /> : <IconPhoto size={28} />}</div>
+        <div className="edit-profile__preview">{safeHttpsUrl(values.pfpUrl) && brokenImage !== values.pfpUrl ? <img src={values.pfpUrl} alt="Profile image preview" referrerPolicy="no-referrer" onError={() => setBrokenImage(values.pfpUrl)} /> : <IconPhoto size={28} />}</div>
         <div><strong>Profile image</strong><p>JPEG, PNG, WebP, or GIF · up to 5 MiB.<br />Images are public. Photo metadata is retained.</p><Input ref={fileInput} type="file" className="visually-hidden" aria-label="Choose a profile image" accept="image/jpeg,image/png,image/webp,image/gif" disabled={!onUpload || !!busy || unknown.pfpUrl !== undefined} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; void upload(file); }} />
           {onUpload && <Button variant="secondary" disabled={!!busy || unknown.pfpUrl !== undefined} onClick={() => fileInput.current?.click()}><IconUpload size={16} />Upload image</Button>}
           {values.pfpUrl && <Button variant="ghost" disabled={!!busy || unknown.pfpUrl !== undefined} onClick={() => update('pfpUrl', '')}>Remove image</Button>}

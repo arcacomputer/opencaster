@@ -1,6 +1,7 @@
 import type { CastPublication } from '../lib/pendingCasts';
 import { Button } from './ui';
 import '../pending-casts.scss';
+import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
 
 const statusMessages: Record<CastPublication['status'], string> = {
   publishing: 'Publishing…',
@@ -9,18 +10,10 @@ const statusMessages: Record<CastPublication['status'], string> = {
   failed: 'Not submitted.',
 };
 
-function previewUrl(value: string | undefined): string | undefined {
-  if (!value) return;
-  try {
-    const url = new URL(value);
-    if (url.protocol === 'https:' && !url.username && !url.password) return url.href;
-  } catch { /* Invalid previews stay absent. */ }
-}
-
 export default function PendingCastCard({ publication, onDismiss }: { publication: CastPublication; onDismiss(): void }) {
   const { author, quote } = publication;
-  const avatar = previewUrl(author.pfp_url);
-  const images = [...new Set(publication.images.map(previewUrl).filter((url): url is string => Boolean(url)))].slice(0, quote ? 1 : 2);
+  const avatar = safeHttpsUrl(author.pfp_url);
+  const images = [...new Set(publication.images.map(url => safeHttpsUrl(url)).filter((url): url is string => Boolean(url)))].slice(0, quote ? 1 : 2);
   const timestamp = new Date(publication.timestamp);
   return <article className={`cast pending-cast pending-cast--${publication.status}`} aria-label="Pending cast">
     <span className="avatar" aria-hidden="true">{avatar ? <img src={avatar} alt="" decoding="async" referrerPolicy="no-referrer" onError={event => { event.currentTarget.hidden = true; }} /> : (author.display_name || author.username || 'O').slice(0, 2).toUpperCase()}</span>

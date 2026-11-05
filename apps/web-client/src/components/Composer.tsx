@@ -7,13 +7,13 @@ import { composerDraftScope, inlineMentionQuery, readComposerDraft, removeCompos
 import type { CastPublicationEvent } from '../lib/pendingCasts';
 import { Button, Input } from './ui';
 import '../composer.scss';
+import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
 
 export interface ComposerProps { session: WalletSession | null; onSignIn(): void; onPosted?(): void; onPublication?(event: CastPublicationEvent): void; parent?: Cast; parentUrl?: string; quote?: Cast; notify(text: string): void }
 const errorMessage = (cause: unknown) => cause instanceof Error ? cause.message.slice(0, 240) : 'This action could not be completed.';
 function ComposerAvatar({ user }: { user?: User }) {
   const [failed, setFailed] = useState('');
-  let url: string | undefined;
-  try { const candidate = new URL(user?.pfp_url ?? ''); if (candidate.protocol === 'https:' && !candidate.username && !candidate.password) url = candidate.href; } catch { /* Use initials. */ }
+  const url = safeHttpsUrl(user?.pfp_url);
   return <span className="avatar">{url && failed !== url ? <img src={url} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(url!)} /> : (user?.display_name || user?.username || 'O').slice(0, 2).toUpperCase()}</span>;
 }
 const mentionUser = ({ fid, username }: { fid: number; username: string }): User => ({ fid, username, custody_address: '', profile: { bio: { text: '' } }, follower_count: 0, following_count: 0 });
