@@ -135,10 +135,6 @@ export function hideCast(preferences: ContentPreferences, input: string): Conten
   if (next.hiddenCasts.length === HIDDEN_CAST_LIMIT) throw new Error('Hide up to 500 casts. Clear hidden casts in content settings before hiding another.');
   return { ...next, hiddenCasts: [...next.hiddenCasts, hash] };
 }
-export function unhideCast(preferences: ContentPreferences, input: string): ContentPreferences {
-  const next = normalizeContentPreferences(preferences); const hash = castHash(input);
-  return { ...next, hiddenCasts: next.hiddenCasts.filter(value => value !== hash) };
-}
 
 interface CompiledPreferences {
   readonly source: Pick<ContentPreferences, 'mutedAccounts' | 'mutedWords' | 'hiddenCasts'>;
