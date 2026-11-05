@@ -61,7 +61,7 @@ describe('compact dev-log entries', () => {
 
     await act(async () => button('Reliability').click());
     expect(container.querySelector<HTMLDetailsElement>(`#${entry.id} details`)?.open).toBe(true);
-    await act(async () => button('Read from the beginning').click());
+    await act(async () => button('Show oldest first').click());
     expect(container.querySelector<HTMLDetailsElement>(`#${entry.id} details`)?.open).toBe(true);
     await act(async () => summary.click());
     expect(details.open).toBe(false);
@@ -90,7 +90,7 @@ describe('local dev-log update times', () => {
     expect(descending).toEqual([...descending].sort((a, b) => b - a));
     await act(async () => button('Reliability').click());
     expect(milestoneTimes()).toHaveLength(DEV_LOG.filter(entry => entry.tag === 'Reliability').length);
-    await act(async () => button('Read from the beginning').click());
+    await act(async () => button('Show oldest first').click());
     expect(milestoneTimes().map(time => Date.parse(time.dateTime))).toEqual([...descending].reverse());
     expect(milestoneTimes()[0].dateTime).toBe(PROJECT_STARTED_AT);
     await act(async () => button('Show latest first').click());

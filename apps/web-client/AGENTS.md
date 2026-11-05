@@ -13,7 +13,8 @@ which also cover the signer, services and shared packages.
   infrastructure limits; never imply Farcaster service compatibility from UX
   similarity. Use a unique ID, a topic, summary and concrete changes.
   Keep the summary to one short sentence; put the full explanation and relevant
-  limits in the expandable changes.
+  limits in the expandable changes. Use plain sentences about what changed,
+  not slogans or implementation instructions such as “Keep” and “Retain”.
 - Link to the actual implementation commit using its full repository URL and
   recorded Git author date. Commit the implementation first, then commit the
   note before shipping; this avoids a self-referencing commit hash. A release
