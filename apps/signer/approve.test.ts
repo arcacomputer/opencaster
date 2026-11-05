@@ -3,7 +3,7 @@ import { HDKey } from '@scure/bip32';
 import { entropyToMnemonic, mnemonicToSeedSync } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
 import { ed25519 } from '@noble/curves/ed25519.js';
-import { approvePairingRequest, approveRevocationRequest, approveSignerRequest, CUSTODY_DERIVATION_PATH } from './approve';
+import { approvePairingRequest, approveRevocationRequest, approveSignerRequest, CUSTODY_DERIVATION_PATH, SignerUserError } from './approve';
 import { isAllowedResource, validateApproveInput } from './policy';
 import { FARCASTER_EPOCH_SECONDS, PAIRING_TTL_SECONDS, verifyPairingApproval, verifyRevocationApproval, type PairingRequest, type RevocationRequest } from '@opencaster/client-core/pairing';
 import { addressFromCustodyPrivateKey, bytesToHex } from '@opencaster/protocol/signedKeyRequest';
@@ -53,6 +53,20 @@ describe('offline signer approval', () => {
     expect(() => approvePairingRequest(request, 'x'.repeat(513), now)).toThrow('24-word');
     const normalizedApproval = approvePairingRequest(request, `  ${phrase.toUpperCase().split(' ').join('  ')}  `, now);
     expect(() => verifyPairingApproval(request, normalizedApproval, now)).not.toThrow();
+  });
+
+  it('marks only phrase and custody-mismatch failures as safe to show the user', () => {
+    const request = requestFixture();
+    expect(() => approvePairingRequest(request, Array(24).fill('abandon').join(' '), now)).toThrow(SignerUserError);
+    expect(() => approvePairingRequest({ ...request, custodyAddress: `0x${'00'.repeat(20)}` }, phrase, now)).toThrow(SignerUserError);
+    for (const attempt of [
+      () => approvePairingRequest(request, 'x'.repeat(513), now),
+      () => approvePairingRequest(request, phrase, now + 901_000),
+      () => approvePairingRequest({ ...request, scopes: [1, 3, 4, 5] }, phrase, now),
+    ]) {
+      expect(attempt).toThrow();
+      expect(attempt).not.toThrow(SignerUserError);
+    }
   });
 
   it('refuses expired requests and broader permissions', () => {
