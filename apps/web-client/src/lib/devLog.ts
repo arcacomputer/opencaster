@@ -70,6 +70,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Security',
   },
   {
+    id: 'consistent-error-messages',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:51Z',
+    title: 'Keep error messages consistently short',
+    summary: 'Follow, profile, channel, feed, thread, session, reaction, deletion and content-setting errors now use the same short message rule as the composer and profile editor, so an unexpectedly long error no longer fills the screen. Wallet connection guidance stays complete.',
+    changes: [
+      'Show at most 240 characters of an error on every surface that previously displayed the full text, matching the bound Opencaster already applies to node error messages, while keeping each surface’s existing fallback wording.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/747327ea373f14a31d96f95484205153d013bda9',
+    tag: 'Reliability',
+  },
+  {
     id: 'shared-api-request-deadline',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:45:46Z',
