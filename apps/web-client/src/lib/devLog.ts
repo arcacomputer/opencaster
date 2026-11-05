@@ -351,6 +351,20 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'remove-unused-channel-profile-options',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:32:45Z',
+    title: 'Leaner channel and profile code',
+    summary: 'Channel pages and profile tabs carry less unused code, keeping the website simpler to maintain while everything you see and use stays the same.',
+    changes: [
+      'Remove a channel-page compose button option that was never shown; casting into a channel still works from the existing composer.',
+      'Profile tabs keep the same shareable links for Casts, Replies, Photos, Likes and Recasts.',
+      'No new features, settings or network requests; this is maintenance only.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/b578e9f81d8cb8c31c0dfa0c19739c5bb2ed4ee2',
+    tag: 'Reliability',
+  },
+  {
     id: 'remove-unused-unhide-cast-helper',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:32:36Z',
