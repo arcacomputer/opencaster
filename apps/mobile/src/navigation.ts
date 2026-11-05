@@ -4,4 +4,5 @@ export type RootStackParamList = {
   DeviceAccess: undefined;
   Profile: { fid: number };
   Conversation: { hash: string };
+  Compose: { parent?: { fid: number; hash: string } } | undefined;
 };

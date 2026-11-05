@@ -3,6 +3,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { CastCard } from '../components/CastCard';
+import { SocialStatus } from '../components/SocialStatus';
 import { ActionButton, LoadingMessage, PublicPreviewNotice, ScreenMessage } from '../components/Primitives';
 import type { RootStackParamList } from '../navigation';
 import { usePagedCasts } from '../lib/usePagedCasts';
@@ -36,7 +37,9 @@ export function HomeScreen({ navigation }: Props) {
       <View style={styles.quickActions}>
         <ActionButton label="Find a person" onPress={() => navigation.navigate('Lookup')} secondary />
         <ActionButton label="Device access" onPress={() => navigation.navigate('DeviceAccess')} secondary />
+        <ActionButton label="New post" onPress={() => navigation.navigate('Compose')} />
       </View>
+      <SocialStatus onDeviceAccess={() => navigation.navigate('DeviceAccess')} onOpenCast={hash => navigation.navigate('Conversation', { hash })} />
       <View accessibilityRole="tablist" style={styles.windows}>
         {WINDOWS.map(option => (
           <Pressable

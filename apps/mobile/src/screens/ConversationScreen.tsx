@@ -1,7 +1,9 @@
 import { getConversation, type Cast, type ConversationNode } from '@opencaster/client-core/api';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { SocialStatus } from '../components/SocialStatus';
+import { CastActions } from '../components/CastActions';
 import { CastCard } from '../components/CastCard';
 import { ActionButton, LoadingMessage, ScreenMessage } from '../components/Primitives';
 import type { RootStackParamList } from '../navigation';
@@ -32,9 +34,16 @@ export function ConversationScreen({ navigation, route }: Props) {
   const rows = useMemo(() => state.phase === 'ready' ? flattenConversation(state.value) : [], [state]);
 
   const header = (
+    <View>
     <Text style={styles.description}>
       Showing the selected public cast and replies returned by Hypersnap. The available thread may be incomplete.
     </Text>
+    <SocialStatus onDeviceAccess={() => navigation.navigate('DeviceAccess')} onOpenCast={nextHash => navigation.push('Conversation', { hash: nextHash })} />
+    {state.phase === 'ready' ? <CastActions
+      target={{ fid: state.value.cast.author.fid, hash: state.value.cast.hash }}
+      onReply={() => navigation.navigate('Compose', { parent: { fid: state.value.cast.author.fid, hash: state.value.cast.hash } })}
+    /> : null}
+    </View>
   );
   const empty = state.phase === 'loading'
     ? <LoadingMessage label="Loading conversation…" />
