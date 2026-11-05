@@ -46,6 +46,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'share-images-only-feed-check',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:10Z',
+    title: 'Keep Images only feeds in step with image display',
+    summary: 'Custom feeds with Images only now use the same image check as the profile Media tab and inline image rendering, so future image host or format support reaches all three together. Which casts appear today is unchanged.',
+    changes: [
+      'Images only feed filtering reuses the shared image-embed check instead of a separate copy of the same host, extension and Opencaster media rules.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/79dafd7bd8f630841de3b5846c12089df5acc34a',
+    tag: 'Reliability',
+  },
+  {
     id: 'remove-unused-messenger-style-tokens',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:34:55Z',
