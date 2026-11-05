@@ -46,6 +46,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'share-device-vault-encryption-checks',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:56Z',
+    title: 'One set of checks for every saved session',
+    summary: 'Password, passkey and remembered-browser sessions now share the same code for checking a saved device vault and for encrypting and unlocking its posting key, so a future hardening applies to all three at once. Existing saved sessions keep working with no visible change.',
+    changes: [
+      'Saved device vaults of every kind go through one encryption-format check, and the posting key is matched to its public key and wiped from memory on failure in one place; existing vaults, error messages and unlock steps are unchanged.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/a7b05b6b3d5b4c011735edb633d007d5fe002220',
+    tag: 'Security',
+  },
+  {
     id: 'consistent-error-messages',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:45:51Z',
