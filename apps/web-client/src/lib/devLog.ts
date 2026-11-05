@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'remove-unused-saved-session-check',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:32:57Z',
+    title: 'Remove an unused saved sign-in check',
+    summary: 'The browser client drops a leftover saved-key presence check that nothing in the app used. Sign-in, unlock and saved-key behavior are unchanged.',
+    changes: [
+      'Remove the unused saved-session presence helper; the app already checks saved keys with the validating method lookup used by sign-in.',
+      'Tests now cover saved password, remembered-browser and corrupt vaults through that same lookup.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/5d842b98f680f50c88b6430a8f776008dddbb8fa',
+    tag: 'Reliability',
+  },
+  {
     id: 'preserve-haatz-primary-session-release',
     date: '2026-11-05',
     timestamp: '2026-11-05T00:32:01Z',
