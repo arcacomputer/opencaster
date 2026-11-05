@@ -1,3 +1,54 @@
+# Compact dev log deployed · 2026-11-05
+
+Source [`4ae71a5b`](https://github.com/arcacomputer/opencaster/commit/4ae71a5bb58ca484b41c7d9c69a353c8af53251d)
+was deployed at **2026-11-05 11:22:25 America/Santiago**
+(`2026-11-05T14:22:25.039664Z`) as Worker **`cd9ce458-0366-4dcc-a8c0-7faefc42f8d6`**,
+deployment `5ebbc394-5819-4084-8f09-6db62c9a082a`, at **100% traffic**.
+The source is published on `codex/compact-devlog`; the version tag is
+`devlog-20261105-4ae71a5b`.
+
+The authenticated pre-release base was `b25afc9719c8665011cac60358def8331a46ac28`,
+Worker `bf9c7d52-c85a-408c-a866-d60fdf4433db`. Its production changes were merged
+before release. Outside dev-log UI, styles, copy, tests and guidance, the source
+matches that deployed base. All 101 earlier milestone IDs, dates, timestamps,
+source links and tags are preserved; the live page has 103 entries.
+
+Root `yarn check:devlog --base b25afc9719c8665011cac60358def8331a46ac28`
+passed. Root `VITEST_MAX_WORKERS=2 yarn verify` passed **2,093 tests across 89
+files**, all workspace typechecks, the browser build and offline signer build in
+**45.61 seconds**. These checks ran from the exact committed source in a clean
+external checkout, avoiding the cloud-synced checkout's dependency-loading
+stalls. Node was **22.22.3** and Yarn **1.22.21**.
+
+Fresh production assets came from `/tmp/arca-release-devlog-20261105-tOy98uSt`.
+Its 47 regular files had no symlinks, browser source maps, identified debug
+markers, synthetic fixtures, preview wrappers or cloud-sync duplicate names.
+Wrangler **4.141.0** dry-run passed, and that exact directory was deployed.
+Public checks matched all **46 non-HTML asset hashes**, confirmed
+`assets/index-BRPJllSL.js` on `/devlog`, and received 200 from `/api/v1/info`.
+The inspected files were unchanged after upload.
+
+Authenticated comparisons confirm the same Worker JavaScript, WASM and
+previously uploaded diagnostic source map, non-asset bindings, compatibility
+settings and observability. Haatz remains primary, both private-origin values
+remain absent, and aggregate caching stays disabled. The WalletConnect feature
+chunk matches the prior deployed configuration, including its unset public
+project identifier; this dev-log release does not change that sign-in setting.
+
+Browser checks confirmed collapsed entries, independent expansion and keyboard
+collapse, topic filtering, oldest/latest ordering and the rewritten copy.
+At a 320px viewport, document client and scroll widths were both 305px and the
+disclosure target was 44px high. These are browser layout checks, not physical
+mobile-device testing. Production checks used public reads/navigation only;
+no wallet approval, social write or media upload was performed. Signer downloads
+and the analytics dashboard were not deployed.
+
+Receipts: `/tmp/opencaster-devlog-release-receipt.json`,
+`/tmp/opencaster-devlog-release-verify.log`,
+`/tmp/opencaster-devlog-release-assets-manifest.json`,
+`/tmp/opencaster-devlog-live-verification.json` and
+`/tmp/opencaster-devlog-live-20261105.jpg`.
+
 # Remembered browser sessions deployed · 2026-11-05
 
 Release source [`d329359b`](https://github.com/arcacomputer/opencaster/commit/d329359b3bedb7047d57cea9594b44f6a73855e7)
