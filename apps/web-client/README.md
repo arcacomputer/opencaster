@@ -54,7 +54,7 @@ Opencaster's application code remains under the repository's [AGPL-3.0 license](
 
 ## Scope and verification
 
-The public [dev log](https://opencaster.org/devlog) records the standalone client's history from its first commit. It is available without sign-in, with topic filters, oldest/latest ordering and links to the code behind each milestone. The header link remains available on small screens.
+The public [dev log](https://opencaster.org/devlog) records the standalone client's history from its first commit. Each update shows a headline and short summary; **More details** expands its full changes and code link. It is available without sign-in, with topic filters and oldest/latest ordering. The header link remains available on small screens.
 
 Every feature/fix release must include a new milestone; the [release checklist](#release-notes) and CI enforce that requirement. The page and its styles load only when opened.
 
@@ -67,7 +67,7 @@ Saved device keys/passkeys and other local browser data are bound to the origina
 ## Release notes
 
 1. Record the commit currently deployed before starting the release. Implement and commit the feature or fix, then prepend a milestone in `src/lib/devLog.ts` before shipping. Its source link uses the implementation commit's full hash. Set `timestamp` to its full recorded author time, including the UTC offset (`git show -s --format=%aI <commit>`), and `date` to that value's calendar date. The dev log shows each timestamp in the visitor's browser locale and timezone; these are implementation times, not deployment times. A separate note commit avoids a circular hash. Group related work if useful, but describe every shipped feature or fix.
-2. Give the note a unique ID, title, summary, topic and concrete changes. Describe user-visible behavior and relevant limits. Keep plans separate from completed work, preserve earlier milestones, and date verification claims rather than implying continuous coverage.
+2. Give the note a unique ID, title, summary, topic and concrete changes. Keep the summary to one short sentence about the user benefit; put the full explanation and relevant limits in the expandable changes. Keep plans separate from completed work, preserve earlier milestones, and date verification claims rather than implying continuous coverage.
 3. From the repository root, run `yarn check:devlog --base <currently-deployed-commit>` and `yarn verify`. Without `--head`, the guard includes committed, staged, unstaged and untracked work. For a committed range, add `--head <commit>`; for a feature branch comparison, add `--merge-base`. Fetch the base/history first. Missing history is an error, never an exemption.
 4. Build into a **new** directory outside this cloud-synced checkout: `yarn workspace @opencaster/web-client build --outDir /tmp/arca-release-<unique-name>`. Inspect its contents, then use `wrangler deploy --config services/gateway/wrangler.jsonc --assets /tmp/arca-release-<unique-name>` and confirm the live `/devlog` includes the release. Never deploy preview wrappers or isolated-test fixtures. Record the deployed commit and Worker version with the release verification.
 

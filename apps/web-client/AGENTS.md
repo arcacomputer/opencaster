@@ -12,6 +12,8 @@ which also cover the signer, services and shared packages.
   describe a plan or an unverified capability as shipped. Retain Hypersnap and
   infrastructure limits; never imply Farcaster service compatibility from UX
   similarity. Use a unique ID, a topic, summary and concrete changes.
+  Keep the summary to one short sentence; put the full explanation and relevant
+  limits in the expandable changes.
 - Link to the actual implementation commit using its full repository URL and
   recorded Git author date. Commit the implementation first, then commit the
   note before shipping; this avoids a self-referencing commit hash. A release
