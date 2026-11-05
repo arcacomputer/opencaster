@@ -3,7 +3,15 @@ import { ed25519 } from '@noble/curves/ed25519.js';
 import { recoverTypedDataAddress, type Hex } from 'viem';
 import golden from './keyadd-golden.json';
 import { buildSignedMessage, FarcasterNetwork, MessageType, SignatureScheme } from './messageBuilder';
-import { buildSignedKeyRequestMetadata, bytesToHex, hexToBytes, keyAddDigest, signEip712Digest } from './signedKeyRequest';
+import {
+  abiEncodeSignedKeyRequestMetadata,
+  addressFromCustodyPrivateKey,
+  bytesToHex,
+  hexToBytes,
+  keyAddDigest,
+  signedKeyRequestDigest,
+  signEip712Digest,
+} from './signedKeyRequest';
 
 // Published test-only vector, independently accepted by Hypersnap's Rust
 // validators: src/core/validations/key_quorum_shared_compat_test.rs.
@@ -17,7 +25,10 @@ describe('Hypersnap wire compatibility', () => {
     const digest = keyAddDigest(payload);
     expect(bytesToHex(digest)).toBe(golden.KEY_ADD_DIGEST_HEX);
     const custodySignature = signEip712Digest(digest, custody);
-    const { metadata } = buildSignedKeyRequestMetadata({ requestFid: 1234, signerPublicKey: key, deadline: payload.deadline, custodyPrivateKey: custody });
+    const requestSignature = signEip712Digest(signedKeyRequestDigest({ requestFid: 1234, key, deadline: payload.deadline }), custody);
+    const metadata = abiEncodeSignedKeyRequestMetadata({
+      requestFid: 1234, requestSigner: addressFromCustodyPrivateKey(custody), signature: requestSignature, deadline: payload.deadline,
+    });
     const { envelope } = await buildSignedMessage({
       type: MessageType.KEY_ADD, fid: 1234, timestamp: 100000000, network: FarcasterNetwork.MAINNET,
       body: { keyAddBody: { key, custodySignature, deadline: payload.deadline, nonce: payload.nonce, metadata, scopes, ttl: payload.ttl } },
