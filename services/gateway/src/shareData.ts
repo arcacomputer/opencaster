@@ -58,7 +58,7 @@ function text(value: unknown, limit: number, { preserveNewlines = false, preserv
   return Array.from(formatted).slice(0, limit).join('');
 }
 
-function avatarUrl(value: unknown): string | undefined {
+function publicHttpsUrl(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length > 2048 || /[\s\\]/.test(value)) return;
   try {
     const url = new URL(value);
@@ -74,7 +74,7 @@ function profileValue(value: unknown): ShareProfile | undefined {
   if (username !== '' && (!IDENTIFIER.test(username) || username === '.' || username === '..')) return;
   const profile = object(value.profile) ? value.profile : undefined;
   const bio = profile && object(profile.bio) ? text(profile.bio.text, 500) : '';
-  const avatar = avatarUrl(value.pfp_url);
+  const avatar = publicHttpsUrl(value.pfp_url);
   const count = (v: unknown): v is number => Number.isSafeInteger(v) && Number(v) >= 0;
   return {
     fid: value.fid, username, displayName: text(value.display_name, 80) || username || `FID ${value.fid}`, bio,
@@ -180,7 +180,7 @@ async function loadChannel(id: string, read: PublicRead): Promise<ShareChannel |
   const response = await read('/v2/farcaster/channel', new URLSearchParams({ id, type: 'id' }));
   const channel = response?.channel;
   if (!object(channel) || channel.id !== id || typeof channel.name !== 'string') return;
-  const image = avatarUrl(channel.image_url);
+  const image = publicHttpsUrl(channel.image_url);
   return {
     id, name: text(channel.name, 80) || id, description: text(channel.description, 500),
     ...(image ? { imageUrl: image } : {}),
@@ -221,7 +221,7 @@ async function loadCast(hash: string, read: PublicRead, expectedAuthor?: SharePr
   const author = profileValue(cast.author);
   if (!author || (expectedFid !== undefined && author.fid !== expectedFid)) return;
   const imageUrls = cast.embeds.flatMap(embed => {
-    const url = object(embed) ? avatarUrl(embed.url) : undefined;
+    const url = object(embed) ? publicHttpsUrl(embed.url) : undefined;
     return url ? [url] : [];
   }).slice(0, 2);
   // The API's raw protocol text omits mention labels. Reuse the browser's

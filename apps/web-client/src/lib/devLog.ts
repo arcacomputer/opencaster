@@ -82,6 +82,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'offline-signer-typed-approval-errors',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:24Z',
+    title: 'Keep offline signer error messages consistent',
+    summary: 'The offline signer now marks which approval failures it shows you directly, so future wording changes cannot silently replace them with a generic message. What you see today does not change.',
+    changes: [
+      'An invalid recovery phrase and a phrase that does not match the request’s custody address still show their specific instructions; every other approval failure still shows the generic “check your request” message.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/1b978b4a7fdc619163f1bd93fc6fe67458bb4e52',
+    tag: 'Reliability',
+  },
+  {
     id: 'share-images-only-feed-check',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:44:10Z',
@@ -91,6 +103,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'Images only feed filtering reuses the shared image-embed check instead of a separate copy of the same host, extension and Opencaster media rules.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/79dafd7bd8f630841de3b5846c12089df5acc34a',
+    tag: 'Reliability',
+  },
+  {
+    id: 'rename-share-preview-url-check',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:43:59Z',
+    title: 'Clarify the share-preview image link check',
+    summary: 'Link previews keep accepting the same public HTTPS profile, channel and cast images as before; the shared check is now named for what it does, so future avatar-only rules cannot accidentally change channel or cast images. No visible change.',
+    changes: [
+      'Rename the gateway helper that validates public HTTPS image links for profile avatars, channel images and cast attachments in share previews.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/b34af316009df8af109d5bffa06d486ab7bc56ef',
     tag: 'Reliability',
   },
   {
