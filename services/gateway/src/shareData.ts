@@ -1,3 +1,4 @@
+import { readLimited } from '@opencaster/client-core/boundedRead';
 import { normalizeHypersnapEnsName } from '@opencaster/client-core/ensName';
 import type { AppRoute } from '@opencaster/client-core/navigation';
 import type { Cast } from '@opencaster/client-core/api';
@@ -103,25 +104,7 @@ async function responseObject(response: Response, config: UpstreamConfig, signal
     || (length !== null && (!/^\d+$/.test(length) || Number(length) > MAX_RESPONSE_BYTES))) {
     cancelBody(response); throw new Error('Invalid sharing response');
   }
-  const reader = response.body.getReader();
-  let total = 0;
-  const chunks: Uint8Array[] = [];
-  try {
-    while (true) {
-      const { done, value } = await abortable(reader.read(), signal);
-      signal.throwIfAborted();
-      if (done) break;
-      total += value.byteLength;
-      if (total > MAX_RESPONSE_BYTES) throw new Error('Sharing response too large');
-      chunks.push(value);
-    }
-    const bytes = new Uint8Array(total);
-    let offset = 0;
-    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-    return parseUpstreamObject(bytes, config);
-  } finally {
-    void reader.cancel().catch(() => {});
-  }
+  return parseUpstreamObject(await readLimited(response.body, MAX_RESPONSE_BYTES, { signal }), config);
 }
 
 type PublicRead = (path: string, params: URLSearchParams) => Promise<Record<string, unknown> | undefined>;

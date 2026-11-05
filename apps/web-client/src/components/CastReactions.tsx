@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { IconHeart, IconQuote, IconRepeat } from '@tabler/icons-react';
 import { ApiError, getReactionStatus, type Cast } from '@opencaster/client-core/api';
 import type { WalletSession } from '../lib/auth';
+import { errorMessage } from '../lib/errors';
 import { Button } from './ui';
 
 // Reaction receipts are independent reads. Bound the number in flight across
@@ -91,7 +92,7 @@ export default function CastReactions({ cast, session, onSignIn, notify, onQuote
       // toggle; never turn an unknown outcome into an automatic replay.
       if (mounted.current && activeSession.current?.publicKey === key) {
         setState(null); setRetry(value => value + 1);
-        notify(cause instanceof Error ? cause.message : 'Reaction could not be confirmed.');
+        notify(errorMessage(cause, 'Reaction could not be confirmed.'));
       }
     } finally { submitting.current = false; if (mounted.current && activeSession.current?.publicKey === key) setPending(false); }
   }

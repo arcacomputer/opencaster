@@ -34,6 +34,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'shared-bounded-body-reader',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:46:50Z',
+    title: 'One size-limited reader for gateway responses',
+    summary: 'The gateway and the operator analytics dashboard now read every size-limited request and response through one shared reader, so size limits and timeouts behave the same for posting, image uploads, link previews and analytics. There is no visible change; the existing limits and error messages stay the same.',
+    changes: [
+      'Node replies, signed messages, image uploads, share previews, analytics events and dashboard sign-in keys use the same limit, timeout and cancellation rules instead of seven separate copies.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/6e68950da903f5c7543824638739fbd24c8e65d1',
+    tag: 'Reliability',
+  },
+  {
     id: 'unify-sign-in-step-handling',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:46:28Z',
@@ -43,6 +55,30 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'Each sign-in and device-settings step uses the same handling for its busy state, progress text, cancellation and stale results, keeping each step’s existing behavior.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/833f2f16df824bcad0b1dd388a4fd8f737a36990',
+    tag: 'Reliability',
+  },
+  {
+    id: 'share-device-vault-encryption-checks',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:56Z',
+    title: 'One set of checks for every saved session',
+    summary: 'Password, passkey and remembered-browser sessions now share the same code for checking a saved device vault and for encrypting and unlocking its posting key, so a future hardening applies to all three at once. Existing saved sessions keep working with no visible change.',
+    changes: [
+      'Saved device vaults of every kind go through one encryption-format check, and the posting key is matched to its public key and wiped from memory on failure in one place; existing vaults, error messages and unlock steps are unchanged.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/a7b05b6b3d5b4c011735edb633d007d5fe002220',
+    tag: 'Security',
+  },
+  {
+    id: 'consistent-error-messages',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:51Z',
+    title: 'Keep error messages consistently short',
+    summary: 'Follow, profile, channel, feed, thread, session, reaction, deletion and content-setting errors now use the same short message rule as the composer and profile editor, so an unexpectedly long error no longer fills the screen. Wallet connection guidance stays complete.',
+    changes: [
+      'Show at most 240 characters of an error on every surface that previously displayed the full text, matching the bound Opencaster already applies to node error messages, while keeping each surface’s existing fallback wording.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/747327ea373f14a31d96f95484205153d013bda9',
     tag: 'Reliability',
   },
   {
@@ -59,6 +95,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'shared-api-request-rules',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:17Z',
+    title: 'Keep app and gateway request checks in step',
+    summary: 'The app and the Opencaster gateway now read their request formats and page limits from one shared definition, so a lookup the app allows is never rejected by the gateway as an invalid query. Accepted values and limits are unchanged; there is no visible change.',
+    changes: [
+      'Cast hashes, wallet addresses, channel IDs, pagination cursors, search text and per-list page sizes are defined once and used by both the app and the gateway allowlist.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/6b21f26844eb44b27be7817d1489bd9c06235775',
+    tag: 'Reliability',
+  },
+  {
     id: 'shared-cast-alias-history-checks',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:45:14Z',
@@ -68,6 +116,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'The browser’s short-link lookup and the gateway’s link previews now share one check of page order, page links and message fields, instead of keeping two copies that could drift apart.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/b98ae2b1a12c380dcf023ac910cfa700ca0e25bd',
+    tag: 'Reliability',
+  },
+  {
+    id: 'share-saved-channel-snapshot-rules',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:07Z',
+    title: 'One set of rules for saved channel details',
+    summary: 'Bookmarks and saved channel shortcuts now check stored channel details with the same code, so future fixes reach both at once. There is no visible change: existing bookmarks and shortcuts load exactly as before.',
+    changes: [
+      'Bookmarked casts and saved channel shortcuts share one channel validator while keeping their existing stored formats, including bookmark URL length and shortcut member counts.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/ae9b13567292525eede9e43db8912800e13e1195',
     tag: 'Reliability',
   },
   {
@@ -104,6 +164,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'Each disabled-index route (cast search, channels, channel feeds, suggested profiles, recent activity) has a single entry for its node message and user text, so a newly supported route cannot pair with the wrong message.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/25d1cce9b8fc4d85b176cf79a999233d3491fb42',
+    tag: 'Reliability',
+  },
+  {
+    id: 'preserve-signature-verification-causes',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:41Z',
+    title: 'Keep signature failure details for troubleshooting',
+    summary: 'When an imported device approval or revocation fails signature checks, the error now keeps the specific reason, such as a malformed signature versus a different wallet, for debugging. The message you see is unchanged.',
+    changes: [
+      'Attach the underlying reason to the existing approval and revocation signature errors so malformed or tampered files can be told apart from wrong-wallet approvals during support; verification rules and displayed text stay the same.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/342c2d976cfe9c7282dbe3a33d79561554854e9f',
     tag: 'Reliability',
   },
   {
@@ -152,6 +224,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'Define the cast size, long-cast threshold, embed and mention limits once in shared client code and use them in the composer and when publishing.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/1ac51853fe4ac3ccb08fd7a3c3857e514d615f66',
+    tag: 'Reliability',
+  },
+  {
+    id: 'signer-shared-derivation-constants',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:20Z',
+    title: 'Keep offline signer details in sync',
+    summary: 'The offline signer now shows its derivation path and limits recovery-phrase input from the same values it uses to sign and validate approvals, so the displayed details cannot drift from actual behavior. No visible change today.',
+    changes: [
+      'The technical-details derivation path and the recovery-phrase length limit in the signer window come from the shared signer constants instead of separate copies.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/71df283bb3b2e7de5be6495192ce707a7e048e97',
     tag: 'Reliability',
   },
   {
