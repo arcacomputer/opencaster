@@ -1,6 +1,7 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { readLimited } from '@opencaster/client-core/boundedRead';
 import { MAX_MEDIA_BYTES, MEDIA_TOO_LARGE_MESSAGE, MEDIA_UPLOAD_HEADER, isMediaType, mediaGrantPayload, parseMediaUploadGrant, sha256Hex, type MediaType, type MediaUploadGrant } from '@opencaster/client-core/media';
+import { MEDIA_PATH, mediaUrl } from '@opencaster/client-core/appOrigins';
 import { hexToBytes } from '@opencaster/protocol/signedKeyRequest';
 import { fetchUpstream, resolveUpstream, type UpstreamEnv } from './upstream';
 
@@ -18,6 +19,7 @@ export interface MediaEnv extends UpstreamEnv {
 }
 
 const DAY_SECONDS = 86400;
+const MAX_GRANT_LENGTH = 2048;
 const MAX_REGISTRY_BYTES = 1024 * 1024;
 const MAX_DAILY_ACCOUNT_UPLOADS = 10;
 const MAX_DAILY_ACCOUNT_BYTES = 50 * 1024 * 1024;
@@ -118,7 +120,7 @@ export async function handleMediaRequest(request: Request, env: MediaEnv): Promi
   const url = new URL(request.url);
   if (url.search || url.pathname.includes('%')) return failure(400, 'invalid_media_path', 'Invalid image path.');
   if (!env.MEDIA_BUCKET || !env.MEDIA_QUOTA) return failure(503, 'media_unavailable', 'Image uploads are temporarily unavailable.');
-  if (/^\/media\/[a-f0-9]{64}$/.test(url.pathname)) {
+  if (MEDIA_PATH.test(url.pathname)) {
     if (!['GET', 'HEAD'].includes(request.method)) return failure(405, 'method_not_allowed', 'This method is unavailable.');
     try {
       const key = url.pathname.slice('/media/'.length);
@@ -133,7 +135,7 @@ export async function handleMediaRequest(request: Request, env: MediaEnv): Promi
   if (request.method !== 'POST') return failure(405, 'method_not_allowed', 'This method is unavailable.');
   if (request.headers.get('Origin') !== url.origin || request.headers.get('Sec-Fetch-Site') === 'cross-site') return failure(403, 'origin_denied', 'Cross-site image uploads are unavailable.');
   const raw = request.headers.get(MEDIA_UPLOAD_HEADER);
-  if (!raw || raw.length > 2048) return failure(401, 'invalid_grant', 'A device upload authorization is required.');
+  if (!raw || raw.length > MAX_GRANT_LENGTH) return failure(401, 'invalid_grant', 'A device upload authorization is required.');
   let grant: MediaUploadGrant;
   try {
     grant = parseMediaUploadGrant(JSON.parse(raw));
@@ -167,7 +169,7 @@ export async function handleMediaRequest(request: Request, env: MediaEnv): Promi
       httpMetadata: { contentType: grant.contentType, cacheControl: 'public, max-age=31536000, immutable' },
       onlyIf: { etagDoesNotMatch: '*' },
     });
-    return success({ url: `https://opencaster.org/media/${grant.sha256}` });
+    return success({ url: mediaUrl(grant.sha256) });
   } catch { return failure(503, 'media_unavailable', 'The upload status could not be confirmed.'); }
 }
 
@@ -188,7 +190,7 @@ export class MediaUploadQuota {
     let grant: MediaUploadGrant;
     try {
       const text = await request.text();
-      if (text.length > 2048) throw new Error('Too large');
+      if (text.length > MAX_GRANT_LENGTH) throw new Error('Too large');
       grant = parseMediaUploadGrant(JSON.parse(text));
     } catch { return failure(400, 'invalid_grant', 'Invalid grant.'); }
     const storage = this.state.storage;

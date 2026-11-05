@@ -1,4 +1,5 @@
 import { isAnalyticsEvent } from '@opencaster/client-core/analyticsEvents';
+import { APP_ORIGIN } from '@opencaster/client-core/appOrigins';
 import { readLimited, SizeLimitError } from '@opencaster/client-core/boundedRead';
 
 export interface AnalyticsDataPoint {
@@ -12,7 +13,7 @@ export interface AnalyticsEnv {
   ANALYTICS_RATE_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> };
 }
 
-const ORIGIN = 'https://opencaster.org';
+const ORIGIN = APP_ORIGIN;
 const EVENT_PATH = '/_analytics/events';
 const MAX_BODY_BYTES = 8_192;
 const MAX_EVENTS = 20;
