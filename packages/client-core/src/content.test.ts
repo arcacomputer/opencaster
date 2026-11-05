@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Cast, User } from './api';
-import { composeCastContent, renderMentionSegments } from './content';
+import { composeCastContent, LONG_CAST_THRESHOLD_BYTES, MAX_CAST_BYTES, MAX_CAST_EMBEDS, MAX_MENTIONS, renderMentionSegments } from './content';
 
 const alice = { fid: 123, username: 'alice' } as User;
 const bob = { fid: 456, username: 'bob.eth' } as User;
@@ -98,5 +98,11 @@ describe('explicit mention composition', () => {
     expect(() => composeCastContent('hello', Array(11).fill(alice))).toThrow('up to 10');
     expect(() => composeCastContent('\ud83d@alice\ude00', [alice])).toThrow('incomplete Unicode');
     expect(composeCastContent('literal @alice', [])).toEqual({ text: 'literal @alice', mentions: [], mentionsPositions: [] });
+  });
+});
+
+describe('cast limits', () => {
+  it('pins the protocol limits shared by the composer, parser and write path', () => {
+    expect({ MAX_CAST_BYTES, LONG_CAST_THRESHOLD_BYTES, MAX_CAST_EMBEDS, MAX_MENTIONS }).toEqual({ MAX_CAST_BYTES: 1024, LONG_CAST_THRESHOLD_BYTES: 320, MAX_CAST_EMBEDS: 2, MAX_MENTIONS: 10 });
   });
 });

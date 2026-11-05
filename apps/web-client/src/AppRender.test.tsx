@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { getChannels, getFeed, getInfo, getSuggestedUsers, searchCasts, searchUsers, type Cast, type User } from '@opencaster/client-core/api';
 import { renderMentionSegments } from '@opencaster/client-core/content';
+import { EXPLORE_STORAGE_KEY } from './lib/storageKeys';
 
 vi.mock('@opencaster/client-core/api', async original => ({ ...await original<typeof import('@opencaster/client-core/api')>(), getChannels: vi.fn(), getFeed: vi.fn(), getInfo: vi.fn(), getSuggestedUsers: vi.fn(), searchCasts: vi.fn(), searchUsers: vi.fn() }));
 vi.mock('./lib/auth', () => ({
@@ -20,7 +21,7 @@ const casts: Cast[] = Array.from({ length: 100 }, (_, index) => ({ hash: `0x${in
 let container: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
-  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.clearAllMocks(); localStorage.clear(); localStorage.setItem('opencaster.explore', '1');
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.clearAllMocks(); localStorage.clear(); localStorage.setItem(EXPLORE_STORAGE_KEY, '1');
   history.replaceState(null, '', '/');
   vi.mocked(getFeed).mockResolvedValue({ casts, next: {} });
   vi.mocked(getChannels).mockResolvedValue({ channels: [], next: {} });

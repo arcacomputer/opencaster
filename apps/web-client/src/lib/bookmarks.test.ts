@@ -24,6 +24,13 @@ describe('bounded local bookmark snapshots', () => {
     const [saved] = readBookmarks(store); expect(saved.embeds).toEqual([{ cast_id: { fid: 2, hash: cast(2).hash } }, { url: 'https://example.com/image.png' }]); expect(saved.mentioned_profiles?.[0].fid).toBe(2); expect(saved.mentioned_profiles_ranges).toEqual([{ start: 4, end: 4 }]);
     expect(original.author.custody_address).toBe('private-do-not-retain');
   });
+  it('keeps the bookmark channel snapshot format: 2048-character URLs, whitespace names and no member count', () => {
+    const url = `https://example.com/${'u'.repeat(2028)}`; expect(url).toHaveLength(2048);
+    const channel = { id: 'art', name: '   ', url, parent_url: `${url}x`, image_url: 'https://example.com/a.png', description: 'd'.repeat(600), member_count: 7 };
+    const [saved] = normalizeBookmarks([cast(1, { channel })]);
+    expect(saved.channel).toEqual({ id: 'art', name: '   ', url, image_url: 'https://example.com/a.png', description: 'd'.repeat(512) });
+    expect(Object.keys(saved.channel!)).toEqual(['id', 'name', 'url', 'image_url', 'description']);
+  });
   it('gives a new-format empty collection precedence so clearing cannot resurrect legacy bookmarks', () => {
     const store = storage(); store.setItem(LEGACY_BOOKMARK_STORAGE_KEY, JSON.stringify([cast(1)])); expect(saveBookmarks([], store)).toBe(true); expect(readBookmarks(store)).toEqual([]); expect(store.getItem(LEGACY_BOOKMARK_STORAGE_KEY)).not.toBeNull();
   });

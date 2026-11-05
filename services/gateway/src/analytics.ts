@@ -1,4 +1,6 @@
 import { isAnalyticsEvent } from '@opencaster/client-core/analyticsEvents';
+import { APP_ORIGIN } from '@opencaster/client-core/appOrigins';
+import { readLimited, SizeLimitError } from '@opencaster/client-core/boundedRead';
 
 export interface AnalyticsDataPoint {
   blobs: string[];
@@ -11,7 +13,7 @@ export interface AnalyticsEnv {
   ANALYTICS_RATE_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> };
 }
 
-const ORIGIN = 'https://opencaster.org';
+const ORIGIN = APP_ORIGIN;
 const EVENT_PATH = '/_analytics/events';
 const MAX_BODY_BYTES = 8_192;
 const MAX_EVENTS = 20;
@@ -52,30 +54,8 @@ function write(env: AnalyticsEnv, kind: string, page: string, name: string, valu
   }
 }
 
-class BodyTooLarge extends Error {}
-
 async function readBody(request: Request): Promise<unknown> {
-  if (!request.body) throw new Error();
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      length += value.byteLength;
-      if (length > MAX_BODY_BYTES) {
-        await reader.cancel().catch(() => undefined);
-        throw new BodyTooLarge();
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const bytes = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  const bytes = await readLimited(request.body, MAX_BODY_BYTES);
   return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
 }
 
@@ -108,7 +88,7 @@ export async function handleAnalyticsEvents(request: Request, env: AnalyticsEnv)
   }
   let body: unknown;
   try { body = await readBody(request); }
-  catch (error) { return result(error instanceof BodyTooLarge ? 413 : 400); }
+  catch (error) { return result(error instanceof SizeLimitError ? 413 : 400); }
   if (!body || typeof body !== 'object' || Array.isArray(body)) return result(400);
   const object = body as Record<string, unknown>;
   if (Object.keys(object).length !== 1 || !Array.isArray(object.events)
