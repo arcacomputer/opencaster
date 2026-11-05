@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHANNEL_PIN_LIMIT, CHANNEL_PINS_STORAGE_KEY, readChannelPins, toggleChannelPin, writeChannelPins } from './channelPins';
+import { CHANNEL_PIN_LIMIT, CHANNEL_PINS_STORAGE_KEY, channelSnapshot, readChannelPins, toggleChannelPin, writeChannelPins } from './channelPins';
 import type { Channel } from '@opencaster/client-core/api';
 
 const channel = (id: string): Channel => ({ id, name: `Channel ${id}`, url: `https://example.com/${id}`, parent_url: `https://example.com/${id}?a=1`, description: 'Public channel', member_count: 2 });
@@ -16,6 +16,13 @@ describe('device-only saved channel shortcuts', () => {
     expect(readChannelPins(storage)).toEqual([channel('quorum')].map(value => ({ ...value, parent_url: item.parent_url })));
     expect(storage.getItem(CHANNEL_PINS_STORAGE_KEY)).not.toContain('privateData');
     expect(storage.getItem(CHANNEL_PINS_STORAGE_KEY)).not.toContain('not stored');
+  });
+
+  it('keeps the pin snapshot format: 1024-character URLs, ID fallback for blank names and member counts', () => {
+    const url = `https://example.com/${'u'.repeat(1004)}`; expect(url).toHaveLength(1024);
+    expect(channelSnapshot({ id: 'art', name: '   ', url, parent_url: `${url}x`, member_count: 7 })).toEqual({ id: 'art', name: 'art', url, member_count: 7 });
+    expect(channelSnapshot({ id: 'art', member_count: -1 })).toEqual({ id: 'art', name: 'art', url: '' });
+    expect(channelSnapshot({ id: 'not valid' })).toBeUndefined();
   });
 
   it('adds a shortcut once and removes it by ID without mutating its input', () => {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { deleteSavedSession, getSavedSessionMethod, type WalletSession } from '../lib/auth';
 import { notifySessionChange, readSessionPersistence, writeSessionPersistence, type SessionPersistence } from '../lib/sessionPersistence';
+import { errorMessage } from '../lib/errors';
 import { Button } from './ui';
 
 export default function SessionSettings({ session }: { session: WalletSession | null }) {
@@ -47,7 +48,7 @@ export default function SessionSettings({ session }: { session: WalletSession | 
         ? session ? 'This account will stay signed in after you close and reopen your browser.' : 'Your next sign-in will be remembered on this browser.'
         : 'Sessions are now tab-only. Closing or reloading the tab ends its session. Other tabs have been signed out.');
     } catch (cause) {
-      if (run === generation.current) setError(cause instanceof Error ? cause.message : 'Could not change session settings.');
+      if (run === generation.current) setError(errorMessage(cause, 'Could not change session settings.'));
     } finally { if (run === generation.current) setBusy(false); }
   }
 

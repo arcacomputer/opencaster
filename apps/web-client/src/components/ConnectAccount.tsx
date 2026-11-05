@@ -11,13 +11,16 @@ import { passkeysAvailable } from '../lib/passkey';
 import { ApiError, getUser } from '@opencaster/client-core/api';
 import { farcasterToUnixSeconds } from '@opencaster/client-core/farcasterEpoch';
 import { normalizeReviewIdentity, parseAccountLookup, sameReviewIdentity, type ReviewIdentity } from '../lib/accountLookup';
+import { errorMessage } from '../lib/errors';
 import '../onboarding.scss';
 
 const sourceUrl = 'https://github.com/arcacomputer/opencaster';
 const releaseTag = 'arca-signer-v0.2.2';
 const signerUrl = `${sourceUrl}/releases/download/${releaseTag}/Arca-Signer-mac-arm64.zip`;
 const approvalLimitBytes = 16 * 1024;
-const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'This action could not be completed.';
+const ACTION_FAILED = 'This action could not be completed.';
+// Wallet account-mismatch guidance from lib/wallet is longer than the default bound.
+const connectErrorMessage = (cause: unknown) => errorMessage(cause, ACTION_FAILED, Number.POSITIVE_INFINITY);
 const fingerprint = (key: string) => key.match(/.{1,8}/g)?.join(' ') ?? key;
 
 interface StepLifecycle {
@@ -53,7 +56,7 @@ async function runStep(lifecycle: StepLifecycle, options: StepOptions, body: (st
   const signal = options.abortable === false ? undefined : (controller.current = new AbortController()).signal;
   setBusy(true); setError(''); if (options.stage !== undefined) setStage(options.stage);
   try { await body({ run, signal, current, progress: text => { if (current()) setStage(text); } }); }
-  catch (cause) { if (current()) { if (options.onError) options.onError(cause); else setError(errorMessage(cause)); } }
+  catch (cause) { if (current()) { if (options.onError) options.onError(cause); else setError(connectErrorMessage(cause)); } }
   finally { if (current()) { options.onSettled?.(); setBusy(false); if (options.resetStage !== false) setStage(''); } }
 }
 
@@ -121,7 +124,7 @@ function WalletApproval({ request, disabled, expired = false, onApproved, onBusy
         ? await approvePairingWithWallet(request, wallet.provider, options)
         : await approveRevocationWithWallet(request, wallet.provider, options);
       if (current()) { setProgress('Wallet signatures received. Review the approval below, then submit it to Hypersnap.'); setRetry(false); onApproved(value, wallet.name); }
-    } catch (cause) { if (current()) { const text = errorMessage(cause); setWalletError(text); setProgress(''); setRetry(true); onError(text); } }
+    } catch (cause) { if (current()) { const text = connectErrorMessage(cause); setWalletError(text); setProgress(''); setRetry(true); onError(text); } }
     finally { if (run === generation.current) { active.current = false; setWaiting(null); onBusy(false); } }
   }
   function refreshWallets() {
@@ -248,7 +251,7 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
       stage: 'Looking up your public account…',
       onError: cause => {
         const missingName = Boolean(ensName && cause instanceof ApiError && cause.status === 404 && cause.code === 'ens_name_not_found');
-        setEnsNotFound(missingName); setError(missingName ? 'No account is linked to this ENS or Base name in this Hypersnap node.' : errorMessage(cause));
+        setEnsNotFound(missingName); setError(missingName ? 'No account is linked to this ENS or Base name in this Hypersnap node.' : connectErrorMessage(cause));
       },
     }, async ({ signal, current }) => {
       setLookupEnsName(''); setEnsNotFound(false);
@@ -295,7 +298,7 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
       if (!request) return;
       verifyPairingApproval(request, value);
       setApproval(value); setApprovalName(file.name.slice(0, 100));
-    } catch (cause) { if (run === generation.current && fileRun === fileReadGeneration.current) setError(cause instanceof SyntaxError ? 'Invalid approval file. Choose the public approval JSON exported by Arca Signer, up to 16 KiB. Never import your recovery phrase here.' : errorMessage(cause)); }
+    } catch (cause) { if (run === generation.current && fileRun === fileReadGeneration.current) setError(cause instanceof SyntaxError ? 'Invalid approval file. Choose the public approval JSON exported by Arca Signer, up to 16 KiB. Never import your recovery phrase here.' : connectErrorMessage(cause)); }
   }
   async function complete(event: FormEvent) {
     event.preventDefault();
@@ -505,7 +508,7 @@ export function DeviceSettings({ session, onClose, onLock, notify }: { session: 
       const value = validateRevocationApproval(JSON.parse(text) as unknown);
       verifyRevocationApproval(request, value);
       setApproval(value); setApprovalName(file.name.slice(0, 100));
-    } catch (cause) { if (run === generation.current && fileRun === fileReadGeneration.current) setError(cause instanceof SyntaxError ? 'Invalid revocation approval. Import the public revocation approval JSON from Arca Signer. Never import your recovery phrase here.' : errorMessage(cause)); }
+    } catch (cause) { if (run === generation.current && fileRun === fileReadGeneration.current) setError(cause instanceof SyntaxError ? 'Invalid revocation approval. Import the public revocation approval JSON from Arca Signer. Never import your recovery phrase here.' : connectErrorMessage(cause)); }
   }
   async function completeRevocation(event: FormEvent) {
     event.preventDefault();

@@ -152,8 +152,8 @@ export function verifyPairingApproval(requestValue: PairingRequest, approvalValu
   const metadataDigest = signedKeyRequestDigest({ requestFid: request.fid, key, deadline: request.deadline });
   try {
     if (recoverAddress(approval.custodySignature, custodyDigest) !== request.custodyAddress || recoverAddress(approval.requestSignature, metadataDigest) !== request.custodyAddress) throw new Error('custody mismatch');
-  } catch {
-    throw new Error('The approval signatures do not authorize this wallet and posting key.');
+  } catch (cause) {
+    throw new Error('The approval signatures do not authorize this wallet and posting key.', { cause });
   }
 }
 
@@ -202,8 +202,8 @@ export function verifyRevocationApproval(requestValue: RevocationRequest, approv
   const digest = keyRemoveDigest({ fid: request.fid, key: hexToBytes(request.publicKey), nonce: request.nonce, deadline: request.deadline });
   try {
     if (recoverAddress(approval.custodySignature, digest) !== request.custodyAddress) throw new Error('custody mismatch');
-  } catch {
-    throw new Error('The revocation signature does not authorize removal of this wallet and posting key.');
+  } catch (cause) {
+    throw new Error('The revocation signature does not authorize removal of this wallet and posting key.', { cause });
   }
 }
 

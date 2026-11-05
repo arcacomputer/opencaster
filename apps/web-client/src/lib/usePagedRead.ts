@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { errorMessage } from './errors';
 
 export interface PagedReadPage<T> { items: T[]; cursor?: string | null }
 export interface PagedReadOptions {
@@ -25,7 +26,6 @@ export interface PagedRead<T> {
 }
 
 export const LOADING_CANCELLED = 'Loading cancelled.';
-const ERROR_LENGTH = 240;
 const initial = <T,>(key: string, busy: boolean) => ({ key, items: [] as T[], cursor: undefined as string | undefined, busy, loaded: false, error: '', status: '' });
 
 /**
@@ -66,7 +66,7 @@ export function usePagedRead<T>(key: string, enabled: boolean, read: (cursor: st
         return { key, items: [...entries.values()].slice(0, maxItems), cursor: repeated || capped ? undefined : page.cursor || undefined, busy: false, loaded: true, error: '', status: repeated ? repeatedStatus : capped ? cappedStatus : '' };
       });
     } catch (cause) {
-      if (!request.signal.aborted && run === generation.current && currentKey.current === capturedKey) setState(current => ({ ...current, busy: false, error: cause instanceof Error ? cause.message.slice(0, ERROR_LENGTH) : config.current.errorFallback }));
+      if (!request.signal.aborted && run === generation.current && currentKey.current === capturedKey) setState(current => ({ ...current, busy: false, error: errorMessage(cause, config.current.errorFallback) }));
     } finally { if (run === generation.current) requesting.current = false; }
   }, [enabled, key]);
   useEffect(() => {
