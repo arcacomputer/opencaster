@@ -1,4 +1,4 @@
-import { PHRASE_MAX_LENGTH } from './approve';
+import { PHRASE_MAX_LENGTH } from './constants';
 
 /** Narrow IPC schemas keep this boundary auditable. Never return rejected input. */
 export function validateApproveInput(value: unknown): { phrase: string; requestId: string } {

@@ -145,17 +145,30 @@ function date(value: string): string {
     ? timestamp.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '';
 }
 
+const TITLE_SIZE = 60;
+const TITLE_SIZE_SMALL = 52;
+const TITLE_WIDTH = 770;
+const TITLE_LEADING = 61;
+const TITLE_TOP_ONE_LINE = 241;
+const TITLE_TOP_TWO_LINES = 226;
+
+/** Profile and channel cards share a large title of at most two lines; a
+ * two-line title starts higher so the lines below it shift by one leading.
+ */
+function titleLines(name: string): { size: number; lines: string[]; top: number; bottom: number } {
+  const size = lineWidth(graphemes(name), TITLE_SIZE) > TITLE_WIDTH ? TITLE_SIZE_SMALL : TITLE_SIZE;
+  const lines = wrap(name, size, TITLE_WIDTH, 2);
+  const top = lines.length > 1 ? TITLE_TOP_TWO_LINES : TITLE_TOP_ONE_LINE;
+  return { size, lines, top, bottom: top + (lines.length - 1) * TITLE_LEADING };
+}
+
 function profileCard(profile: ShareProfile, image: string | undefined): string {
   const name = clean(profile.displayName || profile.username || `FID ${profile.fid}`).replace(/\s+/g, ' ');
-  const nameSize = lineWidth(graphemes(name), 60) > 770 ? 52 : 60;
-  const names = wrap(name, nameSize, 770, 2);
-  const nameTop = names.length > 1 ? 226 : 241;
-  const nameBottom = nameTop + (names.length - 1) * 61;
-  const bioTop = nameBottom + 103;
+  const title = titleLines(name);
   const followers = count(profile.followers);
   const following = count(profile.following);
   const counts = [followers === undefined ? '' : `${followers} followers`, following === undefined ? '' : `${following} following`].filter(Boolean);
-  return `<g opacity=".45"><circle cx="1014" cy="323" r="157" fill="none" stroke="#C4A7FF" stroke-opacity=".22"/><circle cx="1014" cy="323" r="207" fill="none" stroke="#C4A7FF" stroke-opacity=".12"/><circle cx="1014" cy="323" r="257" fill="none" stroke="#C4A7FF" stroke-opacity=".08"/></g><rect x="64" y="162" width="43" height="5" rx="2.5" fill="${LAVENDER}"/>${textBlock('profile-name', names, 64, nameTop, nameSize, 61, `fill="${INK}" font-weight="700" letter-spacing="-1.8"`)}${textBlock('profile-handle', wrap(handle(profile), 27, 770, 1), 66, nameBottom + 43, 27, 35, `fill="${LAVENDER}"`)}${textBlock('profile-bio', wrap(profile.bio || 'Discover their casts and conversations on Opencaster.', 29, 770, names.length > 1 ? 3 : 4), 66, bioTop, 29, 39, `fill="${MUTED}"`)}${avatar(profile, image, 1014, 310, 104)}${text('profile-counts', counts.join('   ·   ') || `FID ${profile.fid}`, 66, 523, 25, `fill="${INK}" font-weight="500"`)}`;
+  return `<g opacity=".45"><circle cx="1014" cy="323" r="157" fill="none" stroke="#C4A7FF" stroke-opacity=".22"/><circle cx="1014" cy="323" r="207" fill="none" stroke="#C4A7FF" stroke-opacity=".12"/><circle cx="1014" cy="323" r="257" fill="none" stroke="#C4A7FF" stroke-opacity=".08"/></g><rect x="64" y="162" width="43" height="5" rx="2.5" fill="${LAVENDER}"/>${textBlock('profile-name', title.lines, 64, title.top, title.size, TITLE_LEADING, `fill="${INK}" font-weight="700" letter-spacing="-1.8"`)}${textBlock('profile-handle', wrap(handle(profile), 27, 770, 1), 66, title.bottom + 43, 27, 35, `fill="${LAVENDER}"`)}${textBlock('profile-bio', wrap(profile.bio || 'Discover their casts and conversations on Opencaster.', 29, 770, title.lines.length > 1 ? 3 : 4), 66, title.bottom + 103, 29, 39, `fill="${MUTED}"`)}${avatar(profile, image, 1014, 310, 104)}${text('profile-counts', counts.join('   ·   ') || `FID ${profile.fid}`, 66, 523, 25, `fill="${INK}" font-weight="500"`)}`;
 }
 
 function castCard(data: Extract<ShareData, { kind: 'cast' }>, image: string | undefined, attachment: string | undefined): string {
@@ -170,12 +183,9 @@ function castCard(data: Extract<ShareData, { kind: 'cast' }>, image: string | un
 function channelCard(data: Extract<ShareData, { kind: 'channel' }>, image: string | undefined): string {
   const channel = data.channel;
   const name = clean(channel.name || (channel.id ? `/${channel.id}` : 'Channel')).replace(/\s+/g, ' ');
-  const nameSize = lineWidth(graphemes(name), 60) > 770 ? 52 : 60;
-  const names = wrap(name, nameSize, 770, 2);
-  const nameTop = names.length > 1 ? 226 : 241;
-  const nameBottom = nameTop + (names.length - 1) * 61;
+  const title = titleLines(name);
   const participants = count(channel.members);
-  return `<g opacity=".45"><circle cx="1014" cy="323" r="157" fill="none" stroke="#C4A7FF" stroke-opacity=".22"/><circle cx="1014" cy="323" r="207" fill="none" stroke="#C4A7FF" stroke-opacity=".12"/></g><rect x="64" y="162" width="43" height="5" rx="2.5" fill="${LAVENDER}"/>${textBlock('channel-name', names, 64, nameTop, nameSize, 61, `fill="${INK}" font-weight="700" letter-spacing="-1.8"`)}${textBlock('channel-id', wrap(channel.id ? `/${channel.id}` : 'Hypersnap channel', 27, 770, 1), 66, nameBottom + 43, 27, 35, `fill="${LAVENDER}"`)}${textBlock('channel-description', wrap(channel.description || 'Explore this channel’s casts and conversations on Hypersnap.', 29, 770, names.length > 1 ? 3 : 4), 66, nameBottom + 103, 29, 39, `fill="${MUTED}"`)}<defs><clipPath id="channel-clip"><rect x="910" y="206" width="208" height="208" rx="48"/></clipPath></defs><rect x="905" y="201" width="218" height="218" rx="53" fill="#C4A7FF" fill-opacity=".12"/><rect x="910" y="206" width="208" height="208" rx="48" fill="url(#avatar)" stroke="#C4A7FF" stroke-opacity=".35" stroke-width="2"/>${image
+  return `<g opacity=".45"><circle cx="1014" cy="323" r="157" fill="none" stroke="#C4A7FF" stroke-opacity=".22"/><circle cx="1014" cy="323" r="207" fill="none" stroke="#C4A7FF" stroke-opacity=".12"/></g><rect x="64" y="162" width="43" height="5" rx="2.5" fill="${LAVENDER}"/>${textBlock('channel-name', title.lines, 64, title.top, title.size, TITLE_LEADING, `fill="${INK}" font-weight="700" letter-spacing="-1.8"`)}${textBlock('channel-id', wrap(channel.id ? `/${channel.id}` : 'Hypersnap channel', 27, 770, 1), 66, title.bottom + 43, 27, 35, `fill="${LAVENDER}"`)}${textBlock('channel-description', wrap(channel.description || 'Explore this channel’s casts and conversations on Hypersnap.', 29, 770, title.lines.length > 1 ? 3 : 4), 66, title.bottom + 103, 29, 39, `fill="${MUTED}"`)}<defs><clipPath id="channel-clip"><rect x="910" y="206" width="208" height="208" rx="48"/></clipPath></defs><rect x="905" y="201" width="218" height="218" rx="53" fill="#C4A7FF" fill-opacity=".12"/><rect x="910" y="206" width="208" height="208" rx="48" fill="url(#avatar)" stroke="#C4A7FF" stroke-opacity=".35" stroke-width="2"/>${image
     ? `<image data-role="channel-image" href="${image}" x="910" y="206" width="208" height="208" preserveAspectRatio="xMidYMid slice" clip-path="url(#channel-clip)"/>`
     : text('channel-symbol', '#', 1014, 355, 126, `fill="${INK}" text-anchor="middle" font-weight="600"`)}${text('channel-counts', participants === undefined ? 'A public Hypersnap channel' : `${participants} ${channel.members === 1 ? 'participant' : 'participants'}`, 66, 523, 25, `fill="${INK}" font-weight="500"`)}`;
 }
