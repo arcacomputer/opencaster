@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { castPath, castAliasPath, castPermalink, matchesCastRoute, parseRoute, profilePath, publicUrl, routePath, searchPath, parseLocalPath, connectReturnPath, feedPath, followingPath } from './navigation';
+import { castPath, castAliasPath, isProfileTab, PROFILE_TABS, castPermalink, matchesCastRoute, parseRoute, profilePath, publicUrl, routePath, searchPath, parseLocalPath, connectReturnPath, feedPath, followingPath } from './navigation';
 import { encodeFeed, type FeedDefinition } from './customFeeds';
 
 const hash = '0x0123456789abcdef0123456789abcdef01234567';
@@ -45,6 +45,13 @@ describe('public Hypersnap routes', () => {
     for (const channel of ['', 'a'.repeat(65), 'a.b', '@art', 'a/b']) {
       expect(route(`/channel/${channel}`)).toEqual({ kind: 'not-found' });
     }
+  });
+
+  it('accepts exactly the shared profile tab list', () => {
+    expect(PROFILE_TABS).toEqual(['casts', 'replies', 'media', 'likes', 'recasts']);
+    for (const tab of PROFILE_TABS) expect(isProfileTab(tab)).toBe(true);
+    for (const value of ['other', 'Casts', '', undefined, null, 1]) expect(isProfileTab(value)).toBe(false);
+    expect(() => profilePath(1234, 'other' as never)).toThrow('Invalid profile tab.');
   });
 
   it('preserves feature routes and profile tabs across direct loads and thread backgrounds', () => {
