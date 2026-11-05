@@ -3,8 +3,9 @@
  * Mobile clients can reuse this module; it has no dependency on the Quorum relay.
  */
 import { normalizeHypersnapEnsName } from './ensName';
-import { APP_ORIGIN, LEGACY_APP_ORIGIN } from './appOrigins';
+import { isUploadedMediaLocation } from './appOrigins';
 import { FARCASTER_EPOCH_SECONDS } from './farcasterEpoch';
+import { castHistoryCursorKey, castHistoryHash, castHistoryMessageKey, validCastHistoryMessage } from './castHistory';
 import { API_BASE, API_REQUEST_OPTIONS } from './apiBase';
 import { isProfileTab, type ProfileTab } from './navigation';
 
@@ -201,44 +202,62 @@ function searchQuery(value: string): string {
   return query;
 }
 
-async function requestJson<T>(path: string, params?: URLSearchParams, signal?: AbortSignal, body?: Uint8Array): Promise<T> {
+/** Run `run` under one REQUEST_TIMEOUT_MS deadline linked to the caller's signal.
+ * Expiry becomes ApiError(timeoutMessage, 504, 'timeout') unless timeoutMessage is
+ * undefined; caller cancellation always rethrows the caller's abort reason.
+ */
+async function withDeadline<T>(signal: AbortSignal | undefined, timeoutLabel: string, timeoutMessage: string | undefined, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  throwIfAborted(signal);
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
-  if (signal?.aborted) abort();
-  else signal?.addEventListener('abort', abort, { once: true });
-  const timeout = setTimeout(() => controller.abort(namedError('Request timed out', 'TimeoutError')), REQUEST_TIMEOUT_MS);
+  signal?.addEventListener('abort', abort, { once: true });
+  const timeout = setTimeout(() => controller.abort(namedError(timeoutLabel, 'TimeoutError')), REQUEST_TIMEOUT_MS);
   try {
-    const query = params?.toString();
-    const response = await fetch(`${API_BASE}${path}${query ? `?${query}` : ''}`, {
-      ...API_REQUEST_OPTIONS,
-      method: body ? 'POST' : 'GET',
-      headers: { ...API_REQUEST_OPTIONS.headers, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/octet-stream' } : {}) },
-      body: body ? new Uint8Array(body).buffer : undefined,
-      signal: controller.signal,
-      credentials: 'omit',
-      referrerPolicy: 'no-referrer',
-    });
-    const result: unknown = await response.json().catch(() => null);
-    if (!response.ok) {
-      // The local worker supplies bounded, non-sensitive errors. Never surface
-      // arbitrary HTML or an upstream response that may echo submitted data.
-      const code = isObject(result) && typeof result.code === 'string' ? result.code : 'api_error';
-      const message = isObject(result) && typeof result.message === 'string'
-        ? result.message.slice(0, 240)
-        : `The node returned HTTP ${response.status}.`;
-      throw new ApiError(message, response.status, code);
-    }
-    if (!isObject(result)) throw new ApiError('The node returned an invalid response.', 502, 'invalid_response');
-    return result as T;
+    return await run(controller.signal);
   } catch (error) {
-    if (body && !(error instanceof ApiError && error.status < 500)) {
-      throw new ApiError(SUBMISSION_UNKNOWN, error instanceof ApiError ? error.status : 502, 'submission_unknown');
-    }
-    if (controller.signal.aborted && !signal?.aborted) throw new ApiError('The node took too long to respond. Try again.', 504, 'timeout');
+    const timedOut = controller.signal.aborted && !signal?.aborted && isNamedError(controller.signal.reason, 'TimeoutError');
+    controller.abort(error); // Cancel any work still pending on this deadline.
+    if (timedOut && timeoutMessage !== undefined) throw new ApiError(timeoutMessage, 504, 'timeout');
+    throwIfAborted(signal);
     throw error;
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener('abort', abort);
+  }
+}
+
+async function requestJson<T>(path: string, params?: URLSearchParams, signal?: AbortSignal, body?: Uint8Array): Promise<T> {
+  try {
+    // A timed-out submission may still have reached the node, so it reports unknown status below.
+    return await withDeadline(signal, 'Request timed out', body ? undefined : 'The node took too long to respond. Try again.', async deadline => {
+      const query = params?.toString();
+      const response = await fetch(`${API_BASE}${path}${query ? `?${query}` : ''}`, {
+        ...API_REQUEST_OPTIONS,
+        method: body ? 'POST' : 'GET',
+        headers: { ...API_REQUEST_OPTIONS.headers, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/octet-stream' } : {}) },
+        body: body ? new Uint8Array(body).buffer : undefined,
+        signal: deadline,
+        credentials: 'omit',
+        referrerPolicy: 'no-referrer',
+      });
+      const result: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        // The local worker supplies bounded, non-sensitive errors. Never surface
+        // arbitrary HTML or an upstream response that may echo submitted data.
+        const code = isObject(result) && typeof result.code === 'string' ? result.code : 'api_error';
+        const message = isObject(result) && typeof result.message === 'string'
+          ? result.message.slice(0, 240)
+          : `The node returned HTTP ${response.status}.`;
+        throw new ApiError(message, response.status, code);
+      }
+      if (!isObject(result)) throw new ApiError('The node returned an invalid response.', 502, 'invalid_response');
+      return result as T;
+    });
+  } catch (error) {
+    if (body && !(error instanceof ApiError && error.status < 500)) {
+      throw new ApiError(SUBMISSION_UNKNOWN, error instanceof ApiError ? error.status : 502, 'submission_unknown');
+    }
+    throw error;
   }
 }
 
@@ -482,15 +501,10 @@ export async function getCastReactionPeople(options: { target: ReactionTarget; t
   const limit = options.limit ?? 25;
   if (!Number.isInteger(limit) || limit < 1 || limit > 25) throw new Error('Request up to 25 reactions per shard.');
   if (options.cursor) reactionCursor(options.cursor);
-  throwIfAborted(options.signal);
-  const controller = new AbortController();
-  const abort = () => controller.abort(options.signal?.reason);
-  options.signal?.addEventListener('abort', abort, { once: true });
-  const timeout = setTimeout(() => controller.abort(namedError('Reaction people timed out', 'TimeoutError')), REQUEST_TIMEOUT_MS);
-  try {
+  return withDeadline(options.signal, 'Reaction people timed out', 'Cast reaction profiles took too long to load. Try again.', async deadline => {
     const params = new URLSearchParams({ target_fid: targetFid, target_hash: targetHash, reaction_type: reactionKind(type), pageSize: String(limit), reverse: 'true' });
     if (options.cursor) params.set('pageToken', options.cursor);
-    const response = await requestJson<{ messages: unknown[]; nextPageToken?: string }>('/v1/reactionsByCast', params, controller.signal);
+    const response = await requestJson<{ messages: unknown[]; nextPageToken?: string }>('/v1/reactionsByCast', params, deadline);
     // Independent of the per-shard request limit. Never silently truncate a
     // response and then retain its continuation, which would lose people.
     if (!Array.isArray(response.messages) || response.messages.length > 1000) throw new ApiError('The node returned an invalid cast reaction list.', 502, 'invalid_response');
@@ -503,18 +517,10 @@ export async function getCastReactionPeople(options: { target: ReactionTarget; t
       actorFids.add(message.data.fid);
     }
     const cursor = reactionCursor(response.nextPageToken, options.cursor);
-    const users = await getPublicUsers([...actorFids], controller.signal);
-    throwIfAborted(controller.signal);
+    const users = await getPublicUsers([...actorFids], deadline);
+    throwIfAborted(deadline);
     return { users, next: { cursor } };
-  } catch (error) {
-    const timedOut = controller.signal.aborted && !options.signal?.aborted && isNamedError(controller.signal.reason, 'TimeoutError');
-    controller.abort(error);
-    if (timedOut) throw new ApiError('Cast reaction profiles took too long to load. Try again.', 504, 'timeout');
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-    options.signal?.removeEventListener('abort', abort);
-  }
+  });
 }
 
 // Viewer-scoped receipt cache. Only the viewer's own writes change these values;
@@ -755,20 +761,7 @@ export async function getReactionStatuses(viewerFid: number, targets: ReactionSt
 async function getProfileReactions(options: { fid: number; tab: 'likes' | 'recasts'; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<FeedResponse> {
   // Bound the entire scan + target hydration, rather than resetting a timeout
   // for every page and every cast (which could otherwise take many minutes).
-  const controller = new AbortController();
-  const abort = () => controller.abort(options.signal?.reason);
-  if (options.signal?.aborted) abort();
-  else options.signal?.addEventListener('abort', abort, { once: true });
-  const timeout = setTimeout(() => controller.abort(namedError('Reaction history timed out', 'TimeoutError')), REQUEST_TIMEOUT_MS);
-  try {
-    return await readProfileReactions({ ...options, signal: controller.signal });
-  } catch (error) {
-    if (controller.signal.aborted && !options.signal?.aborted) throw new ApiError('Profile reaction history took too long to load. Try again.', 504, 'timeout');
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-    options.signal?.removeEventListener('abort', abort);
-  }
+  return withDeadline(options.signal, 'Reaction history timed out', 'Profile reaction history took too long to load. Try again.', deadline => readProfileReactions({ ...options, signal: deadline }));
 }
 
 async function readProfileReactions(options: { fid: number; tab: 'likes' | 'recasts'; cursor?: string | null; limit?: number; signal: AbortSignal }): Promise<FeedResponse> {
@@ -822,7 +815,7 @@ export function hasImageEmbed(cast: Cast): boolean {
       const url = new URL(embed.url);
       return url.protocol === 'https:' && (/\.(png|jpe?g|webp|gif)$/i.test(url.pathname)
         || ['imagedelivery.net', 'imagedelivery.cloud'].includes(url.hostname)
-        || ([APP_ORIGIN, LEGACY_APP_ORIGIN].includes(url.origin) && /^\/media\/[a-f0-9]{64}$/.test(url.pathname)));
+        || isUploadedMediaLocation(url));
     } catch { return false; }
   }) ?? false;
 }
@@ -866,13 +859,8 @@ export async function searchCasts(options: { query: string; limit?: number; sign
   const params = pageParams(undefined, options.limit);
   params.set('limit', String(Math.min(options.limit ?? 20, 25)));
   params.set('q', searchQuery(options.query));
-  throwIfAborted(options.signal);
-  const controller = new AbortController();
-  const abort = () => controller.abort(options.signal?.reason);
-  options.signal?.addEventListener('abort', abort, { once: true });
-  const timer = setTimeout(() => controller.abort(namedError('Search timed out', 'TimeoutError')), REQUEST_TIMEOUT_MS);
-  try {
-    const response = await requestJson<{ result?: FeedResponse }>('/v2/farcaster/cast/search', params, controller.signal);
+  return withDeadline(options.signal, 'Search timed out', 'Cast search took too long to respond. Try again.', async deadline => {
+    const response = await requestJson<{ result?: FeedResponse }>('/v2/farcaster/cast/search', params, deadline);
     if (!isObject(response.result) || !Array.isArray(response.result.casts)) throw new ApiError('The node returned invalid search results.', 502, 'invalid_response');
     const seen = new Set<string>();
     const hits: Array<{ hash: string; fid: number }> = [];
@@ -884,11 +872,11 @@ export async function searchCasts(options: { query: string; limit?: number; sign
     const hydrated: Array<Cast | undefined> = new Array(hits.length);
     let next = 0;
     const worker = async () => {
-      while (!controller.signal.aborted) {
+      while (!deadline.aborted) {
         const index = next++;
         if (index >= hits.length) return;
         try {
-          const cast = await getCast(hits[index].hash, controller.signal);
+          const cast = await getCast(hits[index].hash, deadline);
           if (typeof cast.hash !== 'string' || !HASH.test(cast.hash) || hashValue(cast.hash) !== hits[index].hash || !publicUser(cast.author) || cast.author.fid !== hits[index].fid
             || typeof cast.text !== 'string' || typeof cast.timestamp !== 'string' || !Number.isFinite(Date.parse(cast.timestamp))
             || !Array.isArray(cast.embeds) || cast.embeds.length > 2 || cast.embeds.some((embed: unknown) => !isObject(embed)
@@ -906,21 +894,13 @@ export async function searchCasts(options: { query: string; limit?: number; sign
           if (!(error instanceof ApiError && error.status === 404 && error.code === 'cast_not_found')) throw error;
         }
       }
-      throw abortError(controller.signal);
+      throw abortError(deadline);
     };
     await Promise.all(Array.from({ length: Math.min(4, hits.length) }, worker));
-    throwIfAborted(controller.signal);
+    throwIfAborted(deadline);
     // The current index ignores cursors and always returns its ranked top N.
     return { casts: hydrated.filter((cast): cast is Cast => cast !== undefined), next: { cursor: null } };
-  } catch (error) {
-    const timedOut = controller.signal.aborted && !options.signal?.aborted && isNamedError(controller.signal.reason, 'TimeoutError');
-    controller.abort(error); // Cancel pending hydration and stop scheduling hits.
-    if (timedOut) throw new ApiError('Cast search took too long to respond. Try again.', 504, 'timeout');
-    throw error;
-  } finally {
-    clearTimeout(timer);
-    options.signal?.removeEventListener('abort', abort);
-  }
+  });
 }
 
 export async function getChannels(options: { kind: 'all' | 'trending' | 'search'; query?: string; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<ChannelsResponse> {
@@ -1023,28 +1003,16 @@ export async function getNotifications(options: { fid: number; cursor?: string |
  */
 async function getUserByEnsName(input: string, signal?: AbortSignal): Promise<User> {
   const { name, type } = normalizeHypersnapEnsName(input);
-  throwIfAborted(signal);
-  const controller = new AbortController();
-  const abort = () => controller.abort(signal?.reason);
-  signal?.addEventListener('abort', abort, { once: true });
-  const timeout = setTimeout(() => controller.abort(namedError('Account name lookup timed out', 'TimeoutError')), REQUEST_TIMEOUT_MS);
-  try {
-    const proof = await requestJson<{ fid?: unknown }>('/v1/fidByName', new URLSearchParams({ name, type }), controller.signal);
-    throwIfAborted(controller.signal);
+  return withDeadline(signal, 'Account name lookup timed out', 'Account name lookup took too long to respond. Try again.', async deadline => {
+    const proof = await requestJson<{ fid?: unknown }>('/v1/fidByName', new URLSearchParams({ name, type }), deadline);
+    throwIfAborted(deadline);
     if (!Number.isSafeInteger(proof.fid) || Number(proof.fid) < 1 || Number(proof.fid) > 0xffffffff) throw new ApiError('The node returned an invalid account name proof.', 502, 'invalid_response');
     const fid = proof.fid as number;
-    const user = await getUser({ fid }, controller.signal);
-    throwIfAborted(controller.signal);
+    const user = await getUser({ fid }, deadline);
+    throwIfAborted(deadline);
     if (user.fid !== fid) throw new ApiError('The node returned a different account for this name proof.', 502, 'invalid_response');
     return user;
-  } catch (error) {
-    const timedOut = controller.signal.aborted && !signal?.aborted && isNamedError(controller.signal.reason, 'TimeoutError');
-    if (timedOut) throw new ApiError('Account name lookup took too long to respond. Try again.', 504, 'timeout');
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener('abort', abort);
-  }
+  });
 }
 
 export async function getUser(lookup: { fid?: number; username?: string; custodyAddress?: string; ensName?: string }, signal?: AbortSignal): Promise<User> {
@@ -1136,25 +1104,8 @@ const CAST_LINK_BATCH_PAGES = 4;
 const CAST_LINK_MAX_MESSAGES = 100_000;
 const CAST_LINK_MAX_MATCHES = 25;
 
-/** Native v1 history uses the legacy User/CastMessage primary key. Hyper's
- * shadow User prefix (0x1e) is used by v2 feeds, not this v1 store. The fixed
- * key is [0x03][FID:u32 BE][0x01][timestamp:u32 BE][message hash:20].
- */
-function castHistoryCursorKey(value: unknown, fid: number): string | undefined {
-  if (typeof value !== 'string' || !value || value.length > 2048 || !BASE64_TOKEN.test(value)) return;
-  try {
-    const bytes = atob(value);
-    if (bytes.length !== 30 || btoa(bytes) !== value || bytes.charCodeAt(0) !== 0x03 || bytes.charCodeAt(5) !== 0x01) return;
-    const cursorFid = bytes.charCodeAt(1) * 0x1000000 + bytes.charCodeAt(2) * 0x10000 + bytes.charCodeAt(3) * 0x100 + bytes.charCodeAt(4);
-    if (cursorFid !== fid) return;
-    return Array.from(bytes, byte => byte.charCodeAt(0).toString(16).padStart(2, '0')).join('');
-  } catch { return; }
-}
 function castLinkCursor(value: unknown, fid: number): value is string {
   return castHistoryCursorKey(value, fid) !== undefined;
-}
-function castHistoryMessageKey(fid: number, timestamp: number, hash: string): string {
-  return `03${fid.toString(16).padStart(8, '0')}01${timestamp.toString(16).padStart(8, '0')}${hashValue(hash)}`;
 }
 function descendingCastHistoryCursors(seen: readonly string[], cursor: string, fid: number): boolean {
   let previous: string | undefined;
@@ -1209,20 +1160,15 @@ export async function resolveCastAlias(options: {
     || state.hashes.some(hash => typeof hash !== 'string' || !/^0x[a-f0-9]{40}$/.test(hash) || !hash.startsWith(hashPrefix)))) {
     throw new Error('This cast lookup continuation is invalid. Start the lookup again.');
   }
-  throwIfAborted(options.signal);
-  const controller = new AbortController();
-  const abort = () => controller.abort(options.signal?.reason);
-  options.signal?.addEventListener('abort', abort, { once: true });
-  const timeout = setTimeout(() => controller.abort(namedError('Cast link lookup timed out.', 'TimeoutError')), REQUEST_TIMEOUT_MS);
-  try {
-    const author = await getUser(numericAuthor ? { fid: Number(authorIdentifier) } : { username: authorIdentifier }, controller.signal);
-    throwIfAborted(controller.signal);
+  return withDeadline(options.signal, 'Cast link lookup timed out.', 'Cast link lookup took too long. Try again.', async deadline => {
+    const author = await getUser(numericAuthor ? { fid: Number(authorIdentifier) } : { username: authorIdentifier }, deadline);
+    throwIfAborted(deadline);
     if (!castLinkFid(author.fid) || (numericAuthor && author.fid !== Number(authorIdentifier))) throw new ApiError('The node returned a different or invalid author.', 502, 'invalid_response');
     if (state && state.fid !== author.fid) throw new ApiError('This username now belongs to a different account. Start the lookup again.', 409, 'account_changed');
     if (hashPrefix.length === 42) {
-      try { return { author, candidates: [await getAuthorCast(author.fid, hashPrefix, controller.signal)], complete: true, scanned: 0 }; }
+      try { return { author, candidates: [await getAuthorCast(author.fid, hashPrefix, deadline)], complete: true, scanned: 0 }; }
       catch (error) {
-        throwIfAborted(controller.signal);
+        throwIfAborted(deadline);
         if (error instanceof ApiError && error.status === 404 && error.code === 'cast_not_found') return { author, candidates: [], complete: true, scanned: 0 };
         throw error;
       }
@@ -1245,13 +1191,13 @@ export async function resolveCastAlias(options: {
           if (error instanceof ApiError && error.status === 404 && error.code === 'cast_not_found') return null;
           throw error;
         }
-      }, controller.signal);
-      throwIfAborted(controller.signal);
+      }, deadline);
+      throwIfAborted(deadline);
       matches.forEach((cast, index) => hydrated.set(pending[index], cast));
       return [...hashes].flatMap(hash => { const cast = hydrated.get(hash); return cast ? [cast] : []; });
     };
     for (let page = 0; page < CAST_LINK_BATCH_PAGES; page++) {
-      throwIfAborted(controller.signal);
+      throwIfAborted(deadline);
       if (scanned >= CAST_LINK_MAX_MESSAGES || seenCursors.size >= CAST_LINK_MAX_MESSAGES / CAST_LINK_PAGE_SIZE) { limited = true; break; }
       if (cursor) {
         if (seenCursors.has(cursor)) throw new ApiError('The node repeated a cast-history cursor.', 502, 'invalid_pagination');
@@ -1259,8 +1205,8 @@ export async function resolveCastAlias(options: {
       }
       const params = new URLSearchParams({ fid: String(author.fid), pageSize: String(CAST_LINK_PAGE_SIZE), reverse: 'true' });
       if (cursor) params.set('pageToken', cursor);
-      const history = await requestJson<{ messages?: unknown; nextPageToken?: unknown }>('/v1/castsByFid', params, controller.signal);
-      throwIfAborted(controller.signal);
+      const history = await requestJson<{ messages?: unknown; nextPageToken?: unknown }>('/v1/castsByFid', params, deadline);
+      throwIfAborted(deadline);
       if (!Array.isArray(history.messages) || history.messages.length > CAST_LINK_PAGE_SIZE) throw new ApiError('The node returned invalid author history.', 502, 'invalid_response');
       const remaining = CAST_LINK_MAX_MESSAGES - scanned;
       const checkedMessages = history.messages.slice(0, remaining);
@@ -1268,16 +1214,11 @@ export async function resolveCastAlias(options: {
       scanned += checkedMessages.length;
       let previousHistoryKey = cursor ? castHistoryCursorKey(cursor, author.fid) : undefined;
       for (const [messageIndex, message] of history.messages.entries()) {
-        if (!isObject(message) || typeof message.hash !== 'string' || !HASH.test(message.hash) || !isObject(message.data)
-          || message.data.fid !== author.fid || !Number.isSafeInteger(message.data.timestamp) || Number(message.data.timestamp) < 0 || Number(message.data.timestamp) > 0xffffffff
-          || message.data.network !== 'FARCASTER_NETWORK_MAINNET'
-          || !['MESSAGE_TYPE_CAST_ADD', 'MESSAGE_TYPE_CAST_REMOVE'].includes(String(message.data.type))
-          || (message.data.type === 'MESSAGE_TYPE_CAST_ADD' && !isObject(message.data.castAddBody))
-          || (message.data.type === 'MESSAGE_TYPE_CAST_REMOVE' && !isObject(message.data.castRemoveBody))) {
+        if (!validCastHistoryMessage(message, author.fid)) {
           throw new ApiError('The node returned invalid or unrelated cast history.', 502, 'invalid_response');
         }
-        const fullHash = `0x${hashValue(message.hash)}`;
-        const key = castHistoryMessageKey(author.fid, Number(message.data.timestamp), fullHash);
+        const fullHash = castHistoryHash(message.hash);
+        const key = castHistoryMessageKey(author.fid, message.data.timestamp, fullHash);
         if (previousHistoryKey !== undefined && key >= previousHistoryKey) throw new ApiError('The node returned out-of-order cast history.', 502, 'invalid_pagination');
         previousHistoryKey = key;
         if (messageIndex < checkedMessages.length && message.data.type === 'MESSAGE_TYPE_CAST_ADD' && fullHash.startsWith(hashPrefix) && !hashes.has(fullHash)) {
@@ -1294,27 +1235,17 @@ export async function resolveCastAlias(options: {
       }
       if (options.onProgress && hashes.size) {
         const candidates = await hydrateCandidates();
-        throwIfAborted(controller.signal);
+        throwIfAborted(deadline);
         if (candidates.length) options.onProgress({ author, candidates, complete: false, scanned });
       }
       if (!cursor) break;
       if (limited || scanned >= CAST_LINK_MAX_MESSAGES) { limited = true; break; }
     }
     const candidates = await hydrateCandidates();
-    throwIfAborted(controller.signal);
+    throwIfAborted(deadline);
     return { author, candidates, complete, scanned, ...(limited ? { limited: true } : {}),
       ...(!complete && !limited && cursor ? { continuation: { authorIdentifier, hashPrefix, fid: author.fid, cursor, seenCursors: [...seenCursors], hashes: candidates.map(cast => cast.hash), scanned } } : {}) };
-  } catch (error) {
-    if (controller.signal.aborted && !options.signal?.aborted && isNamedError(controller.signal.reason, 'TimeoutError')) {
-      throw new ApiError('Cast link lookup took too long. Try again.', 504, 'timeout');
-    }
-    throwIfAborted(options.signal);
-    throwIfAborted(controller.signal);
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-    options.signal?.removeEventListener('abort', abort);
-  }
+  });
 }
 
 export async function getConversation(hash: string, signal?: AbortSignal): Promise<ConversationNode> {

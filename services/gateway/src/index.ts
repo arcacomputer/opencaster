@@ -2,6 +2,7 @@
  * this worker accepts public queries or signed wire bytes.
  */
 import { handleMediaRequest, type MediaEnv } from './media';
+import { APP_ORIGIN } from '@opencaster/client-core/appOrigins';
 import { normalizeHypersnapEnsName } from '@opencaster/client-core/ensName';
 import { handleAnalyticsEvents, recordRequestMetric, type AnalyticsEnv } from './analytics';
 import { fetchUpstream, InvalidUpstreamResponseError, parseUpstreamObject, resolveReadFallback, resolveUpstream, validTimelineCursor, type UpstreamConfig } from './upstream';
@@ -13,7 +14,7 @@ export interface Env extends MediaEnv, AnalyticsEnv {
   HYPERSNAP_AGGREGATE_CACHE?: string;
 }
 
-const CANONICAL_ORIGIN = 'https://opencaster.org';
+const CANONICAL_ORIGIN = APP_ORIGIN;
 const LEGACY_HOST = 'quorum.arca.computer';
 const STATIC_ASSET_PATHS = new Set([
   '/index.html', '/favicon.ico', '/robots.txt', '/sitemap.xml',
@@ -263,6 +264,71 @@ async function cachedAggregate(aggregate: { cache: AggregateCache; key: Request 
   finally { clearTimeout(timeout); signal.removeEventListener('abort', abort); }
 }
 
+interface UpstreamErrorRule {
+  status: number;
+  route(path: string, isWrite: boolean): boolean;
+  body(value: object): boolean;
+  response: [status: number, code: string, message: string];
+}
+
+const nodeMessage = (...messages: string[]) => (value: object) =>
+  'message' in value && typeof value.message === 'string' && messages.includes(value.message);
+/** Hypersnap's v1 HTTP adapter reports every gRPC error as HTTP 400. */
+const v1Error = (error: string, detail: RegExp) => (value: object) =>
+  'error' in value && value.error === error
+  && 'error_detail' in value && typeof value.error_detail === 'string' && detail.test(value.error_detail);
+const exactPath = (expected: string) => (path: string) => path === expected;
+
+/** Optional node indexes return 503 with these exact source-defined messages.
+ * Preserve that capability boundary without forwarding raw errors or making a
+ * disabled index look like an empty successful feed. */
+const OPTIONAL_INDEXES: { route(path: string): boolean; messages: string[]; text: string }[] = [
+  { route: exactPath('/v2/farcaster/cast/search'), messages: ['Search indexing not available', 'Search feature disabled'], text: 'Cast search is not enabled on this Hypersnap node.' },
+  { route: path => path.startsWith('/v2/farcaster/channel'), messages: ['Channels indexing not enabled'], text: 'The channel index is not enabled on this Hypersnap node.' },
+  { route: exactPath('/v2/farcaster/feed/channels'), messages: ['Channel feed service not available'], text: 'Channel feeds are not enabled on this Hypersnap node.' },
+  { route: exactPath('/v2/farcaster/following/suggested'), messages: ['Social graph indexing not enabled'], text: 'Suggested profiles are unavailable on this Hypersnap node.' },
+  { route: exactPath('/v2/farcaster/notifications'), messages: ['Hub query service not available'], text: 'Recent activity is unavailable on this Hypersnap node.' },
+];
+
+/** Recognized upstream error shapes, checked in order. Only these exact shapes
+ * are translated; raw upstream text is never forwarded, and anything else falls
+ * through to the generic status mapping. */
+const UPSTREAM_ERROR_RULES: UpstreamErrorRule[] = [
+  { status: 404, route: exactPath('/v2/farcaster/cast'), body: nodeMessage('Cast not found'), response: [404, 'cast_not_found', 'This cast was not found on Hypersnap.'] },
+  { status: 404, route: exactPath('/v2/farcaster/channel'), body: nodeMessage('Channel not found'), response: [404, 'channel_not_found', 'This channel was not found on Hypersnap.'] },
+  ...OPTIONAL_INDEXES.map(({ route, messages, text }): UpstreamErrorRule => (
+    { status: 503, route, body: nodeMessage(...messages), response: [503, 'feature_unavailable', text] })),
+  // The v1 adapter wraps bad_request.rate_limited in HTTP 400. Recognize only
+  // the verified submit error shape.
+  { status: 400, route: (_path, isWrite) => isWrite,
+    body: v1Error('Failed to submit message', /^status: InvalidArgument, message: "bad_request\.rate_limited\/rate limit exceeded for FID \d+",/),
+    response: [429, 'rate_limited', 'Hypersnap is limiting new approvals or messages. Wait at least one minute before trying again.'] },
+  // A missing indexed ENS/Basename proof has this exact native v1 shape.
+  // Storage, validation and transport failures do not mean an unlinked name.
+  { status: 400, route: exactPath('/v1/fidByName'),
+    body: v1Error('Failed to get fid by name', /^status: NotFound, message: "username proof not found", details: \[\](?:, metadata: MetadataMap \{ headers: \{\} \})?$/),
+    response: [404, 'ens_name_not_found', 'This ENS name is not linked to an account on this Hypersnap node. Try your username or FID.'] },
+  // Only this exact NotFound result means an absent follow; network,
+  // validation, and storage failures must never appear as "not following".
+  { status: 400, route: exactPath('/v1/linkById'), body: v1Error('Failed to get link', /^status: NotFound,/),
+    response: [404, 'follow_not_found', 'This follow relationship does not exist.'] },
+  // Do not turn storage failures, bad input, or unrelated NotFound errors into
+  // a false "not liked" state.
+  { status: 400, route: exactPath('/v1/reactionById'),
+    body: v1Error('Failed to get reaction', /^status: NotFound, message: "cast not found", details: \[\](?:, metadata: MetadataMap \{ headers: \{\} \})?$/),
+    response: [404, 'reaction_not_found', 'This reaction does not exist.'] },
+];
+
+function upstreamErrorRules(path: string, status: number, isWrite: boolean): UpstreamErrorRule[] {
+  return UPSTREAM_ERROR_RULES.filter(rule => rule.status === status && rule.route(path, isWrite));
+}
+
+function translateUpstreamError(rules: UpstreamErrorRule[], value: unknown): Response | undefined {
+  if (!value || typeof value !== 'object') return;
+  const rule = rules.find(candidate => candidate.body(value));
+  return rule && failure(...rule.response);
+}
+
 async function proxy(request: Request, url: URL, env: Env, ctx?: WorkerExecutionContext): Promise<Response> {
   // The path never controls the destination host. Encoded path separators,
   // alternate authorities, duplicate query keys and unknown fields are rejected.
@@ -345,68 +411,11 @@ async function proxy(request: Request, url: URL, env: Env, ctx?: WorkerExecution
           }
         };
         if (!upstream.ok) {
-          // Optional node indexes return 503 with these exact source-defined
-          // messages. Preserve that capability boundary without forwarding raw
-          // errors or making a disabled index look like an empty successful feed.
-          if (((upstream.status === 503 && (path === '/v2/farcaster/cast/search' || path.startsWith('/v2/farcaster/channel') || path === '/v2/farcaster/feed/channels' || path === '/v2/farcaster/notifications' || path === '/v2/farcaster/following/suggested'))
-            || (upstream.status === 404 && (path === '/v2/farcaster/cast' || path === '/v2/farcaster/channel'))) && upstream.headers.get('Content-Type')?.includes('application/json')) {
-            const bytes = await readResponse(4096);
-            const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
-            if (value && typeof value === 'object' && 'message' in value) {
-              if (upstream.status === 404 && path === '/v2/farcaster/cast' && value.message === 'Cast not found') return failure(404, 'cast_not_found', 'This cast was not found on Hypersnap.');
-              if (upstream.status === 404 && path === '/v2/farcaster/channel' && value.message === 'Channel not found') return failure(404, 'channel_not_found', 'This channel was not found on Hypersnap.');
-              const unavailable = path === '/v2/farcaster/cast/search' ? ['Search indexing not available', 'Search feature disabled']
-                : path.startsWith('/v2/farcaster/channel') ? ['Channels indexing not enabled'] : path === '/v2/farcaster/feed/channels' ? ['Channel feed service not available'] : path === '/v2/farcaster/following/suggested' ? ['Social graph indexing not enabled'] : ['Hub query service not available'];
-              if (upstream.status === 503 && typeof value.message === 'string' && unavailable.includes(value.message)) {
-                return failure(503, 'feature_unavailable', path === '/v2/farcaster/cast/search' ? 'Cast search is not enabled on this Hypersnap node.'
-                  : path.startsWith('/v2/farcaster/channel') ? 'The channel index is not enabled on this Hypersnap node.' : path === '/v2/farcaster/feed/channels' ? 'Channel feeds are not enabled on this Hypersnap node.' : path === '/v2/farcaster/following/suggested' ? 'Suggested profiles are unavailable on this Hypersnap node.' : 'Recent activity is unavailable on this Hypersnap node.');
-              }
-            }
-          }
-          // The v1 adapter wraps bad_request.rate_limited in HTTP 400. Recognize
-          // only the verified submit error shape; never expose the upstream text.
-          if (isWrite && upstream.status === 400 && upstream.headers.get('Content-Type')?.includes('application/json')) {
-            const bytes = await readResponse(4096);
-            const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
-            if (value && typeof value === 'object' && 'error' in value && value.error === 'Failed to submit message'
-              && 'error_detail' in value && typeof value.error_detail === 'string'
-              && /^status: InvalidArgument, message: "bad_request\.rate_limited\/rate limit exceeded for FID \d+",/.test(value.error_detail)) {
-              return failure(429, 'rate_limited', 'Hypersnap is limiting new approvals or messages. Wait at least one minute before trying again.');
-            }
-          }
-          // A missing indexed ENS/Basename proof has this exact native v1 shape.
-          // Storage, validation and transport failures do not mean an unlinked name.
-          if (path === '/v1/fidByName' && upstream.status === 400 && upstream.headers.get('Content-Type')?.includes('application/json')) {
-            const bytes = await readResponse(4096);
-            const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
-            if (value && typeof value === 'object' && 'error' in value && value.error === 'Failed to get fid by name'
-              && 'error_detail' in value && typeof value.error_detail === 'string'
-              && /^status: NotFound, message: "username proof not found", details: \[\](?:, metadata: MetadataMap \{ headers: \{\} \})?$/.test(value.error_detail)) {
-              return failure(404, 'ens_name_not_found', 'This ENS name is not linked to an account on this Hypersnap node. Try your username or FID.');
-            }
-          }
-          // Hypersnap's v1 HTTP adapter reports every gRPC error as HTTP 400.
-          // Only this exact NotFound result means an absent follow; network,
-          // validation, and storage failures must never appear as "not following".
-          if (path === '/v1/linkById' && upstream.status === 400 && upstream.headers.get('Content-Type')?.includes('application/json')) {
-            const bytes = await readResponse(4096);
-            const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
-            if (value && typeof value === 'object' && 'error' in value && value.error === 'Failed to get link'
-              && 'error_detail' in value && typeof value.error_detail === 'string' && value.error_detail.startsWith('status: NotFound,')) {
-              return failure(404, 'follow_not_found', 'This follow relationship does not exist.');
-            }
-          }
-          // A missing reaction is wrapped as HTTP 400 by this exact v1 adapter.
-          // Do not turn storage failures, bad input, or unrelated NotFound errors
-          // into a false "not liked" state.
-          if (path === '/v1/reactionById' && upstream.status === 400 && upstream.headers.get('Content-Type')?.includes('application/json')) {
-            const bytes = await readResponse(4096);
-            const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
-            if (value && typeof value === 'object' && 'error' in value && value.error === 'Failed to get reaction'
-              && 'error_detail' in value && typeof value.error_detail === 'string'
-              && /^status: NotFound, message: "cast not found", details: \[\](?:, metadata: MetadataMap \{ headers: \{\} \})?$/.test(value.error_detail)) {
-              return failure(404, 'reaction_not_found', 'This reaction does not exist.');
-            }
+          const rules = upstreamErrorRules(path, upstream.status, isWrite);
+          if (rules.length && upstream.headers.get('Content-Type')?.includes('application/json')) {
+            const value: unknown = JSON.parse(new TextDecoder().decode(await readResponse(4096)));
+            const translated = translateUpstreamError(rules, value);
+            if (translated) return translated;
           }
           discardResponse(upstream);
           const status = [400, 401, 403, 404, 409, 422, 429].includes(upstream.status) ? upstream.status : 502;
@@ -486,7 +495,7 @@ async function routeRequest(request: Request, env: Env, ctx?: WorkerExecutionCon
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       // Redirecting a signed write changes its origin and can taint the browser
       // Origin header. Leave its body untouched and require a fresh connection.
-      return json({ code: 'site_moved', message: 'Opencaster has moved to https://opencaster.org. Reopen that site and reconnect before submitting.' }, 409, { Location: destination.href, Link: `<${CANONICAL_ORIGIN}>; rel="canonical"` });
+      return json({ code: 'site_moved', message: `Opencaster has moved to ${CANONICAL_ORIGIN}. Reopen that site and reconnect before submitting.` }, 409, { Location: destination.href, Link: `<${CANONICAL_ORIGIN}>; rel="canonical"` });
     }
     const headers = new Headers({ Location: destination.href, 'Cache-Control': 'no-store' });
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
