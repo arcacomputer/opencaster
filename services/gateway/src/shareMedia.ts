@@ -1,4 +1,4 @@
-import { APP_ORIGIN, LEGACY_APP_ORIGIN } from '@opencaster/client-core/appOrigins';
+import { APP_ORIGIN, MEDIA_PATH, UPLOADED_MEDIA_ORIGINS } from '@opencaster/client-core/appOrigins';
 import { handleMediaRequest, validateImage, type MediaEnv } from './media';
 
 /** Only our content-addressed storage and a fixed public image CDN are read.
@@ -9,8 +9,8 @@ export function previewImageUrl(input: string | undefined): URL | undefined {
   try {
     const url = new URL(input);
     if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash) return;
-    if ([APP_ORIGIN, LEGACY_APP_ORIGIN].includes(url.origin)) {
-      if (!url.search && /^\/media\/[a-f0-9]{64}$/.test(url.pathname)) return new URL(url.pathname, APP_ORIGIN);
+    if (UPLOADED_MEDIA_ORIGINS.includes(url.origin)) {
+      if (!url.search && MEDIA_PATH.test(url.pathname)) return new URL(url.pathname, APP_ORIGIN);
     } else if (url.hostname === 'imagedelivery.net' && !url.search
       && /^\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_=,-]{1,128}$/.test(url.pathname)) return url;
   } catch { /* An unavailable avatar is represented by initials. */ }

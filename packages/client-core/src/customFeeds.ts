@@ -1,5 +1,5 @@
 import type { Cast, TrendingTimeWindow } from './api';
-import { APP_ORIGIN, LEGACY_APP_ORIGIN } from './appOrigins';
+import { isUploadedMediaLocation } from './appOrigins';
 
 /** Public feed recipes only; saved recipes are shared by this browser's accounts. */
 export const CUSTOM_FEED_SOURCE_LIMIT = 8;
@@ -93,7 +93,7 @@ function hasImage(cast: Cast): boolean {
       const url = new URL(embed.url);
       return url.protocol === 'https:' && (/\.(png|jpe?g|webp|gif)$/i.test(url.pathname)
         || ['imagedelivery.net', 'imagedelivery.cloud'].includes(url.hostname)
-        || ([APP_ORIGIN, LEGACY_APP_ORIGIN].includes(url.origin) && /^\/media\/[a-f0-9]{64}$/.test(url.pathname)));
+        || isUploadedMediaLocation(url));
     } catch { return false; }
   });
 }
