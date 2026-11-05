@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'gateway-upstream-error-table',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:58Z',
+    title: 'Keep node error messages consistent',
+    summary: 'The gateway now recognizes known Hypersnap error responses from one ordered list, so missing casts, channels, follows, reactions and ENS names, rate limits, and disabled node features keep showing the same clear messages. There is no visible change; unrecognized node errors still show the generic message without exposing raw node text.',
+    changes: [
+      'Each disabled-index route (cast search, channels, channel feeds, suggested profiles, recent activity) has a single entry for its node message and user text, so a newly supported route cannot pair with the wrong message.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/25d1cce9b8fc4d85b176cf79a999233d3491fb42',
+    tag: 'Reliability',
+  },
+  {
     id: 'shared-profile-tab-list',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:44:32Z',
@@ -43,6 +55,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'The technical-details derivation path and the recovery-phrase length limit in the signer window come from the shared signer constants instead of separate copies.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/71df283bb3b2e7de5be6495192ce707a7e048e97',
+    tag: 'Reliability',
+  },
+  {
+    id: 'share-images-only-feed-check',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:10Z',
+    title: 'Keep Images only feeds in step with image display',
+    summary: 'Custom feeds with Images only now use the same image check as the profile Media tab and inline image rendering, so future image host or format support reaches all three together. Which casts appear today is unchanged.',
+    changes: [
+      'Images only feed filtering reuses the shared image-embed check instead of a separate copy of the same host, extension and Opencaster media rules.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/79dafd7bd8f630841de3b5846c12089df5acc34a',
     tag: 'Reliability',
   },
   {
