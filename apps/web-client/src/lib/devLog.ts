@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'shared-people-list-loading',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:59Z',
+    title: 'Share one loader for people lists',
+    summary: 'Follower and following lists, cast likes and recasts, channel participants, suggested people and quote casts now load through one shared paged reader, so cancellation and stale-response handling stay consistent across them. There is no visible change.',
+    changes: [
+      'Each list keeps its existing limits and messages: up to 1,000 profiles across 40 node pages for cast reactions, the first 500 for channel participants, and no fixed limit for follower and following lists, which stop when the node repeats a page.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/2acd8e64f3b42f05a20fd8af80640df914908526',
+    tag: 'Reliability',
+  },
+  {
     id: 'remove-unused-signed-key-request-helper',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:33:31Z',
