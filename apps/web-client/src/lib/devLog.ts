@@ -34,7 +34,6 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
-||||||| 57c9207e4
     id: 'shared-profile-tab-list',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:44:32Z',
