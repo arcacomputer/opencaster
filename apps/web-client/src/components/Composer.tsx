@@ -5,11 +5,12 @@ import type { WalletSession } from '../lib/auth';
 import { composeCastContent } from '@opencaster/client-core/content';
 import { composerDraftScope, inlineMentionQuery, readComposerDraft, removeComposerDraft, saveComposerDraft, type SavedComposerDraft } from '../lib/composerDraft';
 import type { CastPublicationEvent } from '../lib/pendingCasts';
+import { errorMessage } from '../lib/errors';
 import { Button, Input } from './ui';
 import '../composer.scss';
 
 export interface ComposerProps { session: WalletSession | null; onSignIn(): void; onPosted?(): void; onPublication?(event: CastPublicationEvent): void; parent?: Cast; parentUrl?: string; quote?: Cast; notify(text: string): void }
-const errorMessage = (cause: unknown) => cause instanceof Error ? cause.message.slice(0, 240) : 'This action could not be completed.';
+const ACTION_FAILED = 'This action could not be completed.';
 function ComposerAvatar({ user }: { user?: User }) {
   const [failed, setFailed] = useState('');
   let url: string | undefined;
@@ -73,7 +74,7 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
     generation.current += 1; publishing.current = false; uploadingRef.current = false;
     setText(''); setEmbeds([]); setMentionedUsers([]); setMentionQuery(''); setMentionCandidate(null); setMentionLoading(false); setBusy(false); setUploading(false); setDraftError(''); setDraftStatus(''); setConfirmRestore(false); setCaret(0); setSuggestions([]); setDismissedQuery(''); setPanel(null);
     try { setSavedDraft(scope ? readComposerDraft(scope) ?? null : null); }
-    catch (cause) { setSavedDraft(null); setDraftStatus(errorMessage(cause)); }
+    catch (cause) { setSavedDraft(null); setDraftStatus(errorMessage(cause, ACTION_FAILED)); }
     return () => { generation.current += 1; uploadController.current?.abort(); mentionController.current?.abort(); };
   }, [context, scope]);
   useLayoutEffect(() => {
@@ -98,7 +99,7 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
 
   let draft = { text, mentions: [] as number[], mentionsPositions: [] as number[] };
   let validationError = '';
-  try { draft = composeCastContent(text, mentionedUsers); } catch (cause) { validationError = errorMessage(cause); }
+  try { draft = composeCastContent(text, mentionedUsers); } catch (cause) { validationError = errorMessage(cause, ACTION_FAILED); }
   const bytes = new TextEncoder().encode(draft.text).length;
   const canPublish = Boolean(session && (text.trim() || embeds.length || quote) && bytes <= 1024 && !validationError && !busy && !uploading);
   async function publish() {
@@ -124,7 +125,7 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
       notify(quote ? 'Quote submitted to Hypersnap. It may take a moment to appear.' : parent ? 'Reply submitted to Hypersnap. It may take a moment to appear.' : 'Cast submitted to Hypersnap. It may take a moment to appear.'); onPosted?.();
     } catch (cause) {
       if (!submitted) reportPublication({ type: cause instanceof ApiError && cause.code === 'submission_unknown' ? 'unknown' : 'failed', id: publicationId });
-      if (run === generation.current && activeContext.current === capturedContext) setDraftError(cause instanceof ApiError && cause.code === 'submission_unknown' ? 'Submission status is unknown. Your draft is retained. Check your profile before publishing again to avoid a duplicate cast.' : errorMessage(cause));
+      if (run === generation.current && activeContext.current === capturedContext) setDraftError(cause instanceof ApiError && cause.code === 'submission_unknown' ? 'Submission status is unknown. Your draft is retained. Check your profile before publishing again to avoid a duplicate cast.' : errorMessage(cause, ACTION_FAILED));
     } finally { if (run === generation.current && activeContext.current === capturedContext) { publishing.current = false; setBusy(false); } }
   }
   async function attachImage(file: File | undefined) {
@@ -136,7 +137,7 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
       const { uploadMedia } = await import('@opencaster/client-core/media');
       const uploaded = await uploadMedia(file, input => session.authorizeMediaUpload(input), controller.signal);
       if (!controller.signal.aborted && run === generation.current && activeContext.current === capturedContext) setEmbeds(current => [...new Set([...current, uploaded.url])].slice(0, attachmentLimit));
-    } catch (cause) { if (!controller.signal.aborted && run === generation.current && activeContext.current === capturedContext) setDraftError(errorMessage(cause)); }
+    } catch (cause) { if (!controller.signal.aborted && run === generation.current && activeContext.current === capturedContext) setDraftError(errorMessage(cause, ACTION_FAILED)); }
     finally { if (uploadController.current === controller && run === generation.current) { uploadingRef.current = false; setUploading(false); uploadController.current = null; } }
   }
   function pasteImage(event: ClipboardEvent<HTMLTextAreaElement>) {
@@ -156,7 +157,7 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
     setMentionLoading(true); setMentionCandidate(null); setDraftError('');
     const term = mentionQuery.trim().replace(/^@/, '');
     try { const user = await getUser(/^\d+$/.test(term) ? { fid: Number(term) } : { username: term }, controller.signal); if (!controller.signal.aborted && activeContext.current === capturedContext) setMentionCandidate(user); }
-    catch (cause) { if (!controller.signal.aborted && activeContext.current === capturedContext) setDraftError(errorMessage(cause)); }
+    catch (cause) { if (!controller.signal.aborted && activeContext.current === capturedContext) setDraftError(errorMessage(cause, ACTION_FAILED)); }
     finally { if (mentionController.current === controller && activeContext.current === capturedContext) setMentionLoading(false); }
   }
   function addMention(user: User, inline = false) {
@@ -184,7 +185,7 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
   function saveDraft() {
     if (!scope || busy || uploading) return;
     try { const saved = saveComposerDraft(scope, { text, mentions: mentionedUsers.map(({ fid, username }) => ({ fid, username })), images: embeds }); setSavedDraft(saved); setDraftStatus('Draft saved in this tab for up to 24 hours.'); setConfirmRestore(false); }
-    catch (cause) { setDraftStatus(errorMessage(cause)); }
+    catch (cause) { setDraftStatus(errorMessage(cause, ACTION_FAILED)); }
   }
   function restoreDraft(confirm = false) {
     if (!savedDraft || busy || uploading) return;
@@ -194,7 +195,7 @@ function ComposerEditor({ session, onSignIn, onPosted, onPublication, parent, pa
   function discardSavedDraft() {
     if (!scope || busy || uploading) return;
     try { removeComposerDraft(scope, savedDraft?.id); setSavedDraft(null); setConfirmRestore(false); setDraftStatus('Saved draft discarded. Your current text is unchanged. Uploaded images remain public.'); }
-    catch (cause) { setDraftStatus(errorMessage(cause)); }
+    catch (cause) { setDraftStatus(errorMessage(cause, ACTION_FAILED)); }
   }
   function togglePanel(value: ComposerPanel) {
     if (!session && value !== 'info') { onSignIn(); return; }

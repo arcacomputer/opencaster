@@ -10,13 +10,16 @@ import { approvePairingWithWallet, approveRevocationWithWallet, discoverInjected
 import { passkeysAvailable } from '../lib/passkey';
 import { ApiError, getUser } from '@opencaster/client-core/api';
 import { normalizeReviewIdentity, parseAccountLookup, sameReviewIdentity, type ReviewIdentity } from '../lib/accountLookup';
+import { errorMessage } from '../lib/errors';
 import '../onboarding.scss';
 
 const sourceUrl = 'https://github.com/arcacomputer/opencaster';
 const releaseTag = 'arca-signer-v0.2.2';
 const signerUrl = `${sourceUrl}/releases/download/${releaseTag}/Arca-Signer-mac-arm64.zip`;
 const approvalLimitBytes = 16 * 1024;
-const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'This action could not be completed.';
+const ACTION_FAILED = 'This action could not be completed.';
+// Wallet account-mismatch guidance from lib/wallet is longer than the default bound.
+const connectErrorMessage = (cause: unknown) => errorMessage(cause, ACTION_FAILED, Number.POSITIVE_INFINITY);
 const fingerprint = (key: string) => key.match(/.{1,8}/g)?.join(' ') ?? key;
 
 const WalletConnectPanel = lazy(() => import('./WalletConnectPanel'));
@@ -83,7 +86,7 @@ function WalletApproval({ request, disabled, expired = false, onApproved, onBusy
         ? await approvePairingWithWallet(request, wallet.provider, options)
         : await approveRevocationWithWallet(request, wallet.provider, options);
       if (current()) { setProgress('Wallet signatures received. Review the approval below, then submit it to Hypersnap.'); setRetry(false); onApproved(value, wallet.name); }
-    } catch (cause) { if (current()) { const text = errorMessage(cause); setWalletError(text); setProgress(''); setRetry(true); onError(text); } }
+    } catch (cause) { if (current()) { const text = connectErrorMessage(cause); setWalletError(text); setProgress(''); setRetry(true); onError(text); } }
     finally { if (run === generation.current) { active.current = false; setWaiting(null); onBusy(false); } }
   }
   function refreshWallets() {
@@ -217,7 +220,7 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
     } catch (cause) {
       if (run === generation.current) {
         const missingName = Boolean(ensName && cause instanceof ApiError && cause.status === 404 && cause.code === 'ens_name_not_found');
-        setEnsNotFound(missingName); setError(missingName ? 'No account is linked to this ENS or Base name in this Hypersnap node.' : errorMessage(cause));
+        setEnsNotFound(missingName); setError(missingName ? 'No account is linked to this ENS or Base name in this Hypersnap node.' : connectErrorMessage(cause));
       }
     }
     finally { if (run === generation.current) { setBusy(false); setStage(''); } }
@@ -236,7 +239,7 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
       const changed = !sameReviewIdentity(reviewed, fresh);
       setIdentity(fresh); setIdentityChanged(changed); setIdentityAccepted(!changed); setLookupEnsName('');
       pending.current = value; setRequest(value.request); setNow(Date.now());
-    } catch (cause) { value?.dispose(); if (run === generation.current) setError(errorMessage(cause)); }
+    } catch (cause) { value?.dispose(); if (run === generation.current) setError(connectErrorMessage(cause)); }
     finally { if (run === generation.current) { setBusy(false); setStage(''); } }
   }
   function downloadRequest() {
@@ -259,7 +262,7 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
       if (!request) return;
       verifyPairingApproval(request, value);
       setApproval(value); setApprovalName(file.name.slice(0, 100));
-    } catch (cause) { if (run === generation.current && fileRun === fileReadGeneration.current) setError(cause instanceof SyntaxError ? 'Invalid approval file. Choose the public approval JSON exported by Arca Signer, up to 16 KiB. Never import your recovery phrase here.' : errorMessage(cause)); }
+    } catch (cause) { if (run === generation.current && fileRun === fileReadGeneration.current) setError(cause instanceof SyntaxError ? 'Invalid approval file. Choose the public approval JSON exported by Arca Signer, up to 16 KiB. Never import your recovery phrase here.' : connectErrorMessage(cause)); }
   }
   async function complete(event: FormEvent) {
     event.preventDefault();
@@ -275,7 +278,7 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
         await session.rememberOnDevice({ signal: controller.current.signal });
       }
       acceptSession(session, run);
-    } catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
+    } catch (cause) { if (run === generation.current) setError(connectErrorMessage(cause)); }
     finally { if (run === generation.current) { setAttempted(pending.current?.submitted ?? false); setBusy(false); setStage(''); setPassword(''); } }
   }
   async function retryRemember() {
@@ -286,7 +289,7 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
     try {
       await session.rememberOnDevice({ signal: controller.current.signal });
       acceptSession(session, run);
-    } catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
+    } catch (cause) { if (run === generation.current) setError(connectErrorMessage(cause)); }
     finally { if (run === generation.current) { setBusy(false); setStage(''); } }
   }
   async function unlockDevice(event: FormEvent) {
@@ -299,14 +302,14 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
       if (!session) throw new Error('The saved session changed. Reconnect your account.');
       acceptSession(session, run);
     }
-    catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
+    catch (cause) { if (run === generation.current) setError(connectErrorMessage(cause)); }
     finally { if (run === generation.current) { setBusy(false); setPassword(''); } }
   }
   async function forget() {
     if (busy) return;
     const run = generation.current; setBusy(true); setError('');
     try { await deleteSavedSession(); if (run === generation.current) { setSavedMethod(undefined); setStorageUnreadable(false); setUnlock(false); setPassword(''); } }
-    catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
+    catch (cause) { if (run === generation.current) setError(connectErrorMessage(cause)); }
     finally { if (run === generation.current) setBusy(false); }
   }
 
@@ -423,14 +426,14 @@ export function DeviceSettings({ session, onClose, onLock, notify }: { session: 
     if (busy || request) return;
     const run = generation.current; setBusy(true); setError('');
     try { await deleteSavedSession(session.publicKey); if (run === generation.current) { setSavedMethod(undefined); setStorageUnreadable(false); notify('Saved encrypted key deleted. This tab is still connected.'); } }
-    catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
+    catch (cause) { if (run === generation.current) setError(connectErrorMessage(cause)); }
     finally { if (run === generation.current) setBusy(false); }
   }
   async function forgetUnreadableVault() {
     if (busy || request || !storageUnreadable) return;
     const run = ++generation.current; setBusy(true); setError('');
     try { await deleteSavedSession(); if (run === generation.current) { setSavedMethod(undefined); setStorageUnreadable(false); notify('Unreadable local vault deleted. This tab stays connected; network authorization remains active.'); } }
-    catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
+    catch (cause) { if (run === generation.current) setError(connectErrorMessage(cause)); }
     finally { if (run === generation.current) setBusy(false); }
   }
   async function saveWithPasskey() {
@@ -440,7 +443,7 @@ export function DeviceSettings({ session, onClose, onLock, notify }: { session: 
     try {
       await session.saveToDeviceWithPasskey({ signal: controller.current.signal, onProgress: text => { if (run === generation.current) setStage(text); } });
       if (run === generation.current) { setSavedMethod('passkey'); setPasswordSaving(false); setPassword(''); setConfirmation(''); notify('This browser’s posting key is encrypted with a passkey. No new network authorization was created.'); }
-    } catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
+    } catch (cause) { if (run === generation.current) setError(connectErrorMessage(cause)); }
     finally { if (run === generation.current) { setBusy(false); setStage(''); } }
   }
   async function saveWithPassword(event: FormEvent) {
@@ -450,7 +453,7 @@ export function DeviceSettings({ session, onClose, onLock, notify }: { session: 
     try {
       await session.saveToDevice(password, { signal: controller.current.signal, onProgress: text => { if (run === generation.current) setStage(text); } });
       if (run === generation.current) { setSavedMethod('password'); setPasswordSaving(false); notify('This browser’s posting key is encrypted with your password.'); }
-    } catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
+    } catch (cause) { if (run === generation.current) setError(connectErrorMessage(cause)); }
     finally { if (run === generation.current) { setBusy(false); setStage(''); setPassword(''); setConfirmation(''); } }
   }
   async function prepareRevocation() {
@@ -461,7 +464,7 @@ export function DeviceSettings({ session, onClose, onLock, notify }: { session: 
       const value = await session.prepareRevocation({ signal: controller.current.signal, onProgress: text => { if (run === generation.current) setStage(text); } });
       if (run !== generation.current) { value.dispose(); return; }
       pending.current = value; setRequest(value.request); setAttempted(value.submitted); setNow(Date.now());
-    } catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
+    } catch (cause) { if (run === generation.current) setError(connectErrorMessage(cause)); }
     finally { if (run === generation.current) { setBusy(false); setStage(''); } }
   }
   function downloadRevocation() {
@@ -482,7 +485,7 @@ export function DeviceSettings({ session, onClose, onLock, notify }: { session: 
       const value = validateRevocationApproval(JSON.parse(text) as unknown);
       verifyRevocationApproval(request, value);
       setApproval(value); setApprovalName(file.name.slice(0, 100));
-    } catch (cause) { if (run === generation.current && fileRun === fileReadGeneration.current) setError(cause instanceof SyntaxError ? 'Invalid revocation approval. Import the public revocation approval JSON from Arca Signer. Never import your recovery phrase here.' : errorMessage(cause)); }
+    } catch (cause) { if (run === generation.current && fileRun === fileReadGeneration.current) setError(cause instanceof SyntaxError ? 'Invalid revocation approval. Import the public revocation approval JSON from Arca Signer. Never import your recovery phrase here.' : connectErrorMessage(cause)); }
   }
   async function completeRevocation(event: FormEvent) {
     event.preventDefault();
@@ -495,7 +498,7 @@ export function DeviceSettings({ session, onClose, onLock, notify }: { session: 
       // confirmed revocation cannot lock an unrelated replacement session.
       onLock(true);
       notify('This device’s network authorization was revoked and its saved key was deleted.');
-    } catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
+    } catch (cause) { if (run === generation.current) setError(connectErrorMessage(cause)); }
     finally { if (run === generation.current) { setAttempted(pending.current?.submitted ?? false); setBusy(false); setStage(''); } }
   }
   return <Modal title="This device’s access" onClose={close}>

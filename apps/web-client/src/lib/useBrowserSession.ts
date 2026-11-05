@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react';
 import type { WalletSession } from './auth';
 import { notifySessionChange, readSessionPersistence, subscribeSessionChanges, type SessionChangeKind } from './sessionPersistence';
+import { errorMessage } from './errors';
 
 export function useBrowserSession() {
   const [session, updateSession] = useState<WalletSession | null>(null);
@@ -46,7 +47,7 @@ export function useBrowserSession() {
     } catch (cause) {
       if (mounted.current && run === generation.current) setRestoreError(abort.signal.aborted
         ? 'Restoring your session timed out. Your saved device has not been removed.'
-        : cause instanceof Error ? cause.message : 'Your saved session could not be restored.');
+        : errorMessage(cause, 'Your saved session could not be restored.'));
     } finally {
       clearTimeout(timeout);
       if (mounted.current && run === generation.current) setRestoring(false);
