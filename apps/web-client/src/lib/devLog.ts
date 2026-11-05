@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'shared-api-request-rules',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:17Z',
+    title: 'Keep app and gateway request checks in step',
+    summary: 'The app and the Opencaster gateway now read their request formats and page limits from one shared definition, so a lookup the app allows is never rejected by the gateway as an invalid query. Accepted values and limits are unchanged; there is no visible change.',
+    changes: [
+      'Cast hashes, wallet addresses, channel IDs, pagination cursors, search text and per-list page sizes are defined once and used by both the app and the gateway allowlist.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/6b21f26844eb44b27be7817d1489bd9c06235775',
+    tag: 'Reliability',
+  },
+  {
     id: 'remove-unused-signed-key-request-helper',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:33:31Z',
