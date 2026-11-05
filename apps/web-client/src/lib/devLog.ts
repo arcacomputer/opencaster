@@ -118,6 +118,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'shared-cast-limits',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:23Z',
+    title: 'Keep cast limits consistent',
+    summary: 'The composer, mention parser and publishing step now read the same named cast limits, so the size counter, Publish button and final checks cannot disagree. Casts still allow up to 1,024 UTF-8 bytes, two embeds and ten mentions; there is no visible change.',
+    changes: [
+      'Define the cast size, long-cast threshold, embed and mention limits once in shared client code and use them in the composer and when publishing.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/1ac51853fe4ac3ccb08fd7a3c3857e514d615f66',
+    tag: 'Reliability',
+  },
+  {
     id: 'share-images-only-feed-check',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:44:10Z',
