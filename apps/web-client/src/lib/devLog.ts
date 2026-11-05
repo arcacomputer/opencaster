@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'unify-sign-in-step-handling',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:46:28Z',
+    title: 'More consistent sign-in and device-settings steps',
+    summary: 'Account lookup, device authorization, unlocking, saving and revocation now share one routine for progress, cancellation and error messages, so future fixes apply to every step at once. There is no visible change to sign-in or device settings.',
+    changes: [
+      'Each sign-in and device-settings step uses the same handling for its busy state, progress text, cancellation and stale results, keeping each step’s existing behavior.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/833f2f16df824bcad0b1dd388a4fd8f737a36990',
+    tag: 'Reliability',
+  },
+  {
     id: 'remove-unused-signed-key-request-helper',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:33:31Z',
