@@ -35,6 +35,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'remove-unused-signed-key-request-helper',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:33:31Z',
+    title: 'Remove an unused signing helper',
+    summary: 'Shared protocol code drops an all-in-one key-request helper that only a test used. Device authorization still builds key-request metadata from wallet or offline-signer approvals exactly as before.',
+    changes: [
+      'Delete the unused helper that signed key-request metadata with a raw custody key; the byte-for-byte Hypersnap KEY_ADD compatibility test now builds the same metadata from the shared signing steps.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/dba5980c699b2bfe00584dba0a3ab7184c34246e',
+    tag: 'Reliability',
+  },
+  {
     id: 'remove-unused-custody-events-helper',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:32:50Z',
@@ -45,6 +57,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'Keep the gateway’s registry-by-address route and its validation unchanged for the existing synthetic test setup.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/c70f79edf8cf00179d13a7cd5091bdfbecc24b7e',
+    tag: 'Reliability',
+  },
+  {
+    id: 'remove-unused-unhide-cast-helper',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:32:36Z',
+    title: 'Remove an unused hidden-cast helper',
+    summary: 'The content settings code no longer carries a single-cast restore helper that no screen used, so the hiding code is easier to maintain. Hidden casts still clear all at once from content settings.',
+    changes: [
+      'Remove the unused per-cast unhide code path. Hiding a cast, the 500-cast limit and Clear hidden casts work exactly as before; this release adds no way to restore one hidden cast at a time.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/6e70320eb4747712218199c65d5cb25a9b687432',
     tag: 'Reliability',
   },
   {
