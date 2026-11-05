@@ -83,6 +83,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'share-saved-channel-snapshot-rules',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:07Z',
+    title: 'One set of rules for saved channel details',
+    summary: 'Bookmarks and saved channel shortcuts now check stored channel details with the same code, so future fixes reach both at once. There is no visible change: existing bookmarks and shortcuts load exactly as before.',
+    changes: [
+      'Bookmarked casts and saved channel shortcuts share one channel validator while keeping their existing stored formats, including bookmark URL length and shortcut member counts.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/ae9b13567292525eede9e43db8912800e13e1195',
+    tag: 'Reliability',
+  },
+  {
     id: 'shared-request-deadline-constants',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:44:58Z',
