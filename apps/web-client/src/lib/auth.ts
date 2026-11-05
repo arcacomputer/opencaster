@@ -235,13 +235,6 @@ export async function preparePairing(lookup: { fid?: number; username?: string; 
   } catch (error) { privateKey?.fill(0); throw error; }
 }
 
-function savedPublicKey(saved: unknown): string | undefined {
-  if (saved && typeof saved === 'object' && 'metadata' in saved && saved.metadata && typeof saved.metadata === 'object' && 'publicKey' in saved.metadata && typeof saved.metadata.publicKey === 'string') return saved.metadata.publicKey;
-}
-export async function hasSavedSession(publicKey?: string): Promise<boolean> {
-  const saved = await readSavedVault();
-  return publicKey ? savedPublicKey(saved) === publicKey : saved !== undefined;
-}
 export async function getSavedSessionMethod(publicKey?: string): Promise<SavedSessionMethod | undefined> {
   const saved = await readSavedVault();
   if (saved === undefined) return undefined;
