@@ -34,6 +34,19 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     tag: 'Reliability',
   },
   {
+    id: 'remove-unused-custody-events-helper',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:32:50Z',
+    title: 'Remove an unused account-registry helper',
+    summary: 'The shared client no longer carries an account-registry request helper that nothing called, with no change to sign-in or account lookup.',
+    changes: [
+      'Delete the unused custody-address registry wrapper from the shared API package. Account lookup by custody wallet continues to use the existing custody-address profile lookup.',
+      'Keep the gateway’s registry-by-address route and its validation unchanged for the existing synthetic test setup.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/c70f79edf8cf00179d13a7cd5091bdfbecc24b7e',
+    tag: 'Reliability',
+  },
+  {
     id: 'preserve-haatz-primary-session-release',
     date: '2026-11-05',
     timestamp: '2026-11-05T00:32:01Z',
