@@ -5,11 +5,7 @@ import { wordlist } from '@scure/bip39/wordlists/english';
 import {
   hashPairingRequest,
   hashRevocationRequest,
-  validatePairingRequest,
-  validateRevocationRequest,
   validateSignerRequest,
-  type PairingApproval,
-  type RevocationApproval,
   type SignerApproval,
 } from '@opencaster/client-core/pairing';
 import {
@@ -101,13 +97,4 @@ export function approveSignerRequest(request: unknown, phrase: string, nowMs = D
     root?.wipePrivateData();
     account?.wipePrivateData();
   }
-}
-
-/** Preserve the grant-only API for callers that must not accept revocation. */
-export function approvePairingRequest(request: unknown, phrase: string, nowMs = Date.now()): PairingApproval {
-  return approveSignerRequest(validatePairingRequest(request, nowMs), phrase, nowMs) as PairingApproval;
-}
-
-export function approveRevocationRequest(request: unknown, phrase: string, nowMs = Date.now()): RevocationApproval {
-  return approveSignerRequest(validateRevocationRequest(request, nowMs), phrase, nowMs) as RevocationApproval;
 }
