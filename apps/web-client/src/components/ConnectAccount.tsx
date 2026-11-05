@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode, type RefObject } from 'react';
 import { IconArrowDown, IconArrowLeft, IconArrowUpRight, IconCheck, IconCode, IconDeviceDesktop, IconFileCheck, IconKey, IconLock, IconRefresh, IconShieldLock, IconTrash, IconWallet } from '@tabler/icons-react';
 import { Button, Input, Modal } from './ui';
 import WalletConnectLogo from './WalletConnectLogo';
@@ -18,6 +18,43 @@ const signerUrl = `${sourceUrl}/releases/download/${releaseTag}/Arca-Signer-mac-
 const approvalLimitBytes = 16 * 1024;
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'This action could not be completed.';
 const fingerprint = (key: string) => key.match(/.{1,8}/g)?.join(' ') ?? key;
+
+interface StepLifecycle {
+  busy: boolean;
+  generation: RefObject<number>;
+  controller: RefObject<AbortController | null>;
+  setBusy(value: boolean): void;
+  setError(value: string): void;
+  setStage(value: string): void;
+}
+interface StepOptions {
+  /** Status text shown while the step starts. */
+  stage?: string;
+  /** Start a new generation (default) so older steps' late results are ignored; `false` keeps the current one. */
+  bump?: boolean;
+  /** Replace the shared controller (default) so reset and unmount abort this step. */
+  abortable?: boolean;
+  /** Clear the status text when the step settles (default). */
+  resetStage?: boolean;
+  /** Replaces the default error message; only called while the step is current. */
+  onError?(cause: unknown): void;
+  /** Extra state resets when the step settles; only called while the step is current. */
+  onSettled?(): void;
+}
+interface Step { run: number; signal?: AbortSignal; current(): boolean; progress(text: string): void }
+
+// Shared busy/generation/abort/stage/error lifecycle for an authorization step.
+async function runStep(lifecycle: StepLifecycle, options: StepOptions, body: (step: Step) => Promise<void>) {
+  const { generation, controller, setBusy, setError, setStage } = lifecycle;
+  if (lifecycle.busy) return;
+  const run = options.bump === false ? generation.current : ++generation.current;
+  const current = () => run === generation.current;
+  const signal = options.abortable === false ? undefined : (controller.current = new AbortController()).signal;
+  setBusy(true); setError(''); if (options.stage !== undefined) setStage(options.stage);
+  try { await body({ run, signal, current, progress: text => { if (current()) setStage(text); } }); }
+  catch (cause) { if (current()) { if (options.onError) options.onError(cause); else setError(errorMessage(cause)); } }
+  finally { if (current()) { options.onSettled?.(); setBusy(false); if (options.resetStage !== false) setStage(''); } }
+}
 
 const WalletConnectPanel = lazy(() => import('./WalletConnectPanel'));
 
@@ -188,6 +225,7 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
     if (presentation === 'page' && (currentStep > 1 || previous.step !== currentStep || previous.unlock !== unlock)) stepHeading.current?.focus();
   }, [currentStep, identityChanged, presentation, unlock]);
 
+  const lifecycle: StepLifecycle = { busy, generation, controller, setBusy, setError, setStage };
   function reset() {
     generation.current += 1;
     controller.current?.abort(); pending.current?.dispose(); pending.current = null;
@@ -204,40 +242,37 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
   }
   async function findAccount(event: FormEvent) {
     event.preventDefault();
-    if (busy) return;
-    const run = ++generation.current;
-    controller.current = new AbortController(); setBusy(true); setError(''); setLookupEnsName(''); setEnsNotFound(false); setStage('Looking up your public account…');
     let ensName = '';
-    try {
-      const lookup = parseAccountLookup(identifier, initialFid);
-      if ('ensName' in lookup && typeof lookup.ensName === 'string') ensName = lookup.ensName;
-      const user = await getUser(lookup, controller.current.signal);
-      if (run !== generation.current) return;
-      setIdentity(normalizeReviewIdentity(user, lookup)); setLookupEnsName(ensName); setIdentityAccepted(false); setIdentityChanged(false);
-    } catch (cause) {
-      if (run === generation.current) {
+    await runStep(lifecycle, {
+      stage: 'Looking up your public account…',
+      onError: cause => {
         const missingName = Boolean(ensName && cause instanceof ApiError && cause.status === 404 && cause.code === 'ens_name_not_found');
         setEnsNotFound(missingName); setError(missingName ? 'No account is linked to this ENS or Base name in this Hypersnap node.' : errorMessage(cause));
-      }
-    }
-    finally { if (run === generation.current) { setBusy(false); setStage(''); } }
+      },
+    }, async ({ signal, current }) => {
+      setLookupEnsName(''); setEnsNotFound(false);
+      const lookup = parseAccountLookup(identifier, initialFid);
+      if ('ensName' in lookup && typeof lookup.ensName === 'string') ensName = lookup.ensName;
+      const user = await getUser(lookup, signal);
+      if (!current()) return;
+      setIdentity(normalizeReviewIdentity(user, lookup)); setLookupEnsName(ensName); setIdentityAccepted(false); setIdentityChanged(false);
+    });
   }
   async function prepareReviewedAccount() {
-    if (busy || !identity || request) return;
+    if (!identity || request) return;
     const reviewed = identity;
-    const run = ++generation.current;
-    controller.current = new AbortController(); setBusy(true); setError(''); setStage('Checking the account and preparing this device’s key…');
-    let value: PendingPairing | undefined;
-    try {
-      value = await preparePairing({ fid: reviewed.fid }, { origin: location.origin, requestedScopes: scopes, signal: controller.current.signal, onProgress: text => { if (run === generation.current) setStage(text); } });
-      if (run !== generation.current) { value.dispose(); return; }
-      const fresh = normalizeReviewIdentity(value.user, { fid: reviewed.fid });
-      if (value.request.fid !== fresh.fid || value.request.custodyAddress.toLowerCase() !== fresh.custodyAddress) throw new Error('The prepared authorization does not match the account’s current identity. Find the account again.');
-      const changed = !sameReviewIdentity(reviewed, fresh);
-      setIdentity(fresh); setIdentityChanged(changed); setIdentityAccepted(!changed); setLookupEnsName('');
-      pending.current = value; setRequest(value.request); setNow(Date.now());
-    } catch (cause) { value?.dispose(); if (run === generation.current) setError(errorMessage(cause)); }
-    finally { if (run === generation.current) { setBusy(false); setStage(''); } }
+    await runStep(lifecycle, { stage: 'Checking the account and preparing this device’s key…' }, async ({ signal, current, progress }) => {
+      let value: PendingPairing | undefined;
+      try {
+        value = await preparePairing({ fid: reviewed.fid }, { origin: location.origin, requestedScopes: scopes, signal, onProgress: progress });
+        if (!current()) { value.dispose(); return; }
+        const fresh = normalizeReviewIdentity(value.user, { fid: reviewed.fid });
+        if (value.request.fid !== fresh.fid || value.request.custodyAddress.toLowerCase() !== fresh.custodyAddress) throw new Error('The prepared authorization does not match the account’s current identity. Find the account again.');
+        const changed = !sameReviewIdentity(reviewed, fresh);
+        setIdentity(fresh); setIdentityChanged(changed); setIdentityAccepted(!changed); setLookupEnsName('');
+        pending.current = value; setRequest(value.request); setNow(Date.now());
+      } catch (cause) { value?.dispose(); throw cause; }
+    });
   }
   function downloadRequest() {
     if (!request) return;
@@ -263,51 +298,45 @@ export default function ConnectAccount({ onClose, onConnect, requestedScopes, in
   }
   async function complete(event: FormEvent) {
     event.preventDefault();
-    if (busy || connected || !identityAccepted || !pending.current || !approval) return;
-    const run = generation.current;
-    controller.current = new AbortController(); setBusy(true); setError(''); setAttempted(true);
-    try {
-      const session = provisionalSession.current ?? await pending.current.complete(approval, { signal: controller.current.signal, onProgress: text => { if (run === generation.current) setStage(text); } });
-      if (run !== generation.current) { session.dispose(); return; }
+    const pairing = pending.current;
+    if (connected || !identityAccepted || !pairing || !approval) return;
+    await runStep(lifecycle, {
+      bump: false,
+      onSettled: () => { setAttempted(pending.current?.submitted ?? false); setPassword(''); },
+    }, async ({ run, signal, current, progress }) => {
+      setAttempted(true);
+      const session = provisionalSession.current ?? await pairing.complete(approval, { signal, onProgress: progress });
+      if (!current()) { session.dispose(); return; }
       provisionalSession.current = session; setConnected(true);
       if (readSessionPersistence() === 'remember') {
         setStage('Remembering this browser…');
-        await session.rememberOnDevice({ signal: controller.current.signal });
+        await session.rememberOnDevice({ signal });
       }
       acceptSession(session, run);
-    } catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
-    finally { if (run === generation.current) { setAttempted(pending.current?.submitted ?? false); setBusy(false); setStage(''); setPassword(''); } }
+    });
   }
   async function retryRemember() {
     const session = provisionalSession.current;
-    if (busy || !connected || !session) return;
-    const run = generation.current;
-    controller.current = new AbortController(); setBusy(true); setError(''); setStage('Remembering this browser…');
-    try {
-      await session.rememberOnDevice({ signal: controller.current.signal });
+    if (!connected || !session) return;
+    await runStep(lifecycle, { bump: false, stage: 'Remembering this browser…' }, async ({ run, signal }) => {
+      await session.rememberOnDevice({ signal });
       acceptSession(session, run);
-    } catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
-    finally { if (run === generation.current) { setBusy(false); setStage(''); } }
+    });
   }
   async function unlockDevice(event: FormEvent) {
-    event.preventDefault(); if (busy || (savedMethod === 'password' && !password)) return;
-    const run = ++generation.current;
-    controller.current = new AbortController(); setBusy(true); setError(''); setStage('Unlocking your device key…');
-    try {
-      const options = { signal: controller.current.signal, onProgress: (text: string) => { if (run === generation.current) setStage(text); } };
+    event.preventDefault(); if (savedMethod === 'password' && !password) return;
+    await runStep(lifecycle, { stage: 'Unlocking your device key…', resetStage: false, onSettled: () => setPassword('') }, async ({ run, signal, progress }) => {
+      const options = { signal, onProgress: progress };
       const session = savedMethod === 'browser' ? await restoreRememberedSession(options) : savedMethod === 'passkey' ? await unlockSavedSessionWithPasskey(options) : await unlockSavedSession(password, options);
       if (!session) throw new Error('The saved session changed. Reconnect your account.');
       acceptSession(session, run);
-    }
-    catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
-    finally { if (run === generation.current) { setBusy(false); setPassword(''); } }
+    });
   }
   async function forget() {
-    if (busy) return;
-    const run = generation.current; setBusy(true); setError('');
-    try { await deleteSavedSession(); if (run === generation.current) { setSavedMethod(undefined); setStorageUnreadable(false); setUnlock(false); setPassword(''); } }
-    catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
-    finally { if (run === generation.current) setBusy(false); }
+    await runStep(lifecycle, { bump: false, abortable: false, resetStage: false }, async ({ current }) => {
+      await deleteSavedSession();
+      if (current()) { setSavedMethod(undefined); setStorageUnreadable(false); setUnlock(false); setPassword(''); }
+    });
   }
 
   return <OnboardingFrame presentation={presentation} title={deletionApproval ? 'Enable cast deletion' : socialApproval ? 'Enable social features' : unlock ? 'Welcome back.' : 'Connect your account'} onClose={close}>
@@ -414,55 +443,48 @@ export function DeviceSettings({ session, onClose, onLock, notify }: { session: 
   }, [request]);
   const expired = request !== null && Math.floor(now / 1000) >= request.deadline + 1609459200;
 
+  const lifecycle: StepLifecycle = { busy, generation, controller, setBusy, setError, setStage };
   function resetRevocation() {
     generation.current += 1; controller.current?.abort(); pending.current?.dispose(); pending.current = null;
     setRequest(null); setApproval(null); setApprovalName(''); setAttempted(false); setBusy(false); setStage(''); setError(''); setPassword(''); setConfirmation(''); setPasswordSaving(false);
   }
   function close() { resetRevocation(); onClose(); }
   async function forget() {
-    if (busy || request) return;
-    const run = generation.current; setBusy(true); setError('');
-    try { await deleteSavedSession(session.publicKey); if (run === generation.current) { setSavedMethod(undefined); setStorageUnreadable(false); notify('Saved encrypted key deleted. This tab is still connected.'); } }
-    catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
-    finally { if (run === generation.current) setBusy(false); }
+    if (request) return;
+    await runStep(lifecycle, { bump: false, abortable: false, resetStage: false }, async ({ current }) => {
+      await deleteSavedSession(session.publicKey);
+      if (current()) { setSavedMethod(undefined); setStorageUnreadable(false); notify('Saved encrypted key deleted. This tab is still connected.'); }
+    });
   }
   async function forgetUnreadableVault() {
-    if (busy || request || !storageUnreadable) return;
-    const run = ++generation.current; setBusy(true); setError('');
-    try { await deleteSavedSession(); if (run === generation.current) { setSavedMethod(undefined); setStorageUnreadable(false); notify('Unreadable local vault deleted. This tab stays connected; network authorization remains active.'); } }
-    catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
-    finally { if (run === generation.current) setBusy(false); }
+    if (request || !storageUnreadable) return;
+    await runStep(lifecycle, { abortable: false, resetStage: false }, async ({ current }) => {
+      await deleteSavedSession();
+      if (current()) { setSavedMethod(undefined); setStorageUnreadable(false); notify('Unreadable local vault deleted. This tab stays connected; network authorization remains active.'); }
+    });
   }
   async function saveWithPasskey() {
-    if (busy || request || !canUsePasskeys) return;
-    const run = ++generation.current;
-    controller.current = new AbortController(); setBusy(true); setError(''); setStage('Check your device to create a passkey…');
-    try {
-      await session.saveToDeviceWithPasskey({ signal: controller.current.signal, onProgress: text => { if (run === generation.current) setStage(text); } });
-      if (run === generation.current) { setSavedMethod('passkey'); setPasswordSaving(false); setPassword(''); setConfirmation(''); notify('This browser’s posting key is encrypted with a passkey. No new network authorization was created.'); }
-    } catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
-    finally { if (run === generation.current) { setBusy(false); setStage(''); } }
+    if (request || !canUsePasskeys) return;
+    await runStep(lifecycle, { stage: 'Check your device to create a passkey…' }, async ({ signal, current, progress }) => {
+      await session.saveToDeviceWithPasskey({ signal, onProgress: progress });
+      if (current()) { setSavedMethod('passkey'); setPasswordSaving(false); setPassword(''); setConfirmation(''); notify('This browser’s posting key is encrypted with a passkey. No new network authorization was created.'); }
+    });
   }
   async function saveWithPassword(event: FormEvent) {
     event.preventDefault();
-    if (busy || request || password.length < 12 || password !== confirmation) return;
-    const run = ++generation.current; controller.current = new AbortController(); setBusy(true); setError(''); setStage('Encrypting this device’s posting key…');
-    try {
-      await session.saveToDevice(password, { signal: controller.current.signal, onProgress: text => { if (run === generation.current) setStage(text); } });
-      if (run === generation.current) { setSavedMethod('password'); setPasswordSaving(false); notify('This browser’s posting key is encrypted with your password.'); }
-    } catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
-    finally { if (run === generation.current) { setBusy(false); setStage(''); setPassword(''); setConfirmation(''); } }
+    if (request || password.length < 12 || password !== confirmation) return;
+    await runStep(lifecycle, { stage: 'Encrypting this device’s posting key…', onSettled: () => { setPassword(''); setConfirmation(''); } }, async ({ signal, current, progress }) => {
+      await session.saveToDevice(password, { signal, onProgress: progress });
+      if (current()) { setSavedMethod('password'); setPasswordSaving(false); notify('This browser’s posting key is encrypted with your password.'); }
+    });
   }
   async function prepareRevocation() {
-    if (busy || request) return;
-    const run = ++generation.current;
-    controller.current = new AbortController(); setBusy(true); setError(''); setStage('Preparing public revocation request…');
-    try {
-      const value = await session.prepareRevocation({ signal: controller.current.signal, onProgress: text => { if (run === generation.current) setStage(text); } });
-      if (run !== generation.current) { value.dispose(); return; }
+    if (request) return;
+    await runStep(lifecycle, { stage: 'Preparing public revocation request…' }, async ({ signal, current, progress }) => {
+      const value = await session.prepareRevocation({ signal, onProgress: progress });
+      if (!current()) { value.dispose(); return; }
       pending.current = value; setRequest(value.request); setAttempted(value.submitted); setNow(Date.now());
-    } catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
-    finally { if (run === generation.current) { setBusy(false); setStage(''); } }
+    });
   }
   function downloadRevocation() {
     if (!request || busy || expired) return;
@@ -486,17 +508,16 @@ export function DeviceSettings({ session, onClose, onLock, notify }: { session: 
   }
   async function completeRevocation(event: FormEvent) {
     event.preventDefault();
-    if (busy || !pending.current || (!approval && !attempted) || (expired && !attempted)) return;
-    const run = generation.current;
-    controller.current = new AbortController(); setBusy(true); setError(''); setAttempted(true);
-    try {
-      await pending.current.complete(approval ?? undefined, { signal: controller.current.signal, onProgress: text => { if (run === generation.current) setStage(text); } });
+    const revocation = pending.current;
+    if (!revocation || (!approval && !attempted) || (expired && !attempted)) return;
+    await runStep(lifecycle, { bump: false, onSettled: () => setAttempted(pending.current?.submitted ?? false) }, async ({ signal, progress }) => {
+      setAttempted(true);
+      await revocation.complete(approval ?? undefined, { signal, onProgress: progress });
       // Parent compares this session's key with the active session, so a late
       // confirmed revocation cannot lock an unrelated replacement session.
       onLock(true);
       notify('This device’s network authorization was revoked and its saved key was deleted.');
-    } catch (cause) { if (run === generation.current) setError(errorMessage(cause)); }
-    finally { if (run === generation.current) { setAttempted(pending.current?.submitted ?? false); setBusy(false); setStage(''); } }
+    });
   }
   return <Modal title="This device’s access" onClose={close}>
     <div className="pairing-hero"><span className="pairing-symbol"><IconKey size={27} /></span><div><strong>@{session.user.username || session.fid}</strong><p>FID {session.fid} · {session.scopes.includes(2) ? 'casts, deletion, reactions, follows, and profile edits' : session.scopes.includes(11) ? 'casts, reactions, follows, and profile edits' : 'casting and reactions'}</p></div></div>
