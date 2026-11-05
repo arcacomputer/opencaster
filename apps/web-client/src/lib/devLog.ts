@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'shared-uploaded-image-links',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:47:39Z',
+    title: 'One definition for uploaded image links',
+    summary: 'The app and the gateway now read the address of uploaded images from one shared definition, so they cannot disagree about which image links are valid. There is no visible change: uploaded images keep the same links on opencaster.org and quorum.arca.computer.',
+    changes: [
+      'Image uploads, photo tabs, custom feeds, share previews and draft restore all recognize uploaded images through the same shared rule.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/2bfb237dd9b1cfa7453fffd4ec77c59a5dd400ee',
+    tag: 'Reliability',
+  },
+  {
     id: 'unify-sign-in-step-handling',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:46:28Z',

@@ -3,7 +3,7 @@
  * Mobile clients can reuse this module; it has no dependency on the Quorum relay.
  */
 import { normalizeHypersnapEnsName } from './ensName';
-import { APP_ORIGIN, LEGACY_APP_ORIGIN } from './appOrigins';
+import { isUploadedMediaLocation } from './appOrigins';
 import { FARCASTER_EPOCH_SECONDS } from './farcasterEpoch';
 import { castHistoryCursorKey, castHistoryHash, castHistoryMessageKey, validCastHistoryMessage } from './castHistory';
 import { isProfileTab, type ProfileTab } from './navigation';
@@ -804,7 +804,7 @@ export function hasImageEmbed(cast: Cast): boolean {
       const url = new URL(embed.url);
       return url.protocol === 'https:' && (/\.(png|jpe?g|webp|gif)$/i.test(url.pathname)
         || ['imagedelivery.net', 'imagedelivery.cloud'].includes(url.hostname)
-        || ([APP_ORIGIN, LEGACY_APP_ORIGIN].includes(url.origin) && /^\/media\/[a-f0-9]{64}$/.test(url.pathname)));
+        || isUploadedMediaLocation(url));
     } catch { return false; }
   }) ?? false;
 }
