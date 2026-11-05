@@ -60,12 +60,6 @@ export function replaceTestMediaGuards(source, id, origin) {
     source = source.replace("url.protocol === 'https:' && !url.username", `(url.protocol === 'https:' || ${media('url')}) && !url.username`);
   }
   if (normalized.endsWith('/src/components/MediaViewer.tsx')) source = source.replace("url.protocol === 'https:' && !url.username", `(url.protocol === 'https:' || ${media('url')}) && !url.username`);
-  if (normalized.endsWith('/packages/client-core/src/appOrigins.ts')) {
-    const escapedOrigin = origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replaceAll('/', '\\/');
-    // Drafts call this real shared helper. Keep production HTTPS links valid,
-    // adding only the exact configured loopback origin and hashed media path.
-    source = source.replace(/(export function isUploadedMediaUrl[\s\S]*?return typeof value === 'string' && )([^\n]+);/, (_match, prefix, production) => `${prefix}(${production} || (value.length === ${origin.length + '/media/'.length + 64} && /^${escapedOrigin}\\/media\\/[a-f0-9]{64}$/.test(value)));`);
-  }
   if (normalized.endsWith('/src/components/EditProfileDialog.tsx')) source = source.replace("parsed.protocol === 'https:' &&", `(parsed.protocol === 'https:' || ${media('parsed')}) &&`);
   if (normalized.endsWith('/src/lib/social.ts')) source = source.replace("url.protocol !== 'https:' ||", `(url.protocol !== 'https:' && !${media('url')}) ||`);
   if (normalized.endsWith('/src/lib/auth.ts')) source = source.replace(/url\.protocol !== 'https:' \|\| ((?:!!)?url\.username)/, (_match, credentials) => `(url.protocol !== 'https:' && !${media('url')}) || ${credentials}`);
