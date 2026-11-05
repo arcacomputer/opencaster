@@ -2,6 +2,7 @@
  * Field names follow the node's wire format (src/api/types.rs upstream).
  * Mobile clients can reuse this module; it has no dependency on the Quorum relay.
  */
+import { API_LIMITS, CAST_HASH, CHANNEL_ID, PAGE_CURSOR, WALLET_ADDRESS, validDecimalCursor, validPageToken, validSearchQuery } from './apiRules';
 import { normalizeHypersnapEnsName } from './ensName';
 import { APP_ORIGIN, LEGACY_APP_ORIGIN } from './appOrigins';
 import { FARCASTER_EPOCH_SECONDS } from './farcasterEpoch';
@@ -122,10 +123,6 @@ export class ApiError extends Error {
 const API_BASE = '/api';
 const REQUEST_TIMEOUT_MS = 25_000;
 const SUBMISSION_UNKNOWN = 'Submission status is unknown. Check your profile or signer state before trying again.';
-const HASH = /^(?:0x)?[a-fA-F0-9]{40}$/;
-const ADDRESS = /^0x[a-fA-F0-9]{40}$/;
-const CHANNEL_ID = /^[a-zA-Z0-9_-]{1,64}$/;
-const PAGE_CURSOR = /^[a-zA-Z0-9_+/=:-]{1,2048}$/;
 
 function fidValue(fid: number | undefined): string {
   if (!Number.isSafeInteger(fid) || Number(fid) < 1) throw new Error('Enter a valid Farcaster ID.');
@@ -133,17 +130,17 @@ function fidValue(fid: number | undefined): string {
 }
 
 function hashValue(hash: string): string {
-  if (!HASH.test(hash)) throw new Error('Invalid cast hash.');
+  if (!CAST_HASH.test(hash)) throw new Error('Invalid cast hash.');
   return hash.replace(/^0x/, '').toLowerCase();
 }
 
 function addressValue(address: string): string {
-  if (!ADDRESS.test(address)) throw new Error('Invalid wallet address.');
+  if (!WALLET_ADDRESS.test(address)) throw new Error('Invalid wallet address.');
   return address;
 }
 
 function pageParams(cursor?: string | null, limit = 20): URLSearchParams {
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Feed limit must be between 1 and 100.');
+  if (!Number.isInteger(limit) || limit < 1 || limit > API_LIMITS.page) throw new Error('Feed limit must be between 1 and 100.');
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor) {
     if (!PAGE_CURSOR.test(cursor)) throw new Error('Invalid pagination cursor.');
@@ -176,8 +173,7 @@ function nextCursor(value: unknown, previous?: string | null): string | null {
 
 function searchQuery(value: string): string {
   const query = value.trim();
-  // eslint-disable-next-line no-control-regex -- Search validation intentionally rejects ASCII control characters.
-  if (!query || new TextEncoder().encode(query).length > 256 || /[\u0000-\u001f\u007f]/.test(query)) throw new Error('Enter a search query of 1 to 256 bytes.');
+  if (!validSearchQuery(query)) throw new Error('Enter a search query of 1 to 256 bytes.');
   return query;
 }
 
@@ -280,7 +276,6 @@ export interface ReactionTarget { fid: number; hash: string }
 export interface ReactionStatus extends ReactionTarget { viewerFid: number; liked: boolean; recasted: boolean }
 type ReactionStatusTarget = ReactionTarget & { timestamp?: string };
 type ReactionKind = 'like' | 'recast';
-const BASE64_TOKEN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
 function reactionKind(type: ReactionKind): 'Like' | 'Recast' {
   if (type !== 'like' && type !== 'recast') throw new Error('Invalid reaction type.');
@@ -289,7 +284,7 @@ function reactionKind(type: ReactionKind): 'Like' | 'Recast' {
 
 function reactionCursor(value: unknown, previous?: string | null): string | null {
   if (value === undefined || value === null || value === '') return null;
-  if (typeof value !== 'string' || value.length > 2048 || !BASE64_TOKEN.test(value) || value === previous) throw new ApiError('The node returned invalid reaction pagination.', 502, 'invalid_response');
+  if (typeof value !== 'string' || !validPageToken(value) || value === previous) throw new ApiError('The node returned invalid reaction pagination.', 502, 'invalid_response');
   return value;
 }
 
@@ -321,7 +316,6 @@ async function mapPublicReads<T, R>(items: T[], read: (item: T, signal: AbortSig
  * share one request, which is cancelled only once every caller has left. */
 const PUBLIC_READ_TTL_MS = 60_000;
 const PUBLIC_READ_MAX_ENTRIES = 500;
-const BULK_USER_LIMIT = 100;
 interface PublicReadFlight { readonly controller: AbortController; waiters: number; settled: boolean }
 interface PublicReadEntry<V> { readonly value: Promise<V>; readonly flight: PublicReadFlight; expires: number }
 
@@ -397,8 +391,8 @@ async function getPublicUsers(fids: number[], signal?: AbortSignal): Promise<Use
     if (entry) entries.set(fid, entry);
     else if (!missing.includes(fid)) missing.push(fid);
   }
-  for (let start = 0; start < missing.length; start += BULK_USER_LIMIT) {
-    const chunk = missing.slice(start, start + BULK_USER_LIMIT);
+  for (let start = 0; start < missing.length; start += API_LIMITS.bulkUsers) {
+    const chunk = missing.slice(start, start + API_LIMITS.bulkUsers);
     const { flight, request } = startFlight(async flightSignal => {
       const response = await requestJson<{ users: unknown }>('/v2/farcaster/user/bulk', new URLSearchParams({ fids: chunk.map(fidValue).join(',') }), flightSignal);
       if (!Array.isArray(response.users) || response.users.length > chunk.length) throw invalidReactionProfile();
@@ -436,7 +430,7 @@ interface ReactionMessage {
 }
 
 function validateReaction(value: unknown, viewerFid: number, type: ReactionKind): ReactionMessage {
-  if (!isObject(value) || typeof value.hash !== 'string' || !HASH.test(value.hash) || !isObject(value.data)) throw new ApiError('The node returned an invalid reaction.', 502, 'invalid_response');
+  if (!isObject(value) || typeof value.hash !== 'string' || !CAST_HASH.test(value.hash) || !isObject(value.data)) throw new ApiError('The node returned an invalid reaction.', 502, 'invalid_response');
   const data = value.data;
   if (data.type !== 'MESSAGE_TYPE_REACTION_ADD' || data.fid !== viewerFid || data.network !== 'FARCASTER_NETWORK_MAINNET'
     || !Number.isInteger(data.timestamp) || Number(data.timestamp) < 0 || Number(data.timestamp) > 0xffffffff || !isObject(data.reactionBody)
@@ -445,7 +439,7 @@ function validateReaction(value: unknown, viewerFid: number, type: ReactionKind)
   // URL reactions are real protocol messages but have no cast to hydrate.
   if (body.targetCastId !== undefined) {
     if (!isObject(body.targetCastId) || !Number.isSafeInteger(body.targetCastId.fid) || Number(body.targetCastId.fid) < 1
-      || typeof body.targetCastId.hash !== 'string' || !HASH.test(body.targetCastId.hash) || body.targetUrl) throw new ApiError('The node returned an invalid reaction target.', 502, 'invalid_response');
+      || typeof body.targetCastId.hash !== 'string' || !CAST_HASH.test(body.targetCastId.hash) || body.targetUrl) throw new ApiError('The node returned an invalid reaction target.', 502, 'invalid_response');
   } else if (typeof body.targetUrl !== 'string' || !body.targetUrl) throw new ApiError('The node returned an invalid reaction target.', 502, 'invalid_response');
   return value as unknown as ReactionMessage;
 }
@@ -460,7 +454,7 @@ export async function getCastReactionPeople(options: { target: ReactionTarget; t
   if (options.type !== 'likes' && options.type !== 'recasts') throw new Error('Invalid cast reaction list.');
   const type = options.type === 'likes' ? 'like' : 'recast';
   const limit = options.limit ?? 25;
-  if (!Number.isInteger(limit) || limit < 1 || limit > 25) throw new Error('Request up to 25 reactions per shard.');
+  if (!Number.isInteger(limit) || limit < 1 || limit > API_LIMITS.castReactions) throw new Error('Request up to 25 reactions per shard.');
   if (options.cursor) reactionCursor(options.cursor);
   options.signal?.throwIfAborted();
   const controller = new AbortController();
@@ -857,7 +851,7 @@ export async function searchCasts(options: { query: string; limit?: number; sign
     const seen = new Set<string>();
     const hits: Array<{ hash: string; fid: number }> = [];
     for (const cast of response.result.casts.slice(0, Math.min(options.limit ?? 20, 25))) {
-      if (!isObject(cast) || typeof cast.hash !== 'string' || !HASH.test(cast.hash) || !publicUser(cast.author)) continue;
+      if (!isObject(cast) || typeof cast.hash !== 'string' || !CAST_HASH.test(cast.hash) || !publicUser(cast.author)) continue;
       const hash = hashValue(cast.hash);
       if (!seen.has(hash)) { seen.add(hash); hits.push({ hash, fid: cast.author.fid }); }
     }
@@ -869,11 +863,11 @@ export async function searchCasts(options: { query: string; limit?: number; sign
         if (index >= hits.length) return;
         try {
           const cast = await getCast(hits[index].hash, controller.signal);
-          if (typeof cast.hash !== 'string' || !HASH.test(cast.hash) || hashValue(cast.hash) !== hits[index].hash || !publicUser(cast.author) || cast.author.fid !== hits[index].fid
+          if (typeof cast.hash !== 'string' || !CAST_HASH.test(cast.hash) || hashValue(cast.hash) !== hits[index].hash || !publicUser(cast.author) || cast.author.fid !== hits[index].fid
             || typeof cast.text !== 'string' || typeof cast.timestamp !== 'string' || !Number.isFinite(Date.parse(cast.timestamp))
             || !Array.isArray(cast.embeds) || cast.embeds.length > 2 || cast.embeds.some((embed: unknown) => !isObject(embed)
               || !(('url' in embed && !('cast_id' in embed) && typeof embed.url === 'string')
-                || (!('url' in embed) && isObject(embed.cast_id) && Number.isSafeInteger(embed.cast_id.fid) && Number(embed.cast_id.fid) > 0 && typeof embed.cast_id.hash === 'string' && HASH.test(embed.cast_id.hash))))
+                || (!('url' in embed) && isObject(embed.cast_id) && Number.isSafeInteger(embed.cast_id.fid) && Number(embed.cast_id.fid) > 0 && typeof embed.cast_id.hash === 'string' && CAST_HASH.test(embed.cast_id.hash))))
             || !isObject(cast.reactions) || !Number.isSafeInteger(cast.reactions.likes_count) || cast.reactions.likes_count < 0
             || !Number.isSafeInteger(cast.reactions.recasts_count) || cast.reactions.recasts_count < 0
             || !isObject(cast.replies) || !Number.isSafeInteger(cast.replies.count) || cast.replies.count < 0) {
@@ -928,7 +922,7 @@ export async function getChannel(id: string, signal?: AbortSignal): Promise<Chan
 
 /** A bounded friends-of-friends sample from the node, not a complete ranking. */
 export async function getSuggestedUsers(fid: number, limit = 8, signal?: AbortSignal): Promise<{ users: User[] }> {
-  if (!Number.isInteger(limit) || limit < 1 || limit > 20) throw new Error('Request up to 20 suggested profiles.');
+  if (!Number.isInteger(limit) || limit < 1 || limit > API_LIMITS.suggestedUsers) throw new Error('Request up to 20 suggested profiles.');
   const response = await requestJson<{ users: User[] }>('/v2/farcaster/following/suggested', new URLSearchParams({ fid: fidValue(fid), limit: String(limit) }), signal);
   if (!Array.isArray(response.users) || response.users.length > limit || response.users.some(user => !publicUser(user))) throw new ApiError('The node returned invalid suggested profiles.', 502, 'invalid_response');
   return { users: [...new Map(response.users.filter(user => user.fid !== fid).map(user => [user.fid, user])).values()] };
@@ -939,8 +933,8 @@ export async function getSuggestedUsers(fid: number, limit = 8, signal?: AbortSi
 export async function getChannelMembers(channelId: string, options: { cursor?: string | null; limit?: number; signal?: AbortSignal } = {}): Promise<FollowsResponse> {
   if (!CHANNEL_ID.test(channelId)) throw new Error('Invalid channel.');
   const limit = options.limit ?? 25;
-  if (!Number.isInteger(limit) || limit < 1 || limit > 25) throw new Error('Request up to 25 channel participants.');
-  const decimal = (value: unknown): value is string => typeof value === 'string' && /^\d{1,20}$/.test(value) && BigInt(value) <= 0xffffffffffffffffn;
+  if (!Number.isInteger(limit) || limit < 1 || limit > API_LIMITS.channelMembers) throw new Error('Request up to 25 channel participants.');
+  const decimal = (value: unknown): value is string => typeof value === 'string' && validDecimalCursor(value);
   if (options.cursor && !decimal(options.cursor)) throw new Error('Invalid channel participants cursor.');
   const params = new URLSearchParams({ channel_id: channelId, limit: String(limit) });
   if (options.cursor) params.set('cursor', options.cursor);
@@ -955,18 +949,18 @@ export async function getChannelMembers(channelId: string, options: { cursor?: s
  * no quote index, so callers must never claim this is an exhaustive archive. */
 export async function getCastQuotes(hash: string, limit = 25, signal?: AbortSignal): Promise<FeedResponse> {
   const targetHash = hashValue(hash);
-  if (!Number.isInteger(limit) || limit < 1 || limit > 25) throw new Error('Request up to 25 quote casts.');
+  if (!Number.isInteger(limit) || limit < 1 || limit > API_LIMITS.castQuotes) throw new Error('Request up to 25 quote casts.');
   const response = await requestJson<{ casts: Cast[] }>('/v2/farcaster/cast/quotes', new URLSearchParams({ identifier: targetHash, type: 'hash', limit: String(limit) }), signal);
   if (!Array.isArray(response.casts) || response.casts.length > limit) throw new ApiError('The node returned invalid quote casts.', 502, 'invalid_response');
   const unique = new Map<string, Cast>();
   for (const cast of response.casts) {
-    if (!isObject(cast) || !publicUser(cast.author) || typeof cast.hash !== 'string' || !HASH.test(cast.hash)
+    if (!isObject(cast) || !publicUser(cast.author) || typeof cast.hash !== 'string' || !CAST_HASH.test(cast.hash)
       || typeof cast.text !== 'string' || typeof cast.timestamp !== 'string' || !Number.isFinite(Date.parse(cast.timestamp)) || !Array.isArray(cast.embeds)
       || !isObject(cast.reactions) || !Number.isSafeInteger(cast.reactions.likes_count) || cast.reactions.likes_count < 0
       || !Number.isSafeInteger(cast.reactions.recasts_count) || cast.reactions.recasts_count < 0
       || !isObject(cast.replies) || !Number.isSafeInteger(cast.replies.count) || cast.replies.count < 0
       || !cast.embeds.some(embed => isObject(embed) && 'cast_id' in embed && isObject(embed.cast_id) && Number.isSafeInteger(embed.cast_id.fid) && Number(embed.cast_id.fid) > 0
-        && typeof embed.cast_id.hash === 'string' && HASH.test(embed.cast_id.hash) && hashValue(embed.cast_id.hash) === targetHash)) throw new ApiError('The node returned invalid quote casts.', 502, 'invalid_response');
+        && typeof embed.cast_id.hash === 'string' && CAST_HASH.test(embed.cast_id.hash) && hashValue(embed.cast_id.hash) === targetHash)) throw new ApiError('The node returned invalid quote casts.', 502, 'invalid_response');
     unique.set(hashValue(cast.hash), cast);
   }
   return { casts: [...unique.values()], next: { cursor: null } };
@@ -984,7 +978,7 @@ export async function getNotifications(options: { fid: number; cursor?: string |
   const seen = new Set<string>();
   for (const item of response.notifications) {
     if (!isObject(item) || !publicUser(item.user) || typeof item.type !== 'string' || typeof item.timestamp !== 'string' || !Number.isFinite(Date.parse(item.timestamp))) throw new ApiError('The node returned invalid activity.', 502, 'invalid_response');
-    const cast = item.cast && isObject(item.cast) && HASH.test(String(item.cast.hash)) ? item.cast : undefined;
+    const cast = item.cast && isObject(item.cast) && CAST_HASH.test(String(item.cast.hash)) ? item.cast : undefined;
     const type: ActivityItem['type'] = item.type === 'likes' ? 'reactions' : item.type === 'follows' ? 'follows'
       : cast?.parent_author?.fid === options.fid ? 'replies'
         : cast?.mentioned_profiles?.some(user => user.fid === options.fid) ? 'mentions' : 'unknown';
@@ -1054,7 +1048,7 @@ export async function getUser(lookup: { fid?: number; username?: string; custody
 /** Public social graph data; a wallet connection is not API authentication. */
 export async function getFollows(options: { fid: number; kind: 'followers' | 'following'; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<FollowsResponse> {
   if (options.kind !== 'followers' && options.kind !== 'following') throw new Error('Invalid follow list.');
-  const validCursor = (value: unknown): value is string => typeof value === 'string' && /^\d{1,20}$/.test(value) && BigInt(value) <= 0xffffffffffffffffn;
+  const validCursor = (value: unknown): value is string => typeof value === 'string' && validDecimalCursor(value);
   if (options.cursor && !validCursor(options.cursor)) throw new Error('Invalid follow pagination cursor.');
   const params = pageParams(options.cursor, options.limit);
   params.set('fid', fidValue(options.fid));
@@ -1121,7 +1115,7 @@ const CAST_LINK_MAX_MATCHES = 25;
  * key is [0x03][FID:u32 BE][0x01][timestamp:u32 BE][message hash:20].
  */
 function castHistoryCursorKey(value: unknown, fid: number): string | undefined {
-  if (typeof value !== 'string' || !value || value.length > 2048 || !BASE64_TOKEN.test(value)) return;
+  if (typeof value !== 'string' || !validPageToken(value)) return;
   try {
     const bytes = atob(value);
     if (bytes.length !== 30 || btoa(bytes) !== value || bytes.charCodeAt(0) !== 0x03 || bytes.charCodeAt(5) !== 0x01) return;
@@ -1154,7 +1148,7 @@ async function getAuthorCast(fid: number, hash: string, signal: AbortSignal): Pr
   const response = await requestJson<{ cast?: unknown }>('/v2/farcaster/cast', new URLSearchParams({ identifier: fullHash, type: 'hash', fid: String(fid) }), signal);
   signal.throwIfAborted();
   const cast = response.cast;
-  if (!isObject(cast) || typeof cast.hash !== 'string' || !HASH.test(cast.hash) || hashValue(cast.hash) !== fullHash
+  if (!isObject(cast) || typeof cast.hash !== 'string' || !CAST_HASH.test(cast.hash) || hashValue(cast.hash) !== fullHash
     || !isObject(cast.author) || cast.author.fid !== fid || typeof cast.text !== 'string'
     || typeof cast.timestamp !== 'string' || !Number.isFinite(Date.parse(cast.timestamp)) || !Array.isArray(cast.embeds)) {
     throw new ApiError('The node returned a different or invalid cast for this author.', 502, 'invalid_response');
@@ -1248,7 +1242,7 @@ export async function resolveCastAlias(options: {
       scanned += checkedMessages.length;
       let previousHistoryKey = cursor ? castHistoryCursorKey(cursor, author.fid) : undefined;
       for (const [messageIndex, message] of history.messages.entries()) {
-        if (!isObject(message) || typeof message.hash !== 'string' || !HASH.test(message.hash) || !isObject(message.data)
+        if (!isObject(message) || typeof message.hash !== 'string' || !CAST_HASH.test(message.hash) || !isObject(message.data)
           || message.data.fid !== author.fid || !Number.isSafeInteger(message.data.timestamp) || Number(message.data.timestamp) < 0 || Number(message.data.timestamp) > 0xffffffff
           || message.data.network !== 'FARCASTER_NETWORK_MAINNET'
           || !['MESSAGE_TYPE_CAST_ADD', 'MESSAGE_TYPE_CAST_REMOVE'].includes(String(message.data.type))
@@ -1309,7 +1303,7 @@ export async function getConversation(hash: string, signal?: AbortSignal): Promi
     return { cast: plainCast, replies: depth < 5 && Array.isArray(direct_replies) ? direct_replies.map(reply => normalize(reply, depth + 1)) : [] };
   };
   const root = response.conversation?.cast ?? response.cast;
-  if (root && (typeof root.hash !== 'string' || !HASH.test(root.hash) || hashValue(root.hash) !== hashValue(hash))) throw new ApiError('The node returned a different conversation.', 502, 'invalid_response');
+  if (root && (typeof root.hash !== 'string' || !CAST_HASH.test(root.hash) || hashValue(root.hash) !== hashValue(hash))) throw new ApiError('The node returned a different conversation.', 502, 'invalid_response');
   if (response.conversation?.cast) return normalize(response.conversation.cast);
   if (response.cast) return { cast: response.cast, replies: response.replies ?? [] };
   throw new ApiError('The node returned an invalid conversation.', 502, 'invalid_response');
