@@ -7,8 +7,11 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActionButton, LoadingMessage, ScreenMessage } from '../components/Primitives';
 import { CastCard } from '../components/CastCard';
+import { LocalContentNotice } from '../components/LocalContentNotice';
 import { SocialStatus } from '../components/SocialStatus';
 import { useAuthorization } from '../lib/AuthorizationProvider';
+import { useLocalContent } from '../lib/LocalContentProvider';
+import { isHiddenTarget } from '../lib/localContent';
 import { castTarget, MAX_CAST_BYTES } from '../lib/socialAction';
 import { usePublicRead } from '../lib/usePublicRead';
 import type { RootStackParamList } from '../navigation';
@@ -18,6 +21,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Compose'>;
 
 export function ComposerScreen({ navigation, route }: Props) {
   const headerHeight = useHeaderHeight();
+  const { snapshot: localContentSnapshot } = useLocalContent();
   const parent = route.params?.parent;
   const { authorization, snapshot } = useAuthorization();
   const [text, setText] = useState('');
@@ -31,7 +35,10 @@ export function ComposerScreen({ navigation, route }: Props) {
   }, [parent?.fid, parent?.hash]);
   const parentState = usePublicRead(`reply:${parent?.fid}:${parent?.hash}`, parent ? readParent : null);
   const byteLength = new TextEncoder().encode(text.trim()).length;
-  const canPublish = snapshot.authorized && !snapshot.busy && snapshot.action?.status !== 'pending'
+  const parentHidden = Boolean(parent && localContentSnapshot.phase === 'ready'
+    && isHiddenTarget(localContentSnapshot.data, { fid: parent.fid, hash: parent.hash }));
+  const canPublish = localContentSnapshot.phase === 'ready' && !parentHidden
+    && snapshot.authorized && !snapshot.busy && snapshot.action?.status !== 'pending'
     && byteLength > 0 && byteLength <= MAX_CAST_BYTES && (!parent || parentState.phase === 'ready');
   useEffect(() => {
     if (attemptHash && snapshot.action?.hash === attemptHash && snapshot.action.status === 'confirmed') {
@@ -53,6 +60,22 @@ export function ComposerScreen({ navigation, route }: Props) {
         });
       } }]);
   };
+
+  if (localContentSnapshot.phase !== 'ready') {
+    return (
+      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
+        <LocalContentNotice onManage={() => navigation.navigate('Safety')} />
+      </SafeAreaView>
+    );
+  }
+  if (parentHidden) {
+    return (
+      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
+        <LocalContentNotice hidden onManage={() => navigation.navigate('Safety')} />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
       <KeyboardAvoidingView style={styles.screen} behavior="padding" keyboardVerticalOffset={headerHeight}>

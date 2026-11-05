@@ -1,8 +1,11 @@
 import type { Cast } from '@opencaster/client-core/api';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useLocalContent } from '../lib/LocalContentProvider';
+import { isHiddenTarget } from '../lib/localContent';
 import { openHttpsUrl } from '../lib/openHttpsUrl';
 import { safeHttpsUrl, safeMediaEmbedUrls, splitSafeLinks } from '../lib/urls';
 import { palette } from '../theme';
+import { ActionButton } from './Primitives';
 import { RemoteImageEmbed } from './RemoteImageEmbed';
 
 function displayName(cast: Cast): string {
@@ -52,6 +55,27 @@ export function CastCard({
   onAuthorPress: (fid: number) => void;
   onThreadPress: (hash: string) => void;
 }) {
+  const { localContent, snapshot } = useLocalContent();
+  if (snapshot.phase !== 'ready' || isHiddenTarget(snapshot.data, { fid: cast.author.fid, hash: cast.hash })) return null;
+
+  const hidePost = async () => {
+    if (await localContent.hideCast(cast.hash)) return;
+    Alert.alert('Post hide not confirmed', localContent.getSnapshot().error ?? 'The change was not confirmed. Try again or manage filters in Safety and data.');
+  };
+  const hideUser = async () => {
+    if (await localContent.hideUser(cast.author.fid)) return;
+    Alert.alert('User hide not confirmed', localContent.getSnapshot().error ?? 'The change was not confirmed. Try again or manage filters in Safety and data.');
+  };
+  const showContentOptions = () => Alert.alert(
+    'Content options',
+    `Hide this post or all posts by FID ${cast.author.fid} on this device? This does not report the post or prevent network interaction.`,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Hide post', style: 'destructive', onPress: () => { void hidePost(); } },
+      { text: `Hide FID ${cast.author.fid}`, style: 'destructive', onPress: () => { void hideUser(); } },
+    ],
+  );
+
   const avatar = cast.author.pfp_url ? safeHttpsUrl(cast.author.pfp_url) : null;
   const media = safeMediaEmbedUrls(cast.embeds);
   const date = dateLabel(cast.timestamp);
@@ -94,6 +118,13 @@ export function CastCard({
         />
       ))}
       {counts ? <Text style={styles.counts}>{counts}</Text> : null}
+      <ActionButton
+        accessibilityLabel={`Content options for FID ${cast.author.fid}, cast ${cast.hash}`}
+        disabled={snapshot.busy}
+        label="Content options"
+        onPress={showContentOptions}
+        secondary
+      />
     </View>
   );
 }

@@ -1,9 +1,12 @@
 import { getProfileFeed, getUser, type Cast, type User } from '@opencaster/client-core/api';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo } from 'react';
-import { FlatList, Image, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Image, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { CastCard } from '../components/CastCard';
+import { LocalContentNotice } from '../components/LocalContentNotice';
 import { ActionButton, LoadingMessage, ScreenMessage } from '../components/Primitives';
+import { useLocalContent } from '../lib/LocalContentProvider';
+import { isHiddenTarget } from '../lib/localContent';
 import type { RootStackParamList } from '../navigation';
 import { safeHttpsUrl } from '../lib/urls';
 import { usePagedCasts } from '../lib/usePagedCasts';
@@ -37,6 +40,7 @@ function ProfileSummary({ user }: { user: User }) {
 }
 
 export function ProfileScreen({ navigation, route }: Props) {
+  const { localContent, snapshot } = useLocalContent();
   const { fid } = route.params;
   const readProfile = useCallback((signal: AbortSignal) => getUser({ fid }, signal), [fid]);
   const profile = usePublicRead(`profile:${fid}`, readProfile);
@@ -44,6 +48,29 @@ export function ProfileScreen({ navigation, route }: Props) {
     getProfileFeed({ fid, tab: 'casts', cursor, limit: 20, signal })
   ), [fid]);
   const feed = usePagedCasts(`profile-casts:${fid}`, readPage);
+  const visibleCasts = useMemo(() => (
+    snapshot.phase === 'ready'
+      ? feed.casts.filter(cast => !isHiddenTarget(snapshot.data, { fid: cast.author.fid, hash: cast.hash }))
+      : []
+  ), [feed.casts, snapshot.data, snapshot.phase]);
+  const profileTargetFid = profile.phase === 'ready' ? profile.value.fid : fid;
+  const hiddenProfile = snapshot.phase === 'ready'
+    && (snapshot.data.users.includes(fid)
+      || (profile.phase === 'ready' && snapshot.data.users.includes(profile.value.fid)));
+  const hideUser = useCallback(async (targetFid: number) => {
+    if (await localContent.hideUser(targetFid)) return;
+    Alert.alert('User hide not confirmed', localContent.getSnapshot().error ?? 'The change was not confirmed. Try again or manage filters in Safety and data.');
+  }, [localContent]);
+  const confirmHideUser = useCallback((targetFid: number) => {
+    Alert.alert(
+      `Hide FID ${targetFid} on this device?`,
+      'This hides the profile and its public casts in this app only. It does not send a report, delete account data, or prevent network interaction.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Hide user', style: 'destructive', onPress: () => { void hideUser(targetFid); } },
+      ],
+    );
+  }, [hideUser]);
 
   const listHeader = useMemo(() => (
     <View style={styles.headerContent}>
@@ -60,6 +87,12 @@ export function ProfileScreen({ navigation, route }: Props) {
           : profile.phase === 'ready'
             ? <ProfileSummary user={profile.value} />
             : null}
+      <ActionButton
+        label={`Hide user FID ${profileTargetFid} on this device`}
+        onPress={() => confirmHideUser(profileTargetFid)}
+        disabled={snapshot.busy}
+        secondary
+      />
       <Text accessibilityRole="header" style={styles.feedHeading}>Public casts</Text>
       {feed.error && feed.retryKind === 'refresh'
         ? (
@@ -71,19 +104,28 @@ export function ProfileScreen({ navigation, route }: Props) {
         )
         : null}
     </View>
-  ), [feed.error, feed.retry, feed.retryKind, profile]);
+  ), [confirmHideUser, feed.error, feed.retry, feed.retryKind, profile, profileTargetFid, snapshot.busy]);
 
-  const emptyState = feed.phase === 'loading'
-    ? <LoadingMessage label="Loading public casts…" />
-    : feed.phase === 'error'
-      ? (
-        <ScreenMessage
-          detail={feed.error ?? undefined}
-          title="Casts unavailable"
-          action={<ActionButton label="Retry casts" onPress={() => void feed.retry()} />}
-        />
-      )
-      : <ScreenMessage title="No public casts are available." />;
+  const allLoadedCastsHidden = feed.casts.length > 0 && visibleCasts.length === 0;
+  const emptyState = allLoadedCastsHidden
+    ? (
+      <ScreenMessage
+        detail="Only the casts loaded so far are hidden; more may be available."
+        title="All loaded casts are hidden on this device."
+        action={<ActionButton label="Manage Safety" onPress={() => navigation.navigate('Safety')} secondary />}
+      />
+    )
+    : feed.phase === 'loading'
+      ? <LoadingMessage label="Loading public casts…" />
+      : feed.phase === 'error'
+        ? (
+          <ScreenMessage
+            detail={feed.error ?? undefined}
+            title="Casts unavailable"
+            action={<ActionButton label="Retry casts" onPress={() => void feed.retry()} />}
+          />
+        )
+        : <ScreenMessage title="No public casts are available." />;
   const footer = feed.loadingMore
     ? <LoadingMessage label="Loading more casts…" />
     : feed.error && feed.retryKind === 'page'
@@ -96,17 +138,34 @@ export function ProfileScreen({ navigation, route }: Props) {
       )
       : feed.nextCursor
         ? <ActionButton label="Load more casts" onPress={() => void feed.loadMore()} secondary />
-        : null;
+      : null;
+
+  if (snapshot.phase !== 'ready') {
+    return (
+      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
+        <LocalContentNotice onManage={() => navigation.navigate('Safety')} />
+      </SafeAreaView>
+    );
+  }
+  if (hiddenProfile) {
+    return (
+      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
+        <LocalContentNotice hidden onManage={() => navigation.navigate('Safety')} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.screen}>
       <FlatList<Cast>
-        data={feed.casts}
+        data={visibleCasts}
         keyExtractor={cast => cast.hash}
         ListEmptyComponent={emptyState}
         ListFooterComponent={footer}
         ListHeaderComponent={listHeader}
-        onEndReached={() => void feed.loadMore()}
+        onEndReached={() => {
+          if (visibleCasts.length > 0) void feed.loadMore();
+        }}
         onEndReachedThreshold={0.6}
         refreshControl={
           <RefreshControl
