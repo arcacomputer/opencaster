@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'shared-uploaded-image-links',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:47:39Z',
+    title: 'One definition for uploaded image links',
+    summary: 'The app and the gateway now read the address of uploaded images from one shared definition, so they cannot disagree about which image links are valid. There is no visible change: uploaded images keep the same links on opencaster.org and quorum.arca.computer.',
+    changes: [
+      'Image uploads, photo tabs, custom feeds, share previews and draft restore all recognize uploaded images through the same shared rule.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/2bfb237dd9b1cfa7453fffd4ec77c59a5dd400ee',
+    tag: 'Reliability',
+  },
+  {
     id: 'unify-sign-in-step-handling',
     date: '2026-11-05',
     timestamp: '2026-11-05T03:46:28Z',
@@ -44,6 +56,19 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/a7b05b6b3d5b4c011735edb633d007d5fe002220',
     tag: 'Security',
+  },
+  {
+    id: 'shared-api-request-deadline',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:45:46Z',
+    title: 'Consistent cancellation and timeouts for node reads',
+    summary: 'Search, reaction lists, profile reaction history, account-name lookup and cast short-link lookup now share one 25-second deadline rule. Leaving a screen cancels its request the same way everywhere, and slow reads keep their existing "took too long" messages.',
+    changes: [
+      'A request cancelled before it starts now reports the same cancellation everywhere instead of three different forms; search no longer substitutes its own cancellation error.',
+      'Timeout messages, the 25-second limit and uncertain-submission handling are unchanged; no visible change otherwise.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/8baf8df8597f52af37b438c69f04d080b73f09ad',
+    tag: 'Reliability',
   },
   {
     id: 'shared-cast-alias-history-checks',
@@ -115,6 +140,18 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'An invalid recovery phrase and a phrase that does not match the request’s custody address still show their specific instructions; every other approval failure still shows the generic “check your request” message.',
     ],
     commit: 'https://github.com/arcacomputer/opencaster/commit/1b978b4a7fdc619163f1bd93fc6fe67458bb4e52',
+    tag: 'Reliability',
+  },
+  {
+    id: 'shared-cast-limits',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:44:23Z',
+    title: 'Keep cast limits consistent',
+    summary: 'The composer, mention parser and publishing step now read the same named cast limits, so the size counter, Publish button and final checks cannot disagree. Casts still allow up to 1,024 UTF-8 bytes, two embeds and ten mentions; there is no visible change.',
+    changes: [
+      'Define the cast size, long-cast threshold, embed and mention limits once in shared client code and use them in the composer and when publishing.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/1ac51853fe4ac3ccb08fd7a3c3857e514d615f66',
     tag: 'Reliability',
   },
   {

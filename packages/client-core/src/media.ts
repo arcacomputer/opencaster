@@ -3,7 +3,7 @@
  * a future mobile client; only uploadMedia uses browser File/fetch APIs.
  */
 import { bytesToHex } from '@opencaster/protocol/signedKeyRequest';
-import { APP_ORIGIN, APP_ORIGINS } from './appOrigins';
+import { APP_ORIGINS, mediaUrl } from './appOrigins';
 
 export const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
 export const MEDIA_SIZE_LABEL = `${MAX_MEDIA_BYTES / (1024 * 1024)} MiB`;
@@ -106,7 +106,7 @@ export async function uploadMedia(file: File, authorize: (input: MediaUploadInpu
     };
     throw new Error(messages[response.status] || 'The upload status could not be confirmed. Check your attachment before trying again.');
   }
-  const expected = `${APP_ORIGIN}/media/${sha256}`;
+  const expected = mediaUrl(sha256);
   if (!object(value) || value.url !== expected) throw new Error('The server returned an invalid image link.');
   return { url: expected };
 }
