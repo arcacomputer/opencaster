@@ -3,7 +3,11 @@
 import { APP_ORIGIN } from './appOrigins';
 import { decodeFeed, encodeFeed, type FeedDefinition } from './customFeeds';
 
-export type ProfileTab = 'casts' | 'replies' | 'media' | 'likes' | 'recasts';
+export const PROFILE_TABS = ['casts', 'replies', 'media', 'likes', 'recasts'] as const;
+export type ProfileTab = typeof PROFILE_TABS[number];
+export function isProfileTab(value: unknown): value is ProfileTab {
+  return PROFILE_TABS.includes(value as ProfileTab);
+}
 export type SearchKind = 'casts' | 'users';
 export type AppRoute =
   | { kind: 'discover' }
@@ -113,16 +117,16 @@ export function parseRoute({ pathname, search }: { pathname: string; search: str
   }
   const tabs = new URLSearchParams(search).getAll('tab');
   const tab = tabs[0];
-  const validTab = tabs.length < 2 && (tab === undefined || ['casts', 'replies', 'media', 'likes', 'recasts'].includes(tab));
-  if (pathname === '/profile') return validTab ? { kind: 'profile', ...(tab && tab !== 'casts' ? { tab: tab as ProfileTab } : {}) } : { kind: 'not-found' };
+  const validTab = tabs.length < 2 && (tab === undefined || isProfileTab(tab));
+  if (pathname === '/profile') return validTab ? { kind: 'profile', ...(tab && tab !== 'casts' ? { tab } : {}) } : { kind: 'not-found' };
 
   const segments = pathname.split('/');
   if (segments.length === 2 && validAliasIdentifier(segments[1]) && validTab) {
-    return { kind: 'profile', identifier: segments[1].toLowerCase(), ...(tab && tab !== 'casts' ? { tab: tab as ProfileTab } : {}) };
+    return { kind: 'profile', identifier: segments[1].toLowerCase(), ...(tab && tab !== 'casts' ? { tab } : {}) };
   }
   if (segments.length !== 3) return { kind: 'not-found' };
   const [, kind, identifier] = segments;
-  if (kind === 'profile' && validIdentifier(identifier) && validTab) return { kind: 'profile', identifier, ...(tab && tab !== 'casts' ? { tab: tab as ProfileTab } : {}) };
+  if (kind === 'profile' && validIdentifier(identifier) && validTab) return { kind: 'profile', identifier, ...(tab && tab !== 'casts' ? { tab } : {}) };
   if (kind === 'channel' && CHANNEL.test(identifier)) return { kind: 'channel', channel: identifier };
   if (kind === 'cast') {
     const hash = normalizedHash(identifier);
@@ -138,7 +142,7 @@ export function parseRoute({ pathname, search }: { pathname: string; search: str
 /** Stable profile links use the FID, so a later username change keeps working. */
 export function profilePath(fid: number, tab: ProfileTab = 'casts'): string {
   if (!Number.isSafeInteger(fid) || fid <= 0) throw new Error('Invalid profile FID.');
-  if (!['casts', 'replies', 'media', 'likes', 'recasts'].includes(tab)) throw new Error('Invalid profile tab.');
+  if (!isProfileTab(tab)) throw new Error('Invalid profile tab.');
   return `/profile/${fid}${tab === 'casts' ? '' : `?tab=${tab}`}`;
 }
 
