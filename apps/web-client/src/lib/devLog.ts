@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'remove-unused-signed-key-request-helper',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:33:31Z',
+    title: 'Remove an unused signing helper',
+    summary: 'Shared protocol code drops an all-in-one key-request helper that only a test used. Device authorization still builds key-request metadata from wallet or offline-signer approvals exactly as before.',
+    changes: [
+      'Delete the unused helper that signed key-request metadata with a raw custody key; the byte-for-byte Hypersnap KEY_ADD compatibility test now builds the same metadata from the shared signing steps.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/dba5980c699b2bfe00584dba0a3ab7184c34246e',
+    tag: 'Reliability',
+  },
+  {
     id: 'preserve-haatz-primary-session-release',
     date: '2026-11-05',
     timestamp: '2026-11-05T00:32:01Z',
