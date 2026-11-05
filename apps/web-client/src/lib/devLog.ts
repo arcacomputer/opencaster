@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'remove-unused-unhide-cast-helper',
+    date: '2026-11-05',
+    timestamp: '2026-11-05T03:32:36Z',
+    title: 'Remove an unused hidden-cast helper',
+    summary: 'Content settings code drops a single-cast restore helper that no screen used. Hidden casts still clear all at once from content settings.',
+    changes: [
+      'Delete the unused per-cast unhide function and its test assertion; hiding casts, the 500-cast limit and Clear hidden casts behave as before.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/6e70320eb4747712218199c65d5cb25a9b687432',
+    tag: 'Reliability',
+  },
+  {
     id: 'preserve-haatz-primary-session-release',
     date: '2026-11-05',
     timestamp: '2026-11-05T00:32:01Z',
