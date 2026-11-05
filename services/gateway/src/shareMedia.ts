@@ -1,4 +1,5 @@
 import { APP_ORIGIN, LEGACY_APP_ORIGIN } from '@opencaster/client-core/appOrigins';
+import { readLimited } from '@opencaster/client-core/boundedRead';
 import { handleMediaRequest, validateImage, type MediaEnv } from './media';
 
 /** Only our content-addressed storage and a fixed public image CDN are read.
@@ -35,24 +36,7 @@ export async function previewImageData(input: string | undefined, env: MediaEnv)
     // unsupported raster can otherwise leave a blank avatar in an SVG image.
     if (controller.signal.aborted || response.status !== 200 || !response.body || !['image/png', 'image/jpeg'].includes(type ?? '')
       || (length !== null && (!/^\d+$/.test(length) || Number(length) > MAX_IMAGE_BYTES))) { cancel(); return; }
-    const reader = response.body.getReader();
-    const abort = () => { void reader.cancel().catch(() => undefined); };
-    controller.signal.addEventListener('abort', abort, { once: true });
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    try {
-      while (true) {
-        const item = await reader.read();
-        if (controller.signal.aborted) return;
-        if (item.done) break;
-        size += item.value.byteLength;
-        if (size > MAX_IMAGE_BYTES) { abort(); return; }
-        chunks.push(item.value);
-      }
-    } finally { controller.signal.removeEventListener('abort', abort); reader.releaseLock(); }
-    const bytes = new Uint8Array(size);
-    let offset = 0;
-    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+    const bytes = await readLimited(response.body, MAX_IMAGE_BYTES, { signal: controller.signal });
     const dimensions = validateImage(bytes, type as 'image/png' | 'image/jpeg');
     // Bound decoded memory as well as compressed bytes before handing to Wasm.
     if (dimensions.width > 2048 || dimensions.height > 2048 || dimensions.width * dimensions.height > 2_000_000) return;

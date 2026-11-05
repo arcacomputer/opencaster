@@ -2,6 +2,7 @@
  * this worker accepts public queries or signed wire bytes.
  */
 import { handleMediaRequest, type MediaEnv } from './media';
+import { readLimited, ReadAbortedError, SizeLimitError } from '@opencaster/client-core/boundedRead';
 import { normalizeHypersnapEnsName } from '@opencaster/client-core/ensName';
 import { handleAnalyticsEvents, recordRequestMetric, type AnalyticsEnv } from './analytics';
 import { fetchUpstream, InvalidUpstreamResponseError, parseUpstreamObject, resolveReadFallback, resolveUpstream, validTimelineCursor, type UpstreamConfig } from './upstream';
@@ -139,7 +140,6 @@ function validQuery(params: URLSearchParams, endpoint: Endpoint): boolean {
   return (endpoint.required ?? []).every(name => seen.has(name)) && (!endpoint.validate || endpoint.validate(params));
 }
 
-class SizeLimitError extends Error {}
 class RetryableReadError extends Error {}
 
 /** Abort fetch AND body work even if a transport ignores its signal. The race
@@ -162,39 +162,11 @@ function discardResponse(response: Response): void {
   void response.body?.cancel().catch(() => undefined);
 }
 
-async function readLimited(body: ReadableStream<Uint8Array> | null, limit: number, signal?: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
-  if (!body) return new Uint8Array();
-  const reader = body.getReader();
-  // Cache streams do not share fetch's abort signal. Cancel the locked reader,
-  // but never wait for an optional cache backend's cancellation to complete.
-  const cancel = () => { void reader.cancel().catch(() => undefined); };
-  signal?.addEventListener('abort', cancel, { once: true });
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  try {
-    while (true) {
-      if (signal?.aborted) { cancel(); throw new InvalidUpstreamResponseError(); }
-      const { value, done } = await reader.read();
-      if (signal?.aborted) throw new InvalidUpstreamResponseError();
-      if (done) break;
-      length += value.byteLength;
-      if (length > limit) {
-        cancel();
-        throw new SizeLimitError();
-      }
-      chunks.push(value);
-    }
-  } finally {
-    signal?.removeEventListener('abort', cancel);
-    reader.releaseLock();
-  }
-  const bytes = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
+/** Cache streams do not share fetch's abort signal; the shared reader cancels
+ * them on abort without waiting for an optional cache backend. */
+async function readUpstreamBody(body: ReadableStream<Uint8Array> | null, limit: number, signal?: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
+  try { return await readLimited(body, limit, { signal, onMissing: 'empty' }); }
+  catch (error) { throw error instanceof ReadAbortedError ? new InvalidUpstreamResponseError() : error; }
 }
 
 export interface WorkerExecutionContext { waitUntil(promise: Promise<unknown>): void }
@@ -255,7 +227,7 @@ async function cachedAggregate(aggregate: { cache: AggregateCache; key: Request 
       || /\b(?:private|no-store|no-cache)\b/i.test(cached.headers.get('Cache-Control') ?? '')) {
       discard(cached); return;
     }
-    const bytes = await readLimited(cached.body, MAX_RESPONSE_BYTES, controller.signal);
+    const bytes = await readUpstreamBody(cached.body, MAX_RESPONSE_BYTES, controller.signal);
     const value = parseUpstreamObject(bytes, config);
     if (!controller.signal.aborted && publicAggregate(value, path)) return bytes;
   }).catch(() => undefined); // Includes rejections arriving after the deadline.
@@ -286,7 +258,7 @@ async function proxy(request: Request, url: URL, env: Env, ctx?: WorkerExecution
     const declaredLength = request.headers.get('Content-Length');
     if (declaredLength && (!/^\d+$/.test(declaredLength) || Number(declaredLength) > MAX_MESSAGE_BYTES)) return failure(413, 'message_too_large', 'Signed message exceeds 64 KiB.');
     try {
-      body = await readLimited(request.body, MAX_MESSAGE_BYTES);
+      body = await readUpstreamBody(request.body, MAX_MESSAGE_BYTES);
     } catch {
       return failure(413, 'message_too_large', 'Signed message exceeds 64 KiB.');
     }
@@ -338,7 +310,7 @@ async function proxy(request: Request, url: URL, env: Env, ctx?: WorkerExecution
           discardResponse(upstream); throw new RetryableReadError();
         }
         const readResponse = async (limit: number) => {
-          try { return await readLimited(upstream.body, limit, attemptController.signal); }
+          try { return await readUpstreamBody(upstream.body, limit, attemptController.signal); }
           catch (error) {
             if (error instanceof SizeLimitError || error instanceof InvalidUpstreamResponseError) throw error;
             throw new RetryableReadError();
