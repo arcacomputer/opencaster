@@ -21,6 +21,11 @@ import {
 export const CUSTODY_DERIVATION_PATH = "m/44'/60'/0'/0/0";
 export const PHRASE_MAX_LENGTH = 512;
 
+/** An approval failure whose message is safe to show the user verbatim. */
+export class SignerUserError extends Error {
+  override name = 'SignerUserError';
+}
+
 /**
  * The only seed-handling operation. No network, storage, logging, or wallet
  * transaction API is reachable here. Mutable seed and HD key buffers are wiped
@@ -43,7 +48,7 @@ export function approveSignerRequest(request: unknown, phrase: string, nowMs = D
     normalized = phrase.normalize('NFKD').trim().toLowerCase().split(/\s+/u).join(' ');
     phrase = '';
     if (normalized.split(' ').length !== 24 || !validateMnemonic(normalized, wordlist)) {
-      throw new Error('Enter a valid 24-word English recovery phrase. Check its spelling and word order.');
+      throw new SignerUserError('Enter a valid 24-word English recovery phrase. Check its spelling and word order.');
     }
     seed = mnemonicToSeedSync(normalized);
     normalized = '';
@@ -53,7 +58,7 @@ export function approveSignerRequest(request: unknown, phrase: string, nowMs = D
     custody = new Uint8Array(account.privateKey);
     const address = addressFromCustodyPrivateKey(custody);
     if (address.toLowerCase() !== valid.custodyAddress.toLowerCase()) {
-      throw new Error('This recovery phrase does not match the custody address in the request. No approval was created.');
+      throw new SignerUserError('This recovery phrase does not match the custody address in the request. No approval was created.');
     }
     const key = hexToBytes(valid.publicKey);
     if (valid.kind === 'arca.hypersnap.signer.revoke.request') {

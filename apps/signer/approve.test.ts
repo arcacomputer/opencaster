@@ -3,7 +3,7 @@ import { HDKey } from '@scure/bip32';
 import { entropyToMnemonic, mnemonicToSeedSync } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
 import { ed25519 } from '@noble/curves/ed25519.js';
-import { approveSignerRequest, CUSTODY_DERIVATION_PATH } from './approve';
+import { approveSignerRequest, CUSTODY_DERIVATION_PATH, SignerUserError } from './approve';
 import { isAllowedResource, validateApproveInput } from './policy';
 import { FARCASTER_EPOCH_SECONDS, PAIRING_TTL_SECONDS, validatePairingRequest, validateRevocationRequest, verifyPairingApproval, verifyRevocationApproval, type PairingApproval, type PairingRequest, type RevocationApproval, type RevocationRequest } from '@opencaster/client-core/pairing';
 import { addressFromCustodyPrivateKey, bytesToHex } from '@opencaster/protocol/signedKeyRequest';
@@ -53,6 +53,20 @@ describe('offline signer approval', () => {
     expect(() => approveSignerRequest(request, 'x'.repeat(513), now)).toThrow('24-word');
     const normalizedApproval = approveSignerRequest(request, `  ${phrase.toUpperCase().split(' ').join('  ')}  `, now) as PairingApproval;
     expect(() => verifyPairingApproval(request, normalizedApproval, now)).not.toThrow();
+  });
+
+  it('marks only phrase and custody-mismatch failures as safe to show the user', () => {
+    const request = requestFixture();
+    expect(() => approveSignerRequest(request, Array(24).fill('abandon').join(' '), now)).toThrow(SignerUserError);
+    expect(() => approveSignerRequest({ ...request, custodyAddress: `0x${'00'.repeat(20)}` }, phrase, now)).toThrow(SignerUserError);
+    for (const attempt of [
+      () => approveSignerRequest(request, 'x'.repeat(513), now),
+      () => approveSignerRequest(request, phrase, now + 901_000),
+      () => approveSignerRequest({ ...request, scopes: [1, 3, 4, 5] }, phrase, now),
+    ]) {
+      expect(attempt).toThrow();
+      expect(attempt).not.toThrow(SignerUserError);
+    }
   });
 
   it('refuses expired requests and broader permissions', () => {
