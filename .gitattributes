@@ -57,6 +57,7 @@
 *.md text eol=lf
 *.mdx text eol=lf
 *.txt text eol=lf
+patches/*.patch text eol=lf whitespace=-blank-at-eol
 LICENSE text eol=lf
 AUTHORS text eol=lf
 CHANGELOG text eol=lf
