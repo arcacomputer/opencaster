@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'canonical-site-traffic-protection',
+    date: '2026-11-09',
+    timestamp: '2026-11-09T16:52:14-03:00',
+    title: 'Traffic protection for opencaster.org',
+    summary: 'The public client has fewer exposed addresses and limits rapid requests.',
+    changes: [
+      'The client and gateway serve only https://opencaster.org. Public Worker and preview URLs are disabled, and the old client preview is closed. Existing quorum.arca.computer links still redirect to Opencaster; signed writes are never forwarded across that redirect.',
+      'API, share-image and analytics routes share a limit of 120 requests per IP per 10 seconds. Excess requests return a short wait message before backend work starts. Cloudflare counters are approximate and local to each location; busy shared connections can share a limit, and Worker invocations still count.',
+      'A Cloudflare rule blocks AI training crawlers and Reflectionbot on the public client. Search crawlers and link-preview services are outside that rule. The protected analytics dashboard, developer API, node services and mail remain separate.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/c618ea4847c1906987ef119a946d88f65da724e2',
+    tag: 'Security',
+  },
+  {
     id: 'plain-language-dev-log',
     date: '2026-11-05',
     timestamp: '2026-11-05T10:58:43-03:00',
