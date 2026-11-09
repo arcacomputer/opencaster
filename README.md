@@ -34,6 +34,7 @@ Opencaster relies on Hypersnap's available indexes and the configured gateway in
 | [Feature support](apps/web-client/FEATURE_SUPPORT.md) | Implemented behavior and Hypersnap limitations. |
 | [Signing](apps/web-client/SIGNER.md) and [offline companion](apps/signer/README.md) | Wallet approval, saved device keys and offline signing. |
 | [Media](apps/web-client/MEDIA.md), [private origin](apps/web-client/PRIVATE_ORIGIN.md) and [observability](apps/web-client/OBSERVABILITY.md) | Gateway, storage, availability and operational boundaries. |
+| [Gateway traffic and build controls](services/gateway/SECURITY.md) | Canonical host, request limits, TLS and verified Cloudflare version staging. |
 | [Verification](apps/web-client/VERIFICATION.md) | Recorded automated, browser and isolated-network checks. |
 
 This repository uses Yarn Classic workspaces with one root lockfile. Install dependencies and run the full verification gate from the repository root. `yarn dev` starts the web client; `yarn build` checks the shared packages and services and builds the web client and signer. `yarn test` runs tests across the monorepo. `yarn verify` runs the tests and full build. Existing `yarn signer:*` and `yarn analytics:report` commands remain available at the root.

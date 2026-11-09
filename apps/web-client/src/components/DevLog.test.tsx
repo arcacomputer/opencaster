@@ -34,6 +34,40 @@ async function render(locale: string, timeZone: string) {
 const milestoneTimes = () => [...container.querySelectorAll<HTMLTimeElement>('.devlog-entry__meta time')];
 const button = (label: string) => [...container.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent?.trim() === label)!;
 
+describe('compact dev-log entries', () => {
+  it('starts with short summaries and keeps the full history available in closed disclosures', async () => {
+    await render('en-US', 'America/Los_Angeles');
+    for (const entry of DEV_LOG) {
+      const article = container.querySelector<HTMLElement>(`#${entry.id}`)!;
+      const details = article.querySelector<HTMLDetailsElement>('details')!;
+      expect(article.querySelector('h3')?.textContent).toBe(entry.title);
+      expect(article.querySelector(':scope > p')?.textContent).toBe(entry.summary);
+      expect(details.open).toBe(false);
+      expect(details.querySelector('summary')?.textContent).toContain('More details');
+      expect([...details.querySelectorAll('ul > li')].map(item => item.textContent)).toEqual(entry.changes);
+      expect(details.querySelector<HTMLAnchorElement>('a')?.href).toBe(entry.commit);
+    }
+  });
+
+  it('opens and closes one update independently while preserving it through topic and order changes', async () => {
+    await render('en-US', 'America/Los_Angeles');
+    const entry = DEV_LOG.find(item => item.tag === 'Reliability')!;
+    const details = container.querySelector<HTMLDetailsElement>(`#${entry.id} details`)!;
+    const summary = details.querySelector('summary')!;
+    await act(async () => summary.click());
+    expect(details.open).toBe(true);
+    expect([...container.querySelectorAll<HTMLDetailsElement>('.devlog-entry details')]
+      .filter(item => item.open)).toEqual([details]);
+
+    await act(async () => button('Reliability').click());
+    expect(container.querySelector<HTMLDetailsElement>(`#${entry.id} details`)?.open).toBe(true);
+    await act(async () => button('Show oldest first').click());
+    expect(container.querySelector<HTMLDetailsElement>(`#${entry.id} details`)?.open).toBe(true);
+    await act(async () => summary.click());
+    expect(details.open).toBe(false);
+  });
+});
+
 describe('local dev-log update times', () => {
   it.each([
     ['en-US', 'America/Los_Angeles', 'Oct 27, 2026, 11:46 PM PDT'],
@@ -56,7 +90,7 @@ describe('local dev-log update times', () => {
     expect(descending).toEqual([...descending].sort((a, b) => b - a));
     await act(async () => button('Reliability').click());
     expect(milestoneTimes()).toHaveLength(DEV_LOG.filter(entry => entry.tag === 'Reliability').length);
-    await act(async () => button('Read from the beginning').click());
+    await act(async () => button('Show oldest first').click());
     expect(milestoneTimes().map(time => Date.parse(time.dateTime))).toEqual([...descending].reverse());
     expect(milestoneTimes()[0].dateTime).toBe(PROJECT_STARTED_AT);
     await act(async () => button('Show latest first').click());

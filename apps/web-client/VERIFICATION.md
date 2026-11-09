@@ -1,3 +1,129 @@
+# Cloudflare traffic and TLS hardening deployed · 2026-11-09
+
+Source [`d089f558`](https://github.com/arcacomputer/opencaster/commit/d089f558b9bf99e7623d3e377245484006e493dd)
+was deployed at **2026-11-09 17:06:17 America/Santiago**
+(`2026-11-09T20:06:17.664937Z`) as Worker
+**`f85221e8-1536-465c-858d-74a5113190c5`**, deployment
+`4b206473-d404-47ee-b7d4-6c237cdfa17e`, at **100% traffic**.
+The published branch is `codex/opencaster-traffic-hardening` and the version tag
+is `security-20261109-d089f558`.
+
+The initial authenticated release base was `4ae71a5bb58ca484b41c7d9c69a353c8af53251d`,
+Worker `cd9ce458-0366-4dcc-a8c0-7faefc42f8d6`. The traffic implementation was
+committed as `c618ea4847c1906987ef119a946d88f65da724e2`, followed by its separate
+milestone commit `515043eacf5d7624e6578ae241bef5b71d9f3f89`. The transport policy
+was recorded as `f08490da2982824be25f94f9b17e490f3a0559c0`, followed by its separate
+milestone commit. Both notes are visible on the live `/devlog`, which has 105
+entries and preserves all 103 earlier IDs and implementation links.
+
+Root `yarn check:devlog` passed against the actual initial base and against the
+intermediate deployed source `515043eacf5d7624e6578ae241bef5b71d9f3f89` (Worker
+`91943e39-2c20-4754-9edb-1c9eb6000380`) before the final note deployment. Root
+`yarn verify` on the exact final source passed **2,104 tests across 89 files**,
+all workspace typechecks, production browser build and offline signer build in
+**45.14 seconds**. The successful gate used Node **22.21.0**, Yarn **1.22.22**,
+and `yarn install --frozen-lockfile` in an isolated external checkout after local
+dependency reads stalled in the cloud-synced checkout. The gateway subset passed
+**780 tests across 14 files**, including host rejection, untouched bodies,
+counter sharing, excess traffic, unavailable protection and preserved redirects.
+Existing disabled-iframe test diagnostics and WalletConnect annotation
+advisories did not fail the gate.
+
+Final assets were built into the fresh external directory
+`/tmp/arca-release-security-20261109-d089f558`. Its **47 regular files** had no
+symlinks, browser source maps, fixture wrappers or duplicate synchronized names.
+Both new milestone IDs were present. All **46 non-HTML asset hashes** matched
+public production reads after deployment. Wrangler **4.141.0** deployed that
+exact directory with the existing diagnostic source map upload enabled.
+
+The final production WalletConnect project identifier remains unset, matching
+the pre-release deployment. An initial build used the differing local public
+identifier; a fresh production-equivalent build replaced it before final
+verification. Browser wallet and saved-session behavior were not changed.
+Haatz remains primary, the private-origin pair remains absent, aggregate cache
+opt-in stays disabled, and R2, Durable Object and existing analytics bindings
+are preserved. Platform invocation logs remain enabled with query redaction;
+automatic traces and Issues remain disabled.
+
+Live control-plane and public-read checks confirmed:
+
+- Production and preview `workers.dev` URLs are disabled. The production
+  address returns 404; `claude.opencaster.org` is detached from the retained
+  preview Worker and is unavailable. No service Worker or storage was deleted.
+- The new client counter is enabled at **120 requests per IP per 10 seconds**.
+  It runs only on the canonical client's dynamic route prefixes. The existing
+  analytics counter remains **60 requests per 60 seconds**.
+- The hostname-scoped AI-crawler Block rule is Active. A public Reflectionbot
+  user-agent read receives 403. No zone-wide Skip rule or edge rate rule was
+  deployed; search and preview categories are outside the new crawler rule.
+- Always Use HTTPS is on, minimum TLS is **1.2**, and TLS 1.3 remains enabled.
+  Anonymous HTTP reads to the apex, developer API, node, telemetry and analytics
+  hostnames redirect to their HTTPS equivalents. A TLS-1.2-only apex request
+  returned 200 with successful certificate verification.
+- The apex, `/devlog` and `/api/v1/info` return 200 with application security
+  headers. The legacy profile link redirects to the same canonical path.
+  Signed-out analytics still redirects to Cloudflare Access sign-in. DNS and
+  routes for the independent services and mail remain in place.
+
+Production checks were public reads and navigation only. Quota exhaustion and
+failure behavior used mocked bindings; no production burst or real-account
+write was performed. Cloudflare counters are approximate per location and start
+after Worker invocation; these checks do not establish a global cost limit,
+classify every visitor, or constitute an independent security audit.
+
+---
+
+# Compact dev log deployed · 2026-11-05
+
+Source [`4ae71a5b`](https://github.com/arcacomputer/opencaster/commit/4ae71a5bb58ca484b41c7d9c69a353c8af53251d)
+was deployed at **2026-11-05 11:22:25 America/Santiago**
+(`2026-11-05T14:22:25.039664Z`) as Worker **`cd9ce458-0366-4dcc-a8c0-7faefc42f8d6`**,
+deployment `5ebbc394-5819-4084-8f09-6db62c9a082a`, at **100% traffic**.
+The source is published on `codex/compact-devlog`; the version tag is
+`devlog-20261105-4ae71a5b`.
+
+The authenticated pre-release base was `b25afc9719c8665011cac60358def8331a46ac28`,
+Worker `bf9c7d52-c85a-408c-a866-d60fdf4433db`. Its production changes were merged
+before release. Outside dev-log UI, styles, copy, tests and guidance, the source
+matches that deployed base. All 101 earlier milestone IDs, dates, timestamps,
+source links and tags are preserved; the live page has 103 entries.
+
+Root `yarn check:devlog --base b25afc9719c8665011cac60358def8331a46ac28`
+passed. Root `VITEST_MAX_WORKERS=2 yarn verify` passed **2,093 tests across 89
+files**, all workspace typechecks, the browser build and offline signer build in
+**45.61 seconds**. These checks ran from the exact committed source in a clean
+external checkout, avoiding the cloud-synced checkout's dependency-loading
+stalls. Node was **22.22.3** and Yarn **1.22.21**.
+
+Fresh production assets came from `/tmp/arca-release-devlog-20261105-tOy98uSt`.
+Its 47 regular files had no symlinks, browser source maps, identified debug
+markers, synthetic fixtures, preview wrappers or cloud-sync duplicate names.
+Wrangler **4.141.0** dry-run passed, and that exact directory was deployed.
+Public checks matched all **46 non-HTML asset hashes**, confirmed
+`assets/index-BRPJllSL.js` on `/devlog`, and received 200 from `/api/v1/info`.
+The inspected files were unchanged after upload.
+
+Authenticated comparisons confirm the same Worker JavaScript, WASM and
+previously uploaded diagnostic source map, non-asset bindings, compatibility
+settings and observability. Haatz remains primary, both private-origin values
+remain absent, and aggregate caching stays disabled. The WalletConnect feature
+chunk matches the prior deployed configuration, including its unset public
+project identifier; this dev-log release does not change that sign-in setting.
+
+Browser checks confirmed collapsed entries, independent expansion and keyboard
+collapse, topic filtering, oldest/latest ordering and the rewritten copy.
+At a 320px viewport, document client and scroll widths were both 305px and the
+disclosure target was 44px high. These are browser layout checks, not physical
+mobile-device testing. Production checks used public reads/navigation only;
+no wallet approval, social write or media upload was performed. Signer downloads
+and the analytics dashboard were not deployed.
+
+Receipts: `/tmp/opencaster-devlog-release-receipt.json`,
+`/tmp/opencaster-devlog-release-verify.log`,
+`/tmp/opencaster-devlog-release-assets-manifest.json`,
+`/tmp/opencaster-devlog-live-verification.json` and
+`/tmp/opencaster-devlog-live-20261105.jpg`.
+
 # Remembered browser sessions deployed · 2026-11-05
 
 Release source [`d329359b`](https://github.com/arcacomputer/opencaster/commit/d329359b3bedb7047d57cea9594b44f6a73855e7)

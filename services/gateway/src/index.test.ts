@@ -88,8 +88,8 @@ describe('the Opencaster domain migration', () => {
     expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull(); expect(fetch).not.toHaveBeenCalled(); expect(assets).not.toHaveBeenCalled();
   });
 
-  it.each([BASE, WORKER, 'https://quorum.arca.computer.evil.example', 'https://quorum.arca.computer.', 'https://www.opencaster.org'])('does not redirect unrelated or operational hosts: %s', async origin => {
-    const response = await handleRequest(new Request(`${origin}/profile/alice`), env);
+  it('serves the canonical application without redirecting', async () => {
+    const response = await handleRequest(new Request(`${BASE}/profile/alice`), env);
     expect(response.status).toBe(200); expect(response.headers.get('Location')).toBeNull();
   });
 
@@ -101,10 +101,69 @@ describe('the Opencaster domain migration', () => {
     expect(preflight.status).toBe(405); expect(preflight.headers.get('Access-Control-Allow-Origin')).toBeNull(); expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('keeps the stable worker hostname operational with its own-origin requests', async () => {
+  it.each([
+    WORKER, 'https://preview-hypersnap-quorum.lf-e32.workers.dev',
+    'https://claude.opencaster.org', 'https://www.opencaster.org',
+    'https://opencaster.org.evil.example', 'https://opencaster.org.',
+    'https://opencaster.org:8443', 'http://opencaster.org',
+    'https://quorum.arca.computer.evil.example', 'https://quorum.arca.computer.',
+  ])('rejects noncanonical origins before any application work: %s', async origin => {
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+    const assets = vi.fn(); const get = vi.fn(); const writeDataPoint = vi.fn();
+    const isolated = { ...env, ASSETS: { fetch: assets }, MEDIA_BUCKET: { get }, ANALYTICS: { writeDataPoint } } as unknown as Env;
+    for (const path of ['/', '/api/v1/info', '/_share/profile/1.png', `/media/${'a'.repeat(64)}`]) {
+      const response = await handleRequest(new Request(`${origin}${path}`), isolated);
+      expect(response.status).toBe(421); expect(response.headers.get('Location')).toBeNull();
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
+    }
+    const request = new Request(`${origin}/_analytics/events`, { method: 'POST', body: 'unread', headers: { Origin: origin } });
+    expect((await handleRequest(request, isolated)).status).toBe(421); expect(request.bodyUsed).toBe(false);
+    expect(fetch).not.toHaveBeenCalled(); expect(assets).not.toHaveBeenCalled(); expect(get).not.toHaveBeenCalled(); expect(writeDataPoint).not.toHaveBeenCalled();
+  });
+});
+
+describe('canonical client request rate protection', () => {
+  it.each(['/api/v1/info', '/_share/v1/profile/1.png', '/_analytics/events'])('rejects excess traffic before reading bodies or performing work: %s', async path => {
+    const limit = vi.fn().mockResolvedValue({ success: false });
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch); const assets = vi.fn(); const writeDataPoint = vi.fn();
+    const request = new Request(`${BASE}${path}`, { method: 'POST', body: 'unread', headers: { 'CF-Connecting-IP': '192.0.2.10', Origin: BASE } });
+    const response = await handleRequest(request, { ...env, CLIENT_RATE_LIMIT: 'enabled', CLIENT_RATE_LIMITER: { limit }, ASSETS: { fetch: assets }, ANALYTICS: { writeDataPoint } });
+    expect(response.status).toBe(429); expect(response.headers.get('Retry-After')).toBe('10'); expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(request.bodyUsed).toBe(false); expect(limit).toHaveBeenCalledExactlyOnceWith({ key: '192.0.2.10' });
+    expect(fetch).not.toHaveBeenCalled(); expect(assets).not.toHaveBeenCalled();
+    expect(JSON.stringify(writeDataPoint.mock.calls)).not.toContain('192.0.2.10');
+  });
+
+  it('fails closed for a missing or failed limiter while allowing ordinary pages and assets', async () => {
+    const limit = vi.fn().mockRejectedValue(new Error('private diagnostics'));
+    for (const CLIENT_RATE_LIMITER of [undefined, { limit }]) {
+      const settings = { ...env, CLIENT_RATE_LIMIT: 'enabled', CLIENT_RATE_LIMITER };
+      const response = await handleRequest(new Request(`${BASE}/api/v1/info`), settings);
+      expect(response.status).toBe(503); expect(await response.text()).not.toContain('private diagnostics');
+      expect((await handleRequest(new Request(BASE), settings)).status).toBe(200);
+      expect((await handleRequest(new Request(`${BASE}/assets/app.js`), settings)).status).toBe(200);
+    }
+  });
+
+  it('shares the IP counter across dynamic paths, accepts permitted reads, and never forwards the IP upstream', async () => {
+    const limit = vi.fn().mockResolvedValue({ success: true });
     const fetch = vi.fn().mockResolvedValue(jsonResponse({ version: 'isolated' })); vi.stubGlobal('fetch', fetch);
-    const response = await handleRequest(new Request(`${WORKER}/api/v1/info`, { headers: { Origin: WORKER } }), env);
-    expect(response.status).toBe(200); expect(fetch.mock.calls[0][0]).toBe('https://haatz.quilibrium.com/v1/info'); expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
+    const settings = { ...env, CLIENT_RATE_LIMIT: 'enabled', CLIENT_RATE_LIMITER: { limit } };
+    const response = await handleRequest(new Request(`${BASE}/api/v1/info`, { headers: { 'CF-Connecting-IP': '192.0.2.10' } }), settings);
+    expect(response.status).toBe(200); expect(limit).toHaveBeenCalledWith({ key: '192.0.2.10' });
+    expect(fetch.mock.calls[0][1].headers.has('CF-Connecting-IP')).toBe(false);
+    await handleRequest(new Request(`${BASE}/_analytics/events`, { headers: { 'CF-Connecting-IP': '192.0.2.10' } }), settings);
+    expect(limit).toHaveBeenLastCalledWith({ key: '192.0.2.10' });
+    await handleRequest(new Request(`${LEGACY}/api/v1/info`), settings);
+    await handleRequest(new Request(`${WORKER}/api/v1/info`), settings);
+    expect(limit).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses a finite shared key when the platform address is unavailable', async () => {
+    const limit = vi.fn().mockResolvedValue({ success: false });
+    await handleRequest(new Request(`${BASE}/api/v1/info`), { ...env, CLIENT_RATE_LIMIT: 'enabled', CLIENT_RATE_LIMITER: { limit } });
+    expect(limit).toHaveBeenCalledExactlyOnceWith({ key: 'unknown' });
   });
 });
 
