@@ -35,6 +35,13 @@ client does not automatically replay signed submissions.
 
 ## Zone firewall
 
+The manually managed transport settings are recorded in `zone-settings.json`:
+Always Use HTTPS is on, minimum TLS is 1.2, and the existing TLS 1.3 setting stays
+on. These settings cover the zone's proxied service subdomains as well as the
+public client. HTTP requests redirect to HTTPS, and TLS 1.0/1.1 clients cannot
+connect. Wrangler does not apply this snapshot; review these values in the
+Cloudflare zone dashboard when changing infrastructure.
+
 The `opencaster.org` zone has the following additional active custom Block rule:
 
 ```text

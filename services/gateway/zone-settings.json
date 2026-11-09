@@ -1,0 +1,7 @@
+{
+  "zone": "opencaster.org",
+  "settings": {
+    "always_use_https": "on",
+    "min_tls_version": "1.2"
+  }
+}
