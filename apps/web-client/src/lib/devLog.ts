@@ -22,6 +22,18 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'https-and-modern-tls',
+    date: '2026-11-09',
+    timestamp: '2026-11-09T17:03:32-03:00',
+    title: 'HTTPS and modern TLS',
+    summary: 'Opencaster redirects HTTP traffic to HTTPS and requires TLS 1.2 or newer.',
+    changes: [
+      'Cloudflare now redirects HTTP requests to HTTPS across opencaster.org and its proxied service subdomains. Connections require TLS 1.2 or newer; clients limited to obsolete TLS 1.0 or 1.1 can no longer connect.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/f08490da2982824be25f94f9b17e490f3a0559c0',
+    tag: 'Security',
+  },
+  {
     id: 'canonical-site-traffic-protection',
     date: '2026-11-09',
     timestamp: '2026-11-09T16:52:14-03:00',
