@@ -72,14 +72,21 @@ Cloudflare dashboard to match this snapshot when changing the integration.
 Builds run `yarn cloudflare:build` from the repository root. That command requires
 Cloudflare's build UUID and exact commit metadata, runs the full `yarn verify`
 gate, and builds production browser assets into a fresh external directory.
-It records a source-bound asset fingerprint outside the asset directory.
+It records a branch- and source-bound asset fingerprint outside the asset directory.
 
 Both production-branch and preview upload commands use `yarn cloudflare:upload`.
-It verifies the commit and unchanged asset fingerprint, then uses the pinned
-Wrangler dependency to upload a Worker version. It never promotes that version
-to live traffic. Public Worker and preview URLs stay disabled. Uploading a
-version uses its configured bindings and does not itself exercise application
-writes or provide an isolated application database.
+It verifies the branch, commit and unchanged asset fingerprint, then uses the
+pinned Wrangler dependency to package the Worker. Branch builds use Wrangler's
+`--dry-run`: they complete the same tests, typechecks, browser/signer builds,
+asset inspection and Worker bundling without creating a Preview or uploading a
+version. The `main` branch uploads a staged Worker version without promoting it
+to live traffic. Public Worker and preview URLs stay disabled. A staged version
+uses its configured bindings and does not itself exercise application writes or
+provide an isolated application database.
+
+Existing Previews can retain their own build-command overrides. Select each
+active branch from the Worker environment menu and check its Settings > Builds;
+updating Previews Base does not update an existing branch's commands.
 
 Production promotion remains the separate manual release procedure, including
 the actual deployed base, dev-log guard and exact inspected asset directory.

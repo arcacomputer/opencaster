@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildPaths, fingerprintAssets, main } from './cloudflare-build.mjs';
 
-const env = { WORKERS_CI: '1', WORKERS_CI_BUILD_UUID: '00000000-0000-4000-8000-000000000001', WORKERS_CI_COMMIT_SHA: 'a'.repeat(40) };
+const env = { WORKERS_CI: '1', WORKERS_CI_BUILD_UUID: '00000000-0000-4000-8000-000000000001', WORKERS_CI_COMMIT_SHA: 'a'.repeat(40), WORKERS_CI_BRANCH: 'main' };
 const directories = [];
 afterEach(async () => { await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true }))); });
 async function fixture() {
@@ -21,7 +21,7 @@ async function fixture() {
 
 describe('Workers Builds verified version staging', () => {
   it('rejects missing or malformed platform metadata and a different checkout', async () => {
-    for (const invalid of [{}, { ...env, WORKERS_CI: '0' }, { ...env, WORKERS_CI_BUILD_UUID: '../../elsewhere' }, { ...env, WORKERS_CI_COMMIT_SHA: '' }]) {
+    for (const invalid of [{}, { ...env, WORKERS_CI: '0' }, { ...env, WORKERS_CI_BUILD_UUID: '../../elsewhere' }, { ...env, WORKERS_CI_COMMIT_SHA: '' }, { ...env, WORKERS_CI_BRANCH: '' }]) {
       expect(() => buildPaths(invalid)).toThrow('Expected Workers Builds');
     }
     const setup = await fixture();
@@ -43,6 +43,24 @@ describe('Workers Builds verified version staging', () => {
     expect(setup.run).toHaveBeenCalledTimes(1);
     await main('build', setup);
     await expect(main('build', setup)).rejects.toThrow();
+  });
+
+  it('fully packages branch builds without publishing a version or changing the target identity', async () => {
+    const setup = await fixture(); setup.env = { ...env, WORKERS_CI_BRANCH: 'codex/traffic-controls' };
+    await main('build', setup);
+    await main('upload', setup);
+    expect(setup.run.mock.calls.map(([args]) => args[0])).toEqual(['verify', 'workspace', 'exec']);
+    const args = setup.run.mock.calls.at(-1)[0];
+    expect(args.slice(2, 5)).toEqual(['wrangler', 'versions', 'upload']);
+    expect(args).toContain('--dry-run');
+    expect(args).not.toContain('--name');
+  });
+
+  it('refuses to reclassify already verified branch assets as a main-branch upload', async () => {
+    const setup = await fixture(); setup.env = { ...env, WORKERS_CI_BRANCH: 'codex/traffic-controls' };
+    await main('build', setup); setup.run.mockClear();
+    await expect(main('upload', { ...setup, env })).rejects.toThrow('source metadata changed');
+    expect(setup.run).not.toHaveBeenCalled();
   });
 
   it('refuses an upload after asset bytes or source metadata change', async () => {

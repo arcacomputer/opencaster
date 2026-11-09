@@ -6,6 +6,7 @@
   "build_command": "yarn cloudflare:build",
   "deploy_command": "yarn cloudflare:upload",
   "preview_command": "yarn cloudflare:upload",
+  "preview_mode": "verify-and-package-only",
   "promotion": "manual",
   "public_preview_urls": false
 }

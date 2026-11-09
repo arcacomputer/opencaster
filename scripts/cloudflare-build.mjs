@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Workers Builds stages verified versions. Production promotion remains the
-// separately reviewed release procedure in apps/web-client/README.md.
+// Workers Builds packages branches and stages main. Production promotion
+// remains the release procedure in apps/web-client/README.md.
 import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
@@ -10,7 +10,8 @@ import { pathToFileURL } from 'node:url';
 
 export function buildPaths(env, temporaryRoot = tmpdir()) {
   if (env.WORKERS_CI !== '1' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(env.WORKERS_CI_BUILD_UUID ?? '')
-    || !/^[0-9a-f]{40}$/i.test(env.WORKERS_CI_COMMIT_SHA ?? '')) throw new Error('Expected Workers Builds commit and build identifiers.');
+    || !/^[0-9a-f]{40}$/i.test(env.WORKERS_CI_COMMIT_SHA ?? '')
+    || typeof env.WORKERS_CI_BRANCH !== 'string' || !env.WORKERS_CI_BRANCH.trim()) throw new Error('Expected Workers Builds branch, commit and build identifiers.');
   const assets = path.join(temporaryRoot, `arca-release-workers-${env.WORKERS_CI_BUILD_UUID}`);
   return { assets, manifest: `${assets}.json` };
 }
@@ -53,12 +54,16 @@ export async function main(phase = process.argv[2], {
     await mkdir(files.assets); // Refuse to reuse any existing release directory.
     await run(['workspace', '@opencaster/web-client', 'build', '--outDir', files.assets]);
     const entries = await fingerprintAssets(files.assets);
-    await writeFile(files.manifest, JSON.stringify({ commit: env.WORKERS_CI_COMMIT_SHA, entries }), { flag: 'wx', mode: 0o600 });
+    await writeFile(files.manifest, JSON.stringify({ branch: env.WORKERS_CI_BRANCH, commit: env.WORKERS_CI_COMMIT_SHA, entries }), { flag: 'wx', mode: 0o600 });
     return files;
   }
   const manifest = JSON.parse(await readFile(files.manifest, 'utf8'));
-  if (manifest.commit !== env.WORKERS_CI_COMMIT_SHA || JSON.stringify(manifest.entries) !== JSON.stringify(await fingerprintAssets(files.assets))) throw new Error('Release assets changed after verification.');
-  await run(['exec', '--', 'wrangler', 'versions', 'upload', '--config', 'services/gateway/wrangler.jsonc', '--assets', files.assets, '--upload-source-maps']);
+  if (manifest.branch !== env.WORKERS_CI_BRANCH || manifest.commit !== env.WORKERS_CI_COMMIT_SHA || JSON.stringify(manifest.entries) !== JSON.stringify(await fingerprintAssets(files.assets))) throw new Error('Release assets or source metadata changed after verification.');
+  // Native branch Previews have separate Worker identities and resources. Keep
+  // their full packaging check local; only main may stage a production version.
+  const previewArgs = env.WORKERS_CI_BRANCH === 'main' ? [] : ['--dry-run'];
+  await run(['exec', '--', 'wrangler', 'versions', 'upload', '--config', 'services/gateway/wrangler.jsonc', '--assets', files.assets, '--upload-source-maps', ...previewArgs]);
+  if (previewArgs.length) console.log('Branch Worker packaging verified; no version uploaded.');
   return files;
 }
 
