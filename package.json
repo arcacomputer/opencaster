@@ -9,6 +9,8 @@
     "yarn": "1.22.x"
   },
   "scripts": {
+    "cloudflare:build": "node scripts/cloudflare-build.mjs build",
+    "cloudflare:upload": "node scripts/cloudflare-build.mjs upload",
     "dev": "yarn workspace @opencaster/web-client dev",
     "build": "yarn workspace @opencaster/protocol build && yarn workspace @opencaster/client-core build && yarn workspace @opencaster/web-ui build && yarn workspace @opencaster/web-client build && yarn workspace @opencaster/gateway build && yarn workspace @opencaster/analytics build && yarn signer:build",
     "preview": "yarn workspace @opencaster/web-client preview",
@@ -30,10 +32,11 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "happy-dom": "21.0.4",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.12",
     "vite": "^7.1.0",
-    "happy-dom": "21.0.4"
+    "vitest": "^4.1.12",
+    "wrangler": "4.159.0"
   },
   "resolutions": {
     "vite": "^7.3.7"

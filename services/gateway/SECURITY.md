@@ -64,3 +64,23 @@ Before deployment, follow the repository release checks. Verify public pages,
 read-only API calls, legacy redirects, disabled alternate URLs, and signed-out
 analytics denial. Test quota exhaustion with synthetic identities and mocked
 bindings, not production bursts or real-account writes.
+
+## Workers Builds
+
+The connected build settings are recorded in `worker-builds.json`; update the
+Cloudflare dashboard to match this snapshot when changing the integration.
+Builds run `yarn cloudflare:build` from the repository root. That command requires
+Cloudflare's build UUID and exact commit metadata, runs the full `yarn verify`
+gate, and builds production browser assets into a fresh external directory.
+It records a source-bound asset fingerprint outside the asset directory.
+
+Both production-branch and preview upload commands use `yarn cloudflare:upload`.
+It verifies the commit and unchanged asset fingerprint, then uses the pinned
+Wrangler dependency to upload a Worker version. It never promotes that version
+to live traffic. Public Worker and preview URLs stay disabled. Uploading a
+version uses its configured bindings and does not itself exercise application
+writes or provide an isolated application database.
+
+Production promotion remains the separate manual release procedure, including
+the actual deployed base, dev-log guard and exact inspected asset directory.
+Merging a pull request does not automatically replace the active release.
