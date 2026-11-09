@@ -6,11 +6,13 @@
   // Preserve the temporary Haatz primary during the private-node reinstall.
   // Restore the private origin and its credential only through an approved cutback.
   "vars": {
+    "CLIENT_RATE_LIMIT": "enabled",
     "HYPERSNAP_AGGREGATE_CACHE": "disabled",
     "HYPERSNAP_READ_FALLBACK": "haatz-v1"
   },
   "compatibility_date": "2026-10-19",
-  "workers_dev": true,
+  "workers_dev": false,
+  "preview_urls": false,
   "assets": { "directory": "../../apps/web-client/dist", "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": true },
   "routes": [{ "pattern": "opencaster.org", "custom_domain": true }, { "pattern": "quorum.arca.computer", "custom_domain": true }],
   // Keep dashboard invocation logs enabled on later deployments. Platform logs
@@ -24,7 +26,10 @@
     "issues": { "enabled": false }
   },
   "analytics_engine_datasets": [{ "binding": "ANALYTICS", "dataset": "opencaster_activity" }],
-  "ratelimits": [{ "name": "ANALYTICS_RATE_LIMITER", "namespace_id": "109202601", "simple": { "limit": 60, "period": 60 } }],
+  "ratelimits": [
+    { "name": "ANALYTICS_RATE_LIMITER", "namespace_id": "109202601", "simple": { "limit": 60, "period": 60 } },
+    { "name": "CLIENT_RATE_LIMITER", "namespace_id": "10920261109", "simple": { "limit": 120, "period": 10 } }
+  ],
   "r2_buckets": [{ "binding": "MEDIA_BUCKET", "bucket_name": "hypersnap-quorum-media" }],
   "durable_objects": { "bindings": [{ "name": "MEDIA_QUOTA", "class_name": "MediaUploadQuota" }] },
   "migrations": [{ "tag": "media-quota-v1", "new_sqlite_classes": ["MediaUploadQuota"] }]

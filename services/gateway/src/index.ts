@@ -14,6 +14,8 @@ export { MediaUploadQuota } from './media';
 export interface Env extends MediaEnv, AnalyticsEnv {
   ASSETS: { fetch(request: Request): Promise<Response> };
   HYPERSNAP_AGGREGATE_CACHE?: string;
+  CLIENT_RATE_LIMIT?: string;
+  CLIENT_RATE_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> };
 }
 
 const CANONICAL_ORIGIN = APP_ORIGIN;
@@ -476,6 +478,23 @@ async function routeRequest(request: Request, env: Env, ctx?: WorkerExecutionCon
     // their way to the same content-addressed object on the canonical domain.
     if (url.pathname.startsWith('/media/')) headers.set('Cross-Origin-Resource-Policy', 'cross-origin');
     return new Response(null, { status: 308, headers });
+  }
+  // Only the canonical HTTPS origin serves the client and its gateway. Keep
+  // this check before assets, storage, previews, analytics and upstream work,
+  // even if a future deployment accidentally attaches another hostname.
+  if (url.origin !== CANONICAL_ORIGIN) return failure(421, 'unavailable_host', 'Open https://opencaster.org to use Opencaster.');
+  if (env.CLIENT_RATE_LIMIT === 'enabled' && ['/api/', '/_share/', '/_analytics/'].some(prefix => url.pathname.startsWith(prefix))) {
+    // Cloudflare supplies this IP. Use it only as a transient counter key,
+    // never in application logs or analytics. Counters are local to each PoP.
+    const ip = request.headers.get('CF-Connecting-IP');
+    try {
+      if (!env.CLIENT_RATE_LIMITER) throw new Error('Missing client rate limiter');
+      const allowed = await env.CLIENT_RATE_LIMITER.limit({ key: ip && ip.length <= 128 ? ip : 'unknown' });
+      if (!allowed.success) return json({ code: 'rate_limited', message: 'Too many requests. Wait 10 seconds before trying again.' }, 429, { 'Retry-After': '10' });
+    } catch {
+      // An enabled production limit must not silently disappear on failure.
+      return json({ code: 'rate_limit_unavailable', message: 'Request protection is temporarily unavailable. Try again shortly.' }, 503, { 'Retry-After': '10' });
+    }
   }
   if (url.pathname === '/_analytics/events') return secure(await handleAnalyticsEvents(request, env));
   if (url.pathname === '/_share' || url.pathname.startsWith('/_share/')) {

@@ -188,7 +188,7 @@ describe('channel and feed public preview PNGs', () => {
     const alternate = { ...definition, name: 'Another recipe', sources: [{ kind: 'user' as const, fid: 99 }] };
     const raw = publicToken({ ...definition, name: ` ${definition.name} `, image: 'https://attacker.example/private.png', viewer: { key: 'private' }, filters: { ...definition.filters, tracking: 'discard' } });
     for (const path of [imagePath(definition), imagePath(alternate), `/_share/v1/feed.png?feed=${raw}`]) {
-      const response = await handleRequest(new Request(`https://preview.example${path}`, { headers: { Cookie: 'private', Authorization: 'private' } }), env, ctx);
+      const response = await handleRequest(new Request(`${ORIGIN}${path}`, { headers: { Cookie: 'private', Authorization: 'private' } }), env, ctx);
       expect(response.headers.get('X-Opencaster-Preview')).toBe('feed');
     }
     await Promise.all(pending);
