@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'cloudflare-branch-packaging',
+    date: '2026-11-09',
+    timestamp: '2026-11-09T17:48:03-03:00',
+    title: 'Branch checks keep preview sites unpublished',
+    summary: 'Cloudflare checks branch builds without creating another public client.',
+    changes: [
+      'Branch checks run the full test and build workflow, inspect the browser assets, and bundle the gateway locally. This avoids a failed upload to a separate preview Worker and keeps branch builds unpublished.',
+      'Only main can upload a candidate production version. It still requires a separate manual release to serve visitors, and the asset record is tied to both its branch and commit.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/973f3a9ddb22167af7617dc262c98d9ad23db894',
+    tag: 'Reliability',
+  },
+  {
     id: 'verified-yarn-cloudflare-builds',
     date: '2026-11-09',
     timestamp: '2026-11-09T17:18:47-03:00',
