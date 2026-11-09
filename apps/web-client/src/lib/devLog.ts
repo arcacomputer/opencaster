@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'verified-yarn-cloudflare-builds',
+    date: '2026-11-09',
+    timestamp: '2026-11-09T17:18:47-03:00',
+    title: 'Cloudflare build checks use Yarn',
+    summary: 'Cloudflare checks use the same Yarn verification workflow as the repository.',
+    changes: [
+      'Connected builds run the full verification gate, build the browser client in a fresh directory, and check that its files have not changed before uploading a candidate Worker version. This fixes the incompatible package-manager command that prevented build checks from running.',
+      'Uploaded candidates do not automatically replace the live site. Production promotion remains a separate release step, and public preview addresses remain disabled.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/9b4f45f5a2f804be0716fa4b7751db3883a38752',
+    tag: 'Reliability',
+  },
+  {
     id: 'https-and-modern-tls',
     date: '2026-11-09',
     timestamp: '2026-11-09T17:03:32-03:00',
