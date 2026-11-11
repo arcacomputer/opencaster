@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'portable-git-utc-release-notes',
+    date: '2026-11-11',
+    timestamp: '2026-11-11T12:57:04+00:00',
+    title: 'Release notes agree across Git versions',
+    summary: 'Release checks recognize the two standard spellings of the same recorded UTC author time.',
+    changes: [
+      'Git versions can render the same commit author timestamp with Z or +00:00. The release-note check now treats only those zero-offset spellings as equivalent, without rewriting commit history or changing recorded dates and times.',
+      'Implementation ancestry, full source links, historical notes and all other offset spellings remain checked. Added positive and negative regressions preserve those release requirements.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/ff9c231c0ead57d2076b685999eaef9a2e2d513b',
+    tag: 'Reliability',
+  },
+  {
     id: 'stock-timeline-cursor-compatibility',
     date: '2026-11-11',
     timestamp: '2026-11-11T12:46:27+00:00',
