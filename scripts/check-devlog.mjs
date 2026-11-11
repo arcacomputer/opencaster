@@ -88,6 +88,14 @@ export function parseDevLog(source) {
   return entries;
 }
 
+// Git versions spell a recorded zero offset as either Z or +00:00. Allow
+// only that rendering difference; keep the calendar, clock and all other
+// offset spellings exact. This compares validated data, not parsed instants.
+export function matchesGitAuthorTimestamp(commitTimestamp, timestamp) {
+  if (typeof commitTimestamp !== 'string' || typeof timestamp !== 'string') return false;
+  return commitTimestamp.replace(/\+00:00$/, 'Z') === timestamp.replace(/\+00:00$/, 'Z');
+}
+
 export function checkDevLog({ base, head, mergeBase = false, cwd = repoRoot }) {
   const git = (...args) => execFileSync('git', ['-c', 'diff.relative=false', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   const resolve = ref => {
@@ -136,7 +144,7 @@ export function checkDevLog({ base, head, mergeBase = false, cwd = repoRoot }) {
       const commitTimestamp = git('show', '-s', '--format=%aI', sha);
       const commitDate = commitTimestamp.slice(0, 10);
       if (commitDate !== entry.date) throw new Error(`Use its recorded date ${commitDate}.`);
-      if (commitTimestamp !== entry.timestamp) throw new Error(`Use its recorded timestamp ${commitTimestamp}.`);
+      if (!matchesGitAuthorTimestamp(commitTimestamp, entry.timestamp)) throw new Error(`Use its recorded timestamp ${commitTimestamp}.`);
     } catch (error) {
       throw new Error(`Milestone ${entry.id}: source must be an existing implementation commit in this history, dated as recorded by Git. ${error.message}`);
     }

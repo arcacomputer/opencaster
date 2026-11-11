@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { checkDevLog, needsReleaseNote, parseDevLog } from './check-devlog.mjs';
+import { checkDevLog, matchesGitAuthorTimestamp, needsReleaseNote, parseDevLog } from './check-devlog.mjs';
 
 const LOG = 'apps/web-client/src/lib/devLog.ts';
 const LEGACY_LOG = 'hypersnap/src/lib/devLog.ts';
@@ -87,6 +87,33 @@ describe('release-note guard against real isolated Git history', { timeout: 15_0
     const repo = seeded(); const source = productChange(repo);
     repo.log([{ ...milestone('new-release', source, '2026-10-20'), timestamp }, ...repo.old]);
     expect(() => checkDevLog({ base: repo.base, cwd: repo.cwd })).toThrow('Use its recorded timestamp 2026-10-20T08:00:00-03:00.');
+  });
+
+  it.each(['Z', '+00:00'])('accepts a UTC implementation recorded with %s without changing its Git metadata or historical notes', offset => {
+    const repo = seeded(); repo.write(APP, 'export const version = 2;\n');
+    const source = repo.commit('UTC implementation', '2026-10-20T12:46:27+00:00');
+    const note = milestone('utc-release', source, '2026-10-20', `12:46:27${offset}`);
+    repo.log([note, ...repo.old]);
+    const head = repo.commit('Record UTC implementation', '2026-10-20T13:00:00+00:00');
+    for (const explicit of [true, false]) {
+      expect(checkDevLog({ base: repo.base, ...(explicit ? { head } : {}), cwd: repo.cwd }))
+        .toMatchObject({ productFiles: [APP], addedIds: ['utc-release'] });
+    }
+    expect(repo.git('rev-parse', `${source}^{commit}`)).toBe(source);
+    expect(parseDevLog(repo.git('show', `${head}:${LOG}`))).toEqual([note, ...repo.old]);
+  });
+
+  it.each([
+    ['2026-10-20', '12:46:28Z', 'timestamp'],
+    ['2026-10-21', '12:46:27+00:00', 'date'],
+    ['2026-10-20', '13:46:27+01:00', 'timestamp'],
+    ['2026-10-20', '11:46:27-01:00', 'timestamp'],
+    ['2026-10-20', '12:46:27-00:00', 'timestamp'],
+  ])('rejects a UTC implementation note with unrecorded date/time/offset %sT%s', (date, time, field) => {
+    const repo = seeded(); repo.write(APP, 'export const version = 2;\n');
+    const source = repo.commit('UTC implementation', '2026-10-20T12:46:27+00:00');
+    repo.log([milestone('utc-release', source, date, time), ...repo.old]);
+    expect(() => checkDevLog({ base: repo.base, cwd: repo.cwd })).toThrow(`Use its recorded ${field}`);
   });
 
   it('checks a transferred release against historical owner URLs and permits canonical source links without losing milestones', () => {
@@ -198,6 +225,40 @@ describe('release-note guard against real isolated Git history', { timeout: 15_0
     const repo = seeded();
     const result = checkDevLog({ base: ZERO, ...(explicit ? { head: repo.base } : {}), cwd: repo.cwd });
     expect(result.productFiles).toEqual(['apps/web-client/src/App.tsx']); expect(result.addedIds).toEqual(repo.old.map(note => note.id));
+  });
+});
+
+describe('Git author timestamp spelling equivalence independent of the installed Git version', () => {
+  it.each([
+    ['2026-11-11T12:46:27Z', '2026-11-11T12:46:27Z'],
+    ['2026-11-11T12:46:27Z', '2026-11-11T12:46:27+00:00'],
+    ['2026-11-11T12:46:27+00:00', '2026-11-11T12:46:27Z'],
+    ['2026-11-11T12:46:27+00:00', '2026-11-11T12:46:27+00:00'],
+    ['2026-11-11T12:46:27-03:00', '2026-11-11T12:46:27-03:00'],
+    ['2026-11-11T12:46:27+05:30', '2026-11-11T12:46:27+05:30'],
+  ])('accepts only exact spelling or the two UTC renderings: %s / %s', (recorded, timestamp) => {
+    expect(matchesGitAuthorTimestamp(recorded, timestamp)).toBe(true);
+  });
+
+  it.each([
+    ['2026-11-11T12:46:27Z', '2026-11-11T12:46:28+00:00'],
+    ['2026-11-11T12:46:27Z', '2026-11-12T12:46:27+00:00'],
+    ['2026-11-11T12:46:27Z', '2026-11-11T12:46:27-00:00'],
+    ['2026-11-11T12:46:27Z', '2026-11-11T13:46:27+01:00'],
+    ['2026-11-11T12:46:27Z', '2026-11-11T11:46:27-01:00'],
+    ['2026-11-11T12:46:27Z', '2026-11-11T12:46:27+01:00'],
+    ['2026-11-11T23:46:27Z', '2026-11-12T00:46:27+01:00'],
+    ['2026-11-11T12:46:27-03:00', '2026-11-11T15:46:27Z'],
+    ['2026-11-11T12:46:27+05:30', '2026-11-11T07:16:27+00:00'],
+    ['2026-11-11T12:46:27Z', '2026-11-11T12:46:27z'],
+    ['2026-11-11T12:46:27Z', '2026-11-11T12:46:27+0000'],
+    ['2026-11-11T12:46:27Z', '2026-11-11T12:46:27.000Z'],
+    ['2026-11-11T12:46:27Z', '2026-11-11T12:46:27Z\n'],
+    ['2026-11-11T12:46:27Z', undefined],
+    [undefined, undefined],
+  ])('rejects changed clocks, calendars, offsets and other spellings: %s / %s', (recorded, timestamp) => {
+    expect(matchesGitAuthorTimestamp(recorded, timestamp)).toBe(false);
+    expect(matchesGitAuthorTimestamp(timestamp, recorded)).toBe(false);
   });
 });
 
