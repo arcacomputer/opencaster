@@ -3,6 +3,9 @@ export interface UpstreamEnv {
   HYPERSNAP_ORIGIN?: string;
   HYPERSNAP_ORIGIN_TOKEN?: string;
   HYPERSNAP_READ_FALLBACK?: string;
+  HYPERSNAP_NATIVE_READS?: string;
+  HYPERSNAP_READ_ORIGIN?: string;
+  HYPERSNAP_READ_ORIGIN_TOKEN?: string;
 }
 
 export interface UpstreamConfig {
@@ -35,6 +38,27 @@ export function resolveUpstream(env: UpstreamEnv): UpstreamConfig {
       || url.pathname !== '/' || url.search || url.hash) throw new UpstreamConfigurationError();
     return { origin: url.origin, token };
   } catch { throw new UpstreamConfigurationError(); }
+}
+
+const NATIVE_READ_PATHS = new Set([
+  '/v1/info',
+  '/v2/farcaster/user',
+  '/v2/farcaster/user/bulk',
+  '/v2/farcaster/user/search',
+]);
+
+/** Proxy-only, exact read opt-in. Validate the base even when overriding it;
+ * media authorization, sharing and signed submissions retain that base. */
+export function resolveProxyUpstream(env: UpstreamEnv, path: string, method: string): UpstreamConfig {
+  const base = resolveUpstream(env);
+  if (env.HYPERSNAP_NATIVE_READS !== 'profiles-v1' || method !== 'GET' || !NATIVE_READ_PATHS.has(path)) return base;
+  const read = resolveUpstream({
+    HYPERSNAP_ORIGIN: env.HYPERSNAP_READ_ORIGIN,
+    HYPERSNAP_ORIGIN_TOKEN: env.HYPERSNAP_READ_ORIGIN_TOKEN,
+  });
+  // Unlike the base, an enabled native read must never default to public Haatz.
+  if (!read.token) throw new UpstreamConfigurationError();
+  return read;
 }
 
 /** Fixed server-only read backup. Call only after primary validation; absence or

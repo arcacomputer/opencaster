@@ -7,7 +7,7 @@ import { readLimited, ReadAbortedError, SizeLimitError } from '@opencaster/clien
 import { normalizeHypersnapEnsName } from '@opencaster/client-core/ensName';
 import { API_LIMITS, CAST_HASH, CHANNEL_ID, PAGE_CURSOR, WALLET_ADDRESS, validDecimalCursor, validPageToken, validSearchQuery } from '@opencaster/client-core/apiRules';
 import { handleAnalyticsEvents, recordRequestMetric, type AnalyticsEnv } from './analytics';
-import { fetchUpstream, InvalidUpstreamResponseError, parseUpstreamObject, resolveReadFallback, resolveUpstream, validTimelineCursor, type UpstreamConfig } from './upstream';
+import { fetchUpstream, InvalidUpstreamResponseError, parseUpstreamObject, resolveProxyUpstream, resolveReadFallback, validTimelineCursor, type UpstreamConfig } from './upstream';
 import { withShareUrl } from './sharing';
 import { handleShareImage } from './shareImages';
 export { MediaUploadQuota } from './media';
@@ -318,7 +318,7 @@ async function proxy(request: Request, url: URL, env: Env, ctx?: WorkerExecution
   if (isWrite ? url.search !== '' : !validQuery(url.searchParams, endpoint)) return failure(400, 'invalid_query', 'Invalid API query.');
 
   let config: UpstreamConfig;
-  try { config = resolveUpstream(env); }
+  try { config = resolveProxyUpstream(env, path, request.method); }
   catch { return failure(503, 'upstream_configuration_unavailable', 'The Hypersnap gateway is temporarily unavailable.'); }
 
   let body: Uint8Array | undefined;
