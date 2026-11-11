@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'route-scoped-node-information-status',
+    date: '2026-11-11',
+    timestamp: '2026-11-11T21:33:41+00:00',
+    title: 'Connection status names its actual check',
+    summary: 'The sidebar reports node-information availability rather than implying every backend is healthy.',
+    changes: [
+      'The sidebar labels its successful, pending and failed node-information probe explicitly. Its explanation notes that feeds, submissions and media authorization may use a different backend; an available native node does not certify those operations.',
+      'The obsolete hardcoded Haatz hostname is removed from the status tooltip. Feed errors remain visible independently, and a failed information probe does not imply that an independently loaded feed is unavailable.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/7ec6778bb2dc88a7379a94c526c15d1f27401422',
+    tag: 'Reliability',
+  },
+  {
     id: 'native-profile-and-people-search-reads',
     date: '2026-11-11',
     timestamp: '2026-11-11T21:23:22+00:00',
