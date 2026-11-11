@@ -428,7 +428,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'remove-unused-saved-session-check',
     date: '2026-11-05',
-    timestamp: '2026-11-05T03:32:57Z',
+    timestamp: '2026-11-05T03:32:57+00:00',
     title: 'Remove an unused saved sign-in check',
     summary: 'The browser client drops a leftover saved-key presence check that nothing in the app used. Sign-in, unlock and saved-key behavior are unchanged.',
     changes: [
@@ -454,7 +454,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'remove-unused-channel-profile-options',
     date: '2026-11-05',
-    timestamp: '2026-11-05T03:32:45Z',
+    timestamp: '2026-11-05T03:32:45+00:00',
     title: 'Leaner channel and profile code',
     summary: 'Channel pages and profile tabs carry less unused code, keeping the website simpler to maintain while everything you see and use stays the same.',
     changes: [
