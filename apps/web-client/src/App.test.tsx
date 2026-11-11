@@ -99,6 +99,37 @@ async function until(ready: () => boolean) {
   expect(ready()).toBe(true);
 }
 
+describe('route-scoped node information status', () => {
+  it('does not certify Haatz-dependent feeds when native information succeeds', async () => {
+    vi.mocked(getFeed).mockRejectedValueOnce(new Error('Haatz feed unavailable'));
+    await start();
+    await until(() => Boolean(container.querySelector('.rail-status')?.textContent?.includes('Node information available')));
+    expect(container.querySelector('.rail-status')?.getAttribute('title')).toContain('does not verify feeds, submissions or media authorization');
+    expect(container.textContent).toContain('Haatz feed unavailable');
+    expect(container.textContent).not.toContain('Connected to Hypersnap');
+    expect(container.querySelector('.rail-status')?.getAttribute('title')).not.toContain('haatz.quilibrium.com');
+  });
+
+  it('reports an info failure without claiming that independently loaded feeds are offline', async () => {
+    vi.mocked(getInfo).mockRejectedValueOnce(new Error('Native information unavailable'));
+    vi.mocked(getFeed).mockResolvedValueOnce({ casts: [ownCast], next: {} });
+    await start();
+    await until(() => Boolean(container.querySelector('.rail-status')?.textContent?.includes('Node information unavailable')));
+    expect(container.querySelector('.status-dot--offline')).not.toBeNull();
+    expect(container.querySelector('main .feed')?.textContent).toContain(ownCast.text);
+    expect(container.textContent).not.toContain('Hypersnap node unavailable');
+  });
+
+  it('names only the information probe while its response is pending', async () => {
+    const pending = deferred<{ version: string }>();
+    vi.mocked(getInfo).mockReturnValueOnce(pending.promise);
+    await start();
+    expect(container.querySelector('.rail-status')?.textContent).toContain('Checking node information…');
+    await act(async () => pending.resolve({ version: 'isolated-native' }));
+    expect(container.querySelector('.rail-status')?.textContent).toContain('Node information available');
+  });
+});
+
 describe('automatic timeline pagination', () => {
   it('loads near the end once per request, keeps existing casts visible, and stops at exhaustion', async () => {
     const page = deferred<{ casts: Cast[]; next: {} }>();
