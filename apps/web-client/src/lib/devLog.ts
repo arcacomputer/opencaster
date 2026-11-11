@@ -22,6 +22,19 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'stock-timeline-cursor-compatibility',
+    date: '2026-11-11',
+    timestamp: '2026-11-11T12:46:27+00:00',
+    title: 'Profile timelines continue with stock Hypersnap cursors',
+    summary: 'The gateway preserves timeline positions when using stock Hypersnap nodes.',
+    changes: [
+      'Profile timeline continuation sends the cursor namespace expected by stock Hypersnap, including private origins. Older fork-era cursors resume at the same account, timestamp and cast position instead of appearing to end early.',
+      'Cursor format and account checks remain strict, and the private origin credential stays separate from the public read backup. This compatibility fix does not change the active backend or establish native index readiness or a native cutover.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/f40b32a94beedaa585f93b56b40680ab403d0b28',
+    tag: 'Reliability',
+  },
+  {
     id: 'cloudflare-branch-packaging',
     date: '2026-11-09',
     timestamp: '2026-11-09T17:48:03-03:00',
