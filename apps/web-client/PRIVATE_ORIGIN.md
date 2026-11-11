@@ -11,6 +11,43 @@ Cloudflare Access service tokens.
 
 ## Server-only settings
 
+### Partial native profile reads
+
+The production configuration selects `HYPERSNAP_NATIVE_READS=profiles-v1` and
+`HYPERSNAP_READ_ORIGIN=https://node.opencaster.org`. Provision the matching
+`HYPERSNAP_READ_ORIGIN_TOKEN` as a backend-only Worker secret in the **same
+immutable version**, before moving traffic. The read pair follows the strict
+origin/token rules below. An enabled route with an absent or malformed read
+pair fails closed with sanitized 503; it does not silently use the public default.
+
+Only these validated exact GET routes use that separate pair:
+
+- `/v1/info`
+- `/v2/farcaster/user` (FID lookup)
+- `/v2/farcaster/user/bulk`
+- `/v2/farcaster/user/search`
+
+The existing global origin configuration is validated first. Absent or unknown
+native-read opt-ins leave it unchanged. Do not add the global
+`HYPERSNAP_ORIGIN`/`HYPERSNAP_ORIGIN_TOKEN` pair for this partial migration:
+signed submissions, media signer/custody authorization, server-side sharing
+and all other reads retain that base. With the global pair absent, it is Haatz.
+Feeds, timelines, engagement counts, rankings, conversations, channels and
+account/authority lookups are **not** promoted by this policy. Native indexing
+being enabled does not establish their completeness.
+
+The existing `haatz-v1` read fallback and 4-second primary/20-second total bounds
+apply to selected native reads. Auth denials, 404s, redirects and writes are not
+retried. Origin credentials remain server-side and are never sent to Haatz.
+`X-Opencaster-Upstream: primary` names the configured primary for that route:
+native for the four selected routes, Haatz for deliberately unpromoted routes.
+It is not a claim that every application read uses the native node. Verify the
+native peer/version through `/api/v1/info` and preserve these bindings on later
+releases. Stage at 0% and verify the exact candidate before activation; uploading
+the checked-in plain vars without its read secret is not a complete deployment.
+
+### Global upstream settings
+
 Set both Worker runtime bindings together:
 
 - `HYPERSNAP_ORIGIN`: an HTTPS **origin**, e.g. `https://node.example.org`, with
@@ -36,13 +73,11 @@ browser override, per-request routing flag or arbitrary-host proxy. Unknown or
 absent values disable retry; both origin bindings absent retain the single
 public development default below, not a primary/backup retry loop.
 
-The checked-in production configuration currently uses the temporary Haatz
-primary adopted during the private-node reinstall: both origin bindings are
-absent, so production uses the public default described below.
-`HYPERSNAP_AGGREGATE_CACHE=disabled` and `HYPERSNAP_READ_FALLBACK=haatz-v1`
-remain set, but without a valid private pair neither the aggregate-cache
-override nor the read backup is active. Signed writes and media signer checks
-use Haatz.
+The global origin bindings remain absent, so the base uses the public default
+described below. `HYPERSNAP_AGGREGATE_CACHE=disabled` remains set. The separate
+four-route native-read policy above uses `HYPERSNAP_READ_FALLBACK=haatz-v1`;
+unpromoted routes, signed writes and media signer checks stay on Haatz without
+an unnecessary primary/backup loop.
 
 ### Returning to the private origin
 

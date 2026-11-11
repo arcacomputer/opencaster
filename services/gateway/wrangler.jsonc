@@ -3,12 +3,15 @@
   "name": "hypersnap-quorum",
   "account_id": "e320a5a80611f9a30148d452929b1fb1",
   "main": "src/index.ts",
-  // Preserve the temporary Haatz primary during the private-node reinstall.
-  // Restore the private origin and its credential only through an approved cutback.
+  // Global HYPERSNAP_ORIGIN/TOKEN stay absent: writes, media authorization,
+  // sharing and unqualified reads remain on Haatz. Only four qualified GETs
+  // use the separate native read pair; provision its secret in the SAME version.
   "vars": {
     "CLIENT_RATE_LIMIT": "enabled",
     "HYPERSNAP_AGGREGATE_CACHE": "disabled",
-    "HYPERSNAP_READ_FALLBACK": "haatz-v1"
+    "HYPERSNAP_READ_FALLBACK": "haatz-v1",
+    "HYPERSNAP_NATIVE_READS": "profiles-v1",
+    "HYPERSNAP_READ_ORIGIN": "https://node.opencaster.org"
   },
   "compatibility_date": "2026-10-19",
   "workers_dev": false,
