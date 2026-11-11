@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'native-profile-and-people-search-reads',
+    date: '2026-11-11',
+    timestamp: '2026-11-11T21:23:22+00:00',
+    title: 'Profiles and people search use our node',
+    summary: 'Verified profile reads and people search prefer our private Hypersnap node with a bounded read backup.',
+    changes: [
+      'Node information, direct-FID profiles, bulk profile loading and people search use a separate authenticated native read connection. Known profiles and search results were compared with the current public backend before the partial migration.',
+      'Feeds, timelines, engagement counts, rankings, conversations, channels and account lookups remain on Haatz while native indexing is incomplete. Signed submissions, media authorization and server-side sharing keep their existing backend; this is not a full native cutover.',
+      'The private read credential stays server-side. Selected reads retain the four-second primary deadline and twenty-second total bound, with the existing fixed Haatz backup on transport failures or server errors. Authorization failures, missing records and writes are not retried.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/1ea6cd1b3e99f037bde1ad7bf1b667f47073db6f',
+    tag: 'Reliability',
+  },
+  {
     id: 'portable-git-utc-release-notes',
     date: '2026-11-11',
     timestamp: '2026-11-11T12:57:04+00:00',
