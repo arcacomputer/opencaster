@@ -7,6 +7,7 @@ import { loadShareData, type ShareData } from './shareData';
 import { buildShareSvg } from './shareLayout';
 import { previewImageData, previewImageUrl } from './shareMedia';
 import type { MediaEnv } from './media';
+import { hasModerationBinding } from './moderation';
 
 export interface ShareImageEnv extends MediaEnv { ASSETS: { fetch(request: Request): Promise<Response> } }
 interface Context { waitUntil(promise: Promise<unknown>): void }
@@ -79,9 +80,10 @@ export async function handleShareImage(request: Request, env: ShareImageEnv, ctx
   if (!route) return new Response('Preview not found.', { status: 404, headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8' } });
   if (!['GET', 'HEAD'].includes(request.method)) return new Response(null, { status: 405, headers: { Allow: 'GET, HEAD', 'Cache-Control': 'no-store' } });
   if (request.method === 'HEAD') return new Response(null, { headers: { ...IMAGE_HEADERS, 'Cache-Control': 'no-store' } });
+  const moderationConfigured = hasModerationBinding(env);
 
   let cache: ImageCache | undefined;
-  try { cache = typeof caches === 'undefined' ? undefined : (caches as CacheStorage & { default?: ImageCache }).default; } catch { /* Optional edge cache. */ }
+  try { if (!moderationConfigured) cache = typeof caches === 'undefined' ? undefined : (caches as CacheStorage & { default?: ImageCache }).default; } catch { /* Optional edge cache. */ }
   const keyUrl = new URL(url.pathname, APP_ORIGIN);
   if (route.kind === 'feed') keyUrl.searchParams.set('feed', route.token);
   keyUrl.searchParams.set('brand', 'open-door-v2');
@@ -102,7 +104,7 @@ export async function handleShareImage(request: Request, env: ShareImageEnv, ctx
         fontFor(env), import('./sharePng'),
       ]);
       const bytes = await renderer.renderSharePng(buildShareSvg(data, { avatarDataUrl, imageDataUrl }), font);
-      return new Response(new Uint8Array(bytes).buffer, { headers: { ...IMAGE_HEADERS, 'X-Opencaster-Preview': data.kind } });
+      return new Response(new Uint8Array(bytes).buffer, { headers: { ...IMAGE_HEADERS, ...(moderationConfigured ? { 'Cache-Control': 'no-store' } : {}), 'X-Opencaster-Preview': data.kind } });
     })();
     try {
       const response = await Promise.race([render, new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), 1800); })]);

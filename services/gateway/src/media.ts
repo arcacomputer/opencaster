@@ -4,6 +4,7 @@ import { MAX_MEDIA_BYTES, MEDIA_TOO_LARGE_MESSAGE, MEDIA_UPLOAD_HEADER, isMediaT
 import { MEDIA_PATH, mediaUrl } from '@opencaster/client-core/appOrigins';
 import { hexToBytes } from '@opencaster/protocol/signedKeyRequest';
 import { fetchUpstream, resolveUpstream, type UpstreamEnv } from './upstream';
+import { blocksMedia, resolveModeration } from './moderation';
 
 interface MediaObject {
   body: ReadableStream<Uint8Array>; size: number; httpEtag: string;
@@ -124,9 +125,12 @@ export async function handleMediaRequest(request: Request, env: MediaEnv): Promi
     if (!['GET', 'HEAD'].includes(request.method)) return failure(405, 'method_not_allowed', 'This method is unavailable.');
     try {
       const key = url.pathname.slice('/media/'.length);
+      const moderation = resolveModeration(env);
+      if (moderation.status === 'invalid') return failure(503, 'moderation_unavailable', 'This content is temporarily unavailable on Opencaster.');
+      if (moderation.status === 'enabled' && blocksMedia(moderation.policy, key)) return failure(403, 'content_unavailable', 'This content is unavailable on Opencaster.');
       const item = request.method === 'HEAD' ? await env.MEDIA_BUCKET.head(key) : await env.MEDIA_BUCKET.get(key);
       if (!item || !isMediaType(item.httpMetadata?.contentType)) return failure(404, 'media_not_found', 'Image not found.');
-      const headers = new Headers({ ...BASE_HEADERS, 'Content-Type': item.httpMetadata.contentType, 'Content-Length': String(item.size), 'Cache-Control': 'public, max-age=31536000, immutable', ETag: item.httpEtag });
+      const headers = new Headers({ ...BASE_HEADERS, 'Content-Type': item.httpMetadata.contentType, 'Content-Length': String(item.size), 'Cache-Control': moderation.status === 'enabled' ? 'no-store' : 'public, max-age=31536000, immutable', ETag: item.httpEtag });
       if (request.headers.get('If-None-Match') === item.httpEtag) return new Response(null, { status: 304, headers });
       return new Response(request.method === 'HEAD' ? null : (item as MediaObject).body, { headers });
     } catch { return failure(503, 'media_unavailable', 'Image uploads are temporarily unavailable.'); }
