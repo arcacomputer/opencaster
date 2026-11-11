@@ -43,8 +43,11 @@ export function resolveReadFallback(env: UpstreamEnv, primary: UpstreamConfig): 
   if (primary.token && env.HYPERSNAP_READ_FALLBACK === 'haatz-v1') return { origin: PUBLIC_ORIGIN };
 }
 
-/** The timeline cursor is a scoped User/cast primary key. These two verified
- * APIs differ only in its root byte: canonical union03 versus legacy Hyper1e.
+/** The timeline cursor is a scoped User/cast primary key. Stock Hypersnap pages
+ * this feed over its Hyper store (root byte 1e) on every origin we use; the
+ * retired fork-era node issued the same key under root 03. Both name one
+ * logical position, so either is accepted and sent as 1e. A stock node answers
+ * a root-03 key with an empty 200 page, which would silently end a timeline.
  * Preserve FID/postfix/timestamp/hash exactly; never repair unknown formats. */
 export function validTimelineCursor(cursor: string, fid: string): boolean {
   if (!/^(?:03|1e)[a-fA-F0-9]{58}$/.test(cursor) || cursor.slice(10, 12) !== '01' || !/^\d{1,16}$/.test(fid)) return false;
@@ -61,7 +64,7 @@ export function fetchUpstream(config: UpstreamConfig, path: string, init: Reques
   if (destination.pathname === '/v2/farcaster/feed/user/casts' && destination.searchParams.has('cursor')) {
     const cursor = destination.searchParams.get('cursor')!;
     if (!validTimelineCursor(cursor, destination.searchParams.get('fid') ?? '')) throw new Error('Invalid timeline cursor');
-    destination.searchParams.set('cursor', (config.origin === PUBLIC_ORIGIN ? '1e' : '03') + cursor.slice(2));
+    destination.searchParams.set('cursor', '1e' + cursor.slice(2));
   }
   const supplied = new Headers(init.headers);
   const headers = new Headers({ Accept: 'application/json' });
