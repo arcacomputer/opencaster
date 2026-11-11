@@ -157,15 +157,21 @@ the origin in its actual key, not to a stored/upstream header. Validation and
 configuration failures before upstream selection do not claim an upstream.
 Neither this header nor coarse request analytics disclose a node URL or secret.
 
-For the guarded migration, the protected origin gate returns truthful HTTP 503
-`primary_index_not_ready` with `no-store` for **all `/v2/` routes** until those
-indices pass independent freshness/correctness acceptance. Unauthorized gate
-requests must still return 403. Generic GET 5xx failover makes those authorized
-v2 reads use backup immediately, avoiding stale or expensive primary scans.
-`/v1/` core API, signer checks, raw history and signed writes remain on the
-private node. This is not a claim that the private v2 indices are ready, nor
-route-specific routing logic in the Worker. The release owner owns gate rollout,
-cold-read acceptance, canary and any later removal of that readiness guard.
+The protected origin gate retains truthful HTTP 503 `primary_index_not_ready`
+with `no-store` for unqualified v2 indices. Only independently qualified exact
+profile, bulk-profile and people-search locations are admitted; unauthorized
+requests still return 403. The Worker policy selects only those three v2 GETs
+and `/v1/info`. Other routes remain on the unchanged base, not a guarded native
+request followed by an unnecessary fallback. The private gate admitting another
+route does not itself promote that route in the Worker.
+
+This partial policy does not move signed writes, signer checks, raw history,
+media authorization or sharing to the private node. A successful info probe
+establishes only node-information availability, not health of independent Haatz
+operations; the sidebar states that limit. The release owner owns gate rollout,
+cold-read acceptance, canary and any later removal of the remaining readiness
+or route-selection guards. Complete v2 indexing and full-primary acceptance are
+separate decisions.
 
 ## Bounded aggregate cache
 
