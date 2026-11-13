@@ -28,6 +28,10 @@ package-lock.json
 .temp/
 .worktrees/
 *.bak
+
+# macOS app: XcodeGen output and SwiftPM build products
+apps/macos/Opencaster.xcodeproj/
+apps/macos/HypersnapKit/.build/
 *.log
 yarn-error.log*
 yarn-debug.log*

@@ -26,6 +26,7 @@ their recorded runs; verify the current change separately.
 | --- | --- |
 | `apps/web-client/` | React browser client, local UI entry points, styles, assets and browser harnesses. |
 | `apps/signer/` | Optional offline Electron signing companion. |
+| `apps/macos/` | Native SwiftUI macOS client and the `HypersnapKit` Swift package (not a Yarn workspace). |
 | `services/gateway/` | Cloudflare gateway, media storage, link previews and request measurements. |
 | `services/analytics/` | Operator analytics dashboard and local report tooling. |
 | `packages/protocol/` | Shared wire encoding and signing primitives. |
@@ -59,6 +60,11 @@ support existing users; do not rename them as cosmetic cleanup.
   typechecks, the production browser build and offline signer typecheck/build.
   Verify relevant workspace entry points when changing their scripts or CI.
   Report failures and coverage limits.
+- **Exception — native-only changes:** a change confined to `apps/macos/`
+  (Swift sources, `project.yml`, assets, its README) does not need
+  `yarn verify`; use the native gate in [apps/macos/AGENTS.md](apps/macos/AGENTS.md)
+  instead. Run `yarn verify` as well whenever the change also touches root
+  config, `packages/`, or any Yarn workspace.
 - Browser and real-network behavior beyond the gate require separate relevant
   verification. All write tests use synthetic isolated identities. Production
   checks are public reads/navigation unless the user explicitly authorizes a

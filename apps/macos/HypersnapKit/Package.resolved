@@ -1,0 +1,24 @@
+{
+  "originHash" : "e3bc266f424759fbc54e966f98533adb36d21d97ada793e9b68d94ffff5a60e8",
+  "pins" : [
+    {
+      "identity" : "swift-secp256k1",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/21-DOT-DEV/swift-secp256k1",
+      "state" : {
+        "revision" : "ba04e9db3567bf345af7334b8e9be5727a73cc42",
+        "version" : "0.25.1"
+      }
+    },
+    {
+      "identity" : "swift-sodium",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jedisct1/swift-sodium",
+      "state" : {
+        "revision" : "cfd195c76882aa9b997560ca7cb95d72fbf5db00",
+        "version" : "0.11.0"
+      }
+    }
+  ],
+  "version" : 3
+}
