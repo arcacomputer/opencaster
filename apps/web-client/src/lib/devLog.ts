@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'supported-background-reply-batches',
+    date: '2026-11-15',
+    timestamp: '2026-11-15T18:50:56-03:00',
+    title: 'Full reply batches can finish their spam checks',
+    summary: 'Busy conversations split background checks into requests the model service accepts.',
+    changes: [
+      'The model service accepts at most 16 replies per request. A background workload of up to 32 replies now uses two supported requests under one budget reservation, instead of sending an oversized request that could stall scoring.',
+      'Completed parts are saved before the next part starts. A lost later acknowledgement recovers that same request without repeating completed work. Existing unresolved submissions retain their original identity and quarantine.',
+      'Reply loading and visibility are preserved. Suspected spam can move lower among siblings after the checks finish, and Node order restores the order supplied by the node.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/0ce3f6ac120328e7ffdd6cdb03fc6c7f8d12b2f3',
+    tag: 'Reliability',
+  },
+  {
     id: 'background-reply-spam-ranking',
     date: '2026-11-15',
     timestamp: '2026-11-15T15:21:53-03:00',
