@@ -11,6 +11,12 @@ import { castPermalink } from '@opencaster/client-core/navigation';
 import { contentPreferencesKey, emptyContentPreferences } from './lib/contentPreferences';
 import { EXPLORE_STORAGE_KEY } from './lib/storageKeys';
 
+// Background ranking is isolated; these app fixtures make no external reads.
+vi.mock('@opencaster/client-core/replyRanking', async original => ({
+  ...await original<typeof import('@opencaster/client-core/replyRanking')>(),
+  getReplyRanking: vi.fn().mockResolvedValue({ status: 'off', suspected: [] }),
+}));
+
 const wallet = vi.hoisted(() => ({ next: null as WalletSession | null, signal: null as AbortSignal | null, initialFid: undefined as number | undefined, onConnect: null as ((value: WalletSession) => void) | null }));
 vi.mock('./components/ConnectAccount', () => ({
   default: function SyntheticWallet({ onConnect, onClose, requestedScopes, initialFid, presentation }: { onConnect(value: WalletSession): void; onClose(): void; requestedScopes?: readonly number[]; initialFid?: number; presentation?: string }) {

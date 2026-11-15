@@ -48,6 +48,10 @@
 .conversation-page__head .button { min-height: 2.5rem; width: 2.5rem; padding: 0; border-radius: 50%; }
 // Replies already sit under their parent here.
 .conversation-replies .cast-parent { display: none; }
+.conversation-order { padding: .8rem 1.75rem; border-bottom: .0625rem solid var(--border); font-size: .75rem; }
+.conversation-order label { display: flex; align-items: center; gap: .7rem; color: var(--color-text-strong); }
+.conversation-order select { font: inherit; color: var(--color-text-strong); background: var(--surface-1); border: .0625rem solid var(--surface-4); padding: .4rem .55rem; border-radius: .5rem; min-height: 2.25rem; }
+.conversation-order p { margin: .4rem 0 0; color: var(--color-text-subtle); line-height: 1.5; }
 .conversation-page .thread-empty { padding: 1rem 1.75rem; color: var(--color-text-subtle); font-size: .75rem; }
 
 // Signed-out landing, shaped like the Farcaster and X front doors.
