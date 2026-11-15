@@ -10,6 +10,12 @@ import { encodeFeed, type FeedDefinition } from '@opencaster/client-core/customF
 import { readCustomFeed } from './lib/customFeedReader';
 import { EXPLORE_STORAGE_KEY } from './lib/storageKeys';
 
+// Background ranking is isolated; these app fixtures make no external reads.
+vi.mock('@opencaster/client-core/replyRanking', async original => ({
+  ...await original<typeof import('@opencaster/client-core/replyRanking')>(),
+  getReplyRanking: vi.fn().mockResolvedValue({ status: 'off', suspected: [] }),
+}));
+
 const wallet = vi.hoisted(() => ({ next: null as WalletSession | null }));
 vi.mock('./components/ConnectAccount', () => ({
   default: ({ onConnect, onClose }: { onConnect(value: WalletSession): void; onClose(): void }) => <main><button onClick={() => { if (wallet.next) onConnect(wallet.next); }}>Approve synthetic wallet</button><button onClick={onClose}>Cancel synthetic wallet</button></main>,

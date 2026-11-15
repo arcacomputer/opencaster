@@ -10,6 +10,12 @@ import { contentPreferencesKey, emptyContentPreferences, readContentPreferences 
 import { FULL_CLIENT_SCOPES } from '@opencaster/client-core/pairing';
 import { EXPLORE_STORAGE_KEY } from './lib/storageKeys';
 
+// Background ranking is isolated; these app fixtures make no external reads.
+vi.mock('@opencaster/client-core/replyRanking', async original => ({
+  ...await original<typeof import('@opencaster/client-core/replyRanking')>(),
+  getReplyRanking: vi.fn().mockResolvedValue({ status: 'off', suspected: [] }),
+}));
+
 // Only account authorization is synthetic. Local settings, cards, routes,
 // bookmark tools and reaction-profile dialogs are the production components.
 const wallet = vi.hoisted(() => ({ next: null as WalletSession | null }));
