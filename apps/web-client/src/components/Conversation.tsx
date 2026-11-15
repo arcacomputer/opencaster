@@ -23,8 +23,9 @@ export function conversationCasts(conversation: ConversationNode | null): Cast[]
 export function ConversationReplies({ nodes, parent, renderCard }: { nodes: ConversationNode[]; parent: Cast; renderCard(cast: Cast, parent: Cast): ReactNode }) {
   const [order, setOrder] = useState<'ranked' | 'node'>('ranked');
   const [ranking, setRanking] = useState<{ hash: string; value: ReplyRanking } | null>(null);
+  const visible = visibleConversationReplies(nodes);
   // Hashes, not score updates or incidental card rerenders, identify this read.
-  const fingerprint = conversationCasts({ cast: parent, replies: nodes }).map(cast => cast.hash).join(',');
+  const fingerprint = replyFingerprint(visible);
   useEffect(() => {
     if (order === 'node') return;
     const controller = new AbortController();
@@ -44,7 +45,6 @@ export function ConversationReplies({ nodes, parent, renderCard }: { nodes: Conv
   const suspected = new Set(order === 'ranked' && ranking?.hash === parent.hash ? ranking.value.suspected.map(canonicalReplyHash) : []);
   // Apply the existing render limits BEFORE ranking, so reordering cannot
   // displace a visible reply beyond the cap or bring a different subtree in.
-  const visible = visibleConversationReplies(nodes);
   let remaining = MAX_CONVERSATION_CASTS;
   const render = (items: ConversationNode[], depth: number, parent: Cast): ReactNode => rankReplySiblings(items, suspected).map(node => {
     if (remaining-- <= 0) return null;
@@ -55,6 +55,10 @@ export function ConversationReplies({ nodes, parent, renderCard }: { nodes: Conv
       <p>{order === 'node' ? 'Replies appear in the order supplied by the node.' : 'Suspected spam moves lower. Every reply stays available.'}</p>
     </div>
     {render(visible, 0, parent)}<p className="thread-empty">Open a reply to continue its conversation.</p></div>;
+}
+
+function replyFingerprint(nodes: ConversationNode[]): string {
+  return nodes.map(node => `${node.cast.hash}[${replyFingerprint(node.replies)}]`).join(',');
 }
 
 export function visibleConversationReplies(nodes: ConversationNode[]): ConversationNode[] {

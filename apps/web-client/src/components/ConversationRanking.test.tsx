@@ -57,6 +57,14 @@ describe('reply ranking presentation', () => {
     await choose('node'); expect(hashes()).toEqual([hash(3), hash(4)]);
   });
 
+  it('refreshes hints when only the last visible reply changes at the render cap', async () => {
+    const nodes = Array.from({ length: MAX_CONVERSATION_CASTS }, (_, i) => node(i + 1));
+    await render(nodes); expect(getReplyRanking).toHaveBeenCalledTimes(1);
+    await render([...nodes.slice(0, -1), node(800)]);
+    expect(getReplyRanking).toHaveBeenCalledTimes(2);
+    expect(hashes()).toContain(hash(800));
+  });
+
   it('aborts polling on unmount and stops after a bounded number of pending reads', async () => {
     vi.useFakeTimers(); vi.mocked(getReplyRanking).mockResolvedValue({ status: 'pending', suspected: [] });
     await render([node(1)]);
