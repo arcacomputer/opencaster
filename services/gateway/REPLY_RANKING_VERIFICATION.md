@@ -100,3 +100,46 @@ multilingual quality, and account bot identity are unmeasured. No automated
 score hides, deletes, reports or blocks anything. Existing pagination/render
 limits and user-selected mutes/hides remain independent. Production checks were
 public reads/navigation only; no real wallet or social account write was used.
+
+## November 15: supported native request sizes
+
+The cost benchmark established that both Overmind native surfaces accept at most
+16 decisions per request. Implementation
+[`0ce3f6ac120328e7ffdd6cdb03fc6c7f8d12b2f3`](https://github.com/arcacomputer/opencaster/commit/0ce3f6ac120328e7ffdd6cdb03fc6c7f8d12b2f3)
+splits a logical 32-cast workload into two persisted native requests with stable
+keys. The reservation remains one per logical workload. A completed first part
+survives a lost second acknowledgement and a coordinator restart. Unknown
+legacy submissions remain quarantined rather than being submitted under new
+keys.
+
+The actual pre-release source was
+`04a7d70d165374039cba891c6ec75ec05ee50be7`, Worker version
+`a850ff0c-a421-481a-94f9-ddb23d42058e`. The release gate passed against that
+source. Root `yarn verify` passed **2,290 tests in 93 files**, all typechecks and
+production browser/offline signer builds. The full-workload test enforces the
+16-decision limit, simulates an uncertain second acknowledgement and restarts
+the coordinator before checking all 32 mapped results and a single reservation.
+Exact-source [push](https://github.com/arcacomputer/opencaster/actions/runs/43766025028)
+and [PR](https://github.com/arcacomputer/opencaster/actions/runs/43766028226)
+verification passed.
+
+Release source `1ef48c3736cf5da3ff91d1d71e6b5da47489db3b`, including the separate
+user-facing milestone, was built into
+`/tmp/arca-release-native16-20261115-1ef48c37`. All 47 asset fingerprints remained
+unchanged after deployment. Live Worker version
+`03db1572-c98a-4263-b796-cb4d7d4bed2e` retained the production overrides above.
+The live main and dev-log assets matched the inspected directory:
+
+```text
+index-0C4D6R9I.js
+63615154041376aa02a8272f93fa7e916a5fca6c9e27bb618e9b5246dd15b26d
+DevLog-DX1kM_9q.js
+8cbbacb7ee51c59728eb9106c655911bc3f7a05ab79f8f8c943097e8e590f6c1
+```
+
+The live `/devlog` bundle contains `supported-background-reply-batches`. A public
+busy-conversation read returned its replies and an empty ready hint response;
+this does not establish a newly completed 32-cast application workload. Real
+provider validation covered sixteen acknowledged 16-cast benchmark requests;
+full-workload durable recovery was verified with the isolated test. The $5
+reservation guard was not increased, and no self-hosted model was activated.
