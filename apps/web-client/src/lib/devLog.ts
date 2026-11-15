@@ -24,7 +24,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
   {
     id: 'background-reply-spam-ranking',
     date: '2026-11-15',
-    timestamp: '2026-11-15T15:20:15-03:00',
+    timestamp: '2026-11-15T15:21:53-03:00',
     title: 'Suspected spam moves lower in replies',
     summary: 'Background scoring helps put ordinary replies first while keeping suspected spam visible.',
     changes: [
@@ -32,7 +32,7 @@ export const DEV_LOG: readonly DevLogMilestone[] = [
       'The reply order selector restores the order supplied by the node. Existing conversation limits apply before ranking, so reordering preserves the same visible replies. Missing, ambiguous or unavailable scores leave replies in their original order.',
       'Shared caching and a $5 monthly scoring target limit new work to ten batches of up to 32 replies each. Coverage is intentionally limited, and the allowance is an application reservation rather than a provider-enforced invoice cap. The model uses AI-assisted training labels and bounded public history; mistakes remain possible. Opinions, language, useful bots and ordinary game updates alone are excluded by its policy.',
     ],
-    commit: 'https://github.com/arcacomputer/opencaster/commit/c271ae6184e76b47338e50ab27fb02e4aa23c76f',
+    commit: 'https://github.com/arcacomputer/opencaster/commit/8f1624fa81a0a607309140e415a0e5e21b26febf',
     tag: 'Social',
   },
   {
