@@ -46,6 +46,45 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('background reply ranking', () => {
+  it('processes all 32 casts with two limit-compliant requests and one reservation, surviving a lost second acknowledgement', async () => {
+    messages = Array.from({ length: 32 }, (_, i) => message(h(i + 1), i));
+    const receipts = new Map<string, { id: string; key: string; count: number; part: number }>();
+    let loseSecondAck = true;
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = new URL(String(input));
+      if (url.hostname !== 'api.overmindlab.ai') return original(input, init);
+      if (init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)); posts.push(body);
+        if (body.decisions.length > 16) return json({ decisions: { non_field_errors: ['Ensure this field has no more than 16 elements.'] } }, 400);
+        let row = receipts.get(body.request_key);
+        if (!row) { const part = receipts.size; row = { id: `11111111-1111-4111-8111-${String(part + 1).padStart(12, '0')}`, key: body.request_key, count: body.decisions.length, part }; receipts.set(body.request_key, row); }
+        if (row.part === 1 && loseSecondAck) { loseSecondAck = false; throw new Error('Lost second acknowledgement'); }
+        return json({ id: row.id, request_key: row.key, model_id: SPAM_MODEL, status: 'queued' }, 202);
+      }
+      const row = [...receipts.values()].find(r => url.pathname.includes(r.id))!;
+      return json({ id: row.id, request_key: row.key, model_id: SPAM_MODEL, status: 'succeeded', result: result(Array.from({ length: row.count }, () => row.part === 0 ? [0.05, 0.9, 0.05] : [0.9, 0.05, 0.05])) });
+    });
+    await coordinator.fetch(new Request('https://ranking/observe', { method: 'POST', body: JSON.stringify({ root: h(900), casts: Array.from({ length: 32 }, (_, i) => ({ hash: h(i + 1), fid: 123 })) }) }));
+    await fire(); await fire();
+    coordinator = new ReplyRanking({ storage }, env);
+    await fire(); await fire(); await fire();
+    expect(posts).toHaveLength(3);
+    expect(posts.map(p => (p as { decisions: unknown[] }).decisions.length)).toEqual([16, 16, 16]);
+    expect(posts[1]).toEqual(posts[2]);
+    expect((posts[0] as { request_key: string }).request_key).not.toBe((posts[1] as { request_key: string }).request_key);
+    expect(await view()).toEqual({ status: 'ready', suspected: Array.from({ length: 16 }, (_, i) => h(i + 1)) });
+    expect(storage.values.get(`reserved:${new Date().toISOString().slice(0, 7)}`)).toBe(50);
+    await observe(); await fire(); expect(posts).toHaveLength(3);
+  });
+
+  it('does not split or re-key an unknown legacy submission', async () => {
+    const decisions = Array.from({ length: 32 }, () => ({ state: '{}', question: 'Public reply', kind: 'choice', options: SPAM_OPTIONS }));
+    await storage.put('meta', { queue: [], records: [], threads: [], job: { key: 'legacy-key', created: Date.now(), candidates: [], decisions, attempts: 2, reserved: true } });
+    await fire(); expect(posts).toHaveLength(0);
+    expect((await storage.get<{ job: { key: string; halted: boolean } }>('meta'))!.job).toMatchObject({ key: 'legacy-key', halted: true });
+  });
+
   it('shares queued work, hydrates node history, verifies the artifact, and reuses cached scores', async () => {
     await Promise.all([observe(), observe()]);
     expect(await view()).toEqual({ status: 'pending', suspected: [] });

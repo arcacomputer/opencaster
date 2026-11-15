@@ -11,6 +11,7 @@ const API = 'https://api.overmindlab.ai';
 const DAY = 86400000;
 const UUID = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
 const BATCH_SIZE = 32;
+const MAX_NATIVE_DECISIONS = 16;
 const MAX_QUEUE = 64;
 const MAX_RECORDS = 1024;
 // Planning reserve, not a provider-enforced dollar cap. Includes a cold start
@@ -76,9 +77,11 @@ export interface RankingStorage {
   deleteAlarm(): Promise<void>;
 }
 interface Score { pending: boolean; suspected: boolean; expires: number }
+interface JobPart { key: string; offset: number; count: number; attempts: number; id?: string; flags?: boolean[]; failed?: boolean }
 interface Job {
   key: string; created: number; candidates: RankingCandidate[]; scored?: RankingCandidate[];
   decisions?: SpamDecision[]; id?: string; attempts: number; reserved?: boolean; halted?: boolean;
+  parts?: JobPart[];
 }
 interface Meta {
   queue: RankingCandidate[]; records: string[]; threads: string[]; job?: Job;
@@ -225,26 +228,41 @@ export class ReplyRanking {
       });
     }
     if (!job.reserved || !job.decisions?.length) { await this.finish(job, [], 3600000); return; }
+    if (!job.parts) {
+      // Preserve the key/input of an already attempted legacy submission. An
+      // unknown acknowledgement never authorizes splitting it under new keys.
+      const legacy = !!job.id || job.attempts > 0 || job.decisions.length <= MAX_NATIVE_DECISIONS;
+      job.parts = legacy ? [{ key: job.key, offset: 0, count: job.decisions.length, attempts: job.attempts, id: job.id }]
+        : Array.from({ length: Math.ceil(job.decisions.length / MAX_NATIVE_DECISIONS) }, (_, i) => ({
+          key: `${job!.key}-part${i}`, offset: i * MAX_NATIVE_DECISIONS,
+          count: Math.min(MAX_NATIVE_DECISIONS, job!.decisions!.length - i * MAX_NATIVE_DECISIONS), attempts: 0,
+        }));
+    }
+    const part = job.parts.find(p => p.flags === undefined);
+    if (!part) { await this.finish(job, job.parts.flatMap(p => p.flags!), job.parts.some(p => p.failed) ? 3600000 : 7 * DAY); return; }
     try {
       let receipt: Record<string, unknown>;
-      if (job.id) receipt = await this.api(`/api/inference-requests/${job.id}/`);
+      if (part.id) receipt = await this.api(`/api/inference-requests/${part.id}/`);
       else {
-        if (job.attempts >= 3) throw new Error('Unresolved submission');
-        job.attempts++;
+        if (part.count > MAX_NATIVE_DECISIONS || part.attempts >= 3) { job.halted = true; throw new Error('Unresolved legacy submission'); }
+        part.attempts++;
         await storage.transaction(async txn => { const meta = (await txn.get<Meta>('meta'))!; meta.job = job; await txn.put('meta', meta); });
-        receipt = await this.api(`/api/deployed-models/${SPAM_DEPLOYMENT}/inference/`, { request_key: job.key, decisions: job.decisions });
+        receipt = await this.api(`/api/deployed-models/${SPAM_DEPLOYMENT}/inference/`, {
+          request_key: part.key, decisions: job.decisions.slice(part.offset, part.offset + part.count),
+        });
       }
-      if (typeof receipt.id !== 'string' || !UUID.test(receipt.id) || (job.id && receipt.id !== job.id)
-        || receipt.request_key !== job.key || receipt.model_id !== SPAM_MODEL) throw new Error('Mismatched inference receipt');
-      job.id = receipt.id;
-      if (receipt.status === 'succeeded') await this.finish(job, suspectedPredictions(receipt.result, job.scored!.length));
-      else if (['failed', 'cancelled'].includes(String(receipt.status))) await this.finish(job, [], 3600000);
+      if (typeof receipt.id !== 'string' || !UUID.test(receipt.id) || (part.id && receipt.id !== part.id)
+        || receipt.request_key !== part.key || receipt.model_id !== SPAM_MODEL) throw new Error('Mismatched inference receipt');
+      part.id = receipt.id;
+      if (receipt.status === 'succeeded') part.flags = suspectedPredictions(receipt.result, part.count);
+      else if (['failed', 'cancelled'].includes(String(receipt.status))) { part.flags = Array(part.count).fill(false); part.failed = true; }
       else if (!['queued', 'running'].includes(String(receipt.status)) || Date.now() - job.created > 55 * 60000) throw new Error('Unresolved inference status');
+      if (job.parts.every(p => p.flags !== undefined)) await this.finish(job, job.parts.flatMap(p => p.flags!), job.parts.some(p => p.failed) ? 3600000 : 7 * DAY);
       else await storage.transaction(async txn => { const meta = (await txn.get<Meta>('meta'))!; meta.job = job; await txn.put('meta', meta); });
     } catch {
       // Reconnect using the SAME request key and exact stored inputs only.
       // Unresolved work halts further paid submissions; it is never re-keyed.
-      if ((!job.id && job.attempts >= 3) || Date.now() - job.created > 55 * 60000) job.halted = true;
+      if ((!part.id && part.attempts >= 3) || Date.now() - job.created > 55 * 60000) job.halted = true;
       await storage.transaction(async txn => { const meta = (await txn.get<Meta>('meta'))!; meta.job = job; await txn.put('meta', meta); });
     }
   }

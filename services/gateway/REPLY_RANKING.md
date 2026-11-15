@@ -25,6 +25,14 @@ operations retain their recovery state. Browsers poll at most 60 times every ten
 seconds, cancelling on navigation, unmount or a switch to node order. Work can
 finish after the tab closes and benefit later visitors.
 
+The provider accepts at most **16 decisions per native request**. A 32-cast
+workload is therefore split into two requests, with distinct stable keys under
+one reservation. Completed parts are saved before starting the next part and
+are never replayed after a restart or a lost later acknowledgement. The hints
+become ready after every part is resolved. Already attempted legacy submissions
+keep their original key/input; an unknown legacy request is never re-keyed or
+silently split to bypass its quarantine.
+
 The target must be in the author's latest 250 public native v1 messages. Context
 contains at most four earlier casts/parents with strictly earlier publication
 times, and counts observations within seven days. Missing target/history means
