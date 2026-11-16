@@ -3,9 +3,9 @@ import { HDKey } from '@scure/bip32';
 import { entropyToMnemonic, mnemonicToSeedSync } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
 import { ed25519 } from '@noble/curves/ed25519.js';
-import { approvePairingRequest, approveRevocationRequest, approveSignerRequest, CUSTODY_DERIVATION_PATH, SignerUserError } from './approve';
+import { approveSignerRequest, CUSTODY_DERIVATION_PATH, SignerUserError } from './approve';
 import { isAllowedResource, validateApproveInput } from './policy';
-import { FARCASTER_EPOCH_SECONDS, PAIRING_TTL_SECONDS, verifyPairingApproval, verifyRevocationApproval, type PairingRequest, type RevocationRequest } from '@opencaster/client-core/pairing';
+import { FARCASTER_EPOCH_SECONDS, PAIRING_TTL_SECONDS, validatePairingRequest, validateRevocationRequest, verifyPairingApproval, verifyRevocationApproval, type PairingApproval, type PairingRequest, type RevocationApproval, type RevocationRequest } from '@opencaster/client-core/pairing';
 import { addressFromCustodyPrivateKey, bytesToHex } from '@opencaster/protocol/signedKeyRequest';
 
 // Public, all-zero synthetic entropy. Never a funded wallet or live account.
@@ -32,7 +32,7 @@ function requestFixture(): PairingRequest {
 describe('offline signer approval', () => {
   it('produces verifiable custody and request signatures for only the selected public key', () => {
     const request = requestFixture();
-    const approval = approvePairingRequest(request, phrase, now);
+    const approval = approveSignerRequest(request, phrase, now) as PairingApproval;
     expect(() => verifyPairingApproval(request, approval, now)).not.toThrow();
     expect(approval.requestId).toBe(request.requestId);
     expect(Object.keys(approval).sort()).toEqual(['kind', 'version', 'requestId', 'requestHash', 'custodyAddress', 'custodySignature', 'requestSignature'].sort());
@@ -42,27 +42,27 @@ describe('offline signer approval', () => {
   });
 
   it('rejects the wrong custody wallet before producing an approval', () => {
-    expect(() => approvePairingRequest({ ...requestFixture(), custodyAddress: `0x${'00'.repeat(20)}` }, phrase, now)).toThrow('does not match');
+    expect(() => approveSignerRequest({ ...requestFixture(), custodyAddress: `0x${'00'.repeat(20)}` }, phrase, now)).toThrow('does not match');
   });
 
   it('requires exactly 24 English words with a valid BIP39 checksum', () => {
     const request = requestFixture();
     const twelveWords = entropyToMnemonic(new Uint8Array(16), wordlist);
-    expect(() => approvePairingRequest(request, twelveWords, now)).toThrow('24-word');
-    expect(() => approvePairingRequest(request, Array(24).fill('abandon').join(' '), now)).toThrow('24-word');
-    expect(() => approvePairingRequest(request, 'x'.repeat(513), now)).toThrow('24-word');
-    const normalizedApproval = approvePairingRequest(request, `  ${phrase.toUpperCase().split(' ').join('  ')}  `, now);
+    expect(() => approveSignerRequest(request, twelveWords, now)).toThrow('24-word');
+    expect(() => approveSignerRequest(request, Array(24).fill('abandon').join(' '), now)).toThrow('24-word');
+    expect(() => approveSignerRequest(request, 'x'.repeat(513), now)).toThrow('24-word');
+    const normalizedApproval = approveSignerRequest(request, `  ${phrase.toUpperCase().split(' ').join('  ')}  `, now) as PairingApproval;
     expect(() => verifyPairingApproval(request, normalizedApproval, now)).not.toThrow();
   });
 
   it('marks only phrase and custody-mismatch failures as safe to show the user', () => {
     const request = requestFixture();
-    expect(() => approvePairingRequest(request, Array(24).fill('abandon').join(' '), now)).toThrow(SignerUserError);
-    expect(() => approvePairingRequest({ ...request, custodyAddress: `0x${'00'.repeat(20)}` }, phrase, now)).toThrow(SignerUserError);
+    expect(() => approveSignerRequest(request, Array(24).fill('abandon').join(' '), now)).toThrow(SignerUserError);
+    expect(() => approveSignerRequest({ ...request, custodyAddress: `0x${'00'.repeat(20)}` }, phrase, now)).toThrow(SignerUserError);
     for (const attempt of [
-      () => approvePairingRequest(request, 'x'.repeat(513), now),
-      () => approvePairingRequest(request, phrase, now + 901_000),
-      () => approvePairingRequest({ ...request, scopes: [1, 3, 4, 5] }, phrase, now),
+      () => approveSignerRequest(request, 'x'.repeat(513), now),
+      () => approveSignerRequest(request, phrase, now + 901_000),
+      () => approveSignerRequest({ ...request, scopes: [1, 3, 4, 5] }, phrase, now),
     ]) {
       expect(attempt).toThrow();
       expect(attempt).not.toThrow(SignerUserError);
@@ -71,32 +71,31 @@ describe('offline signer approval', () => {
 
   it('refuses expired requests and broader permissions', () => {
     const request = requestFixture();
-    expect(() => approvePairingRequest(request, phrase, now + 901_000)).toThrow('expired');
-    expect(() => approvePairingRequest({ ...request, scopes: [1, 3, 4, 5] }, phrase, now)).toThrow('only approves');
-    expect(() => approvePairingRequest({ ...request, scopes: [1, 3, 4, 5, 6, 11] }, phrase, now)).toThrow('Use your wallet');
-    expect(() => approvePairingRequest({ ...request, scopes: [1, 2, 3, 4, 5, 6, 11] }, 'not a recovery phrase', now)).toThrow('Use your wallet');
-    expect(() => approvePairingRequest({ ...request, ttl: 90 * 86400 }, phrase, now)).toThrow('only approves');
-    expect(() => approvePairingRequest({ ...request, payload: 'arbitrary typed data' }, phrase, now)).toThrow('Invalid authorization file');
+    expect(() => approveSignerRequest(request, phrase, now + 901_000)).toThrow('expired');
+    expect(() => approveSignerRequest({ ...request, scopes: [1, 3, 4, 5] }, phrase, now)).toThrow('only approves');
+    expect(() => approveSignerRequest({ ...request, scopes: [1, 3, 4, 5, 6, 11] }, phrase, now)).toThrow('Use your wallet');
+    expect(() => approveSignerRequest({ ...request, scopes: [1, 2, 3, 4, 5, 6, 11] }, 'not a recovery phrase', now)).toThrow('Use your wallet');
+    expect(() => approveSignerRequest({ ...request, ttl: 90 * 86400 }, phrase, now)).toThrow('only approves');
+    expect(() => approveSignerRequest({ ...request, payload: 'arbitrary typed data' }, phrase, now)).toThrow('Invalid authorization file');
   });
 
   it('signs only custody KEY_REMOVE for a separately identified revocation request', () => {
     const { scopes: _scopes, ttl: _ttl, ...base } = requestFixture();
     const request: RevocationRequest = { ...base, kind: 'arca.hypersnap.signer.revoke.request' };
-    const approval = approveRevocationRequest(request, phrase, now);
+    const approval = approveSignerRequest(request, phrase, now) as RevocationApproval;
     expect(approval.kind).toBe('arca.hypersnap.signer.revoke.approval');
     expect(approval.signatureType).toBe(1);
     expect(Object.hasOwn(approval, 'requestSignature')).toBe(false);
     expect(() => verifyRevocationApproval(request, approval, now)).not.toThrow();
-    expect(approveSignerRequest(request, phrase, now)).toEqual(approval);
-    expect(() => approvePairingRequest(request, phrase, now)).toThrow();
-    expect(() => approveRevocationRequest(requestFixture(), phrase, now)).toThrow();
+    expect(() => validatePairingRequest(request, now)).toThrow();
+    expect(() => validateRevocationRequest(requestFixture(), now)).toThrow();
   });
 
   it('refuses revocation of a mismatched wallet or an expired request', () => {
     const { scopes: _scopes, ttl: _ttl, ...base } = requestFixture();
     const request: RevocationRequest = { ...base, kind: 'arca.hypersnap.signer.revoke.request' };
-    expect(() => approveRevocationRequest({ ...request, custodyAddress: `0x${'00'.repeat(20)}` }, phrase, now)).toThrow('does not match');
-    expect(() => approveRevocationRequest(request, phrase, now + 901_000)).toThrow('expired');
+    expect(() => approveSignerRequest({ ...request, custodyAddress: `0x${'00'.repeat(20)}` }, phrase, now)).toThrow('does not match');
+    expect(() => approveSignerRequest(request, phrase, now + 901_000)).toThrow('expired');
   });
 });
 
