@@ -64,6 +64,27 @@ DEBUG builds accept `OPENCASTER_DEBUG_TOAST=<cast hash>` (plus
 `OPENCASTER_DEBUG_OPEN=1`) to show the post-publish toast and open its cast
 on launch.
 
+### UI tests
+
+```sh
+cd apps/macos && xcodegen generate
+xcodebuild -project Opencaster.xcodeproj -scheme Opencaster \
+  -destination 'platform=macOS' test -resultBundlePath /tmp/ui.xcresult \
+  CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=
+./scripts/ui-test-summary.sh /tmp/ui.xcresult
+```
+
+`OpencasterUITests` launch the app with the DEBUG-only `OPENCASTER_UITEST=1`
+(or `OPENCASTER_UITEST_SIGNED_OUT=1`). That mode uses a stub session for FID 2
+(`OPENCASTER_UITEST_FID` overrides) with a throwaway, never-registered device
+key and no Keychain access. **Reads are live** public Haatz requests; **writes
+are stubbed**: `Publisher.submit` signs locally and returns without calling
+`/v1/submitMessage` or `/v1/validateMessage`, and `SessionManager.signIn` is a
+no-op. On first run macOS asks to allow UI automation for the test runner
+(Accessibility / "Enable UI Automation"). CI runs the same suite and uploads
+`macos-ui-test-results` (the `.xcresult` plus the `ui-test-summary.txt` printed
+by the summary script, also shown in the job summary).
+
 ## Sign-in model
 
 Unlike the browser client — which never asks for a recovery phrase — the macOS

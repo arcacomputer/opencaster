@@ -27,6 +27,18 @@ which only hits `/v1/validateMessage` and never publishes:
   variables.
 - Real account writes need explicit user authorization, as in the root rules.
 
+## UI tests
+
+- Run: `xcodegen generate`, then `xcodebuild -project Opencaster.xcodeproj -scheme Opencaster -destination 'platform=macOS' test -resultBundlePath /tmp/ui.xcresult CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=`;
+  summarize with `scripts/ui-test-summary.sh /tmp/ui.xcresult`.
+- Tests run in DEBUG `OPENCASTER_UITEST=1` mode: public reads are live
+  (Haatz), writes are stubbed (signed locally, never sent — no
+  `/v1/submitMessage` or `/v1/validateMessage`) and `signIn` is a no-op.
+  Never sign in with a recovery phrase or add network writes to tests.
+- Query views by `accessibilityIdentifier`; keep identifiers stable.
+- CI uploads the `macos-ui-test-results` artifact (`ui.xcresult` +
+  `ui-test-summary.txt`) and appends the summary to the job summary.
+
 ## Secrets
 
 - The recovery phrase is never stored or logged. Device and custody keys live
