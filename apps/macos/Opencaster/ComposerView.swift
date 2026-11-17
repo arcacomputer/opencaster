@@ -41,6 +41,7 @@ struct ComposerView: View {
                 .scrollContentBackground(.hidden)
                 .padding(8)
                 .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
+                .accessibilityIdentifier("composerText")
 
             HStack {
                 Text("\(byteCount)/\(castTextLimit)")
@@ -53,6 +54,7 @@ struct ComposerView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.return, modifiers: .command)
+                .accessibilityIdentifier("composerSubmit")
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || overLimit || sending)
             }
 

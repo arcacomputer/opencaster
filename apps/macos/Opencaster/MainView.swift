@@ -138,12 +138,15 @@ struct MainView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
+                        .accessibilityIdentifier("toastView")
                     }
                     Button { toasts.dismiss() } label: {
                         Image(systemName: "xmark").foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("toastDismiss")
                 }
+                .accessibilityIdentifier("toast")
                 .padding(.horizontal, 14)
                 .padding(.vertical, 9)
                 .background(.regularMaterial, in: .capsule)

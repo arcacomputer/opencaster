@@ -40,6 +40,11 @@ final class Publisher {
     private func submit(_ body: MessageBody, type: MessageType) async throws -> SignedMessage {
         guard let signer = session.signer else { throw PublishError.notSignedIn }
         let message = try signer.sign(body, type: type)
+        #if DEBUG
+        // UI tests: sign locally but never touch the network — not even
+        // /v1/validateMessage. Independent of the dryRun toggle.
+        if session.isUITest { return message }
+        #endif
         if dryRun {
             _ = try await session.client.validateMessage(message.envelope)
         } else {

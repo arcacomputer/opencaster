@@ -122,6 +122,7 @@ struct SearchView: View {
     var body: some View {
         VStack {
             TextField("Search users and casts", text: $query)
+                .accessibilityIdentifier("searchField")
                 .textFieldStyle(.roundedBorder)
                 .padding()
                 .onSubmit { Task { await run() } }

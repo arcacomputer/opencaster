@@ -85,6 +85,12 @@ final class SessionManager {
     /// stays in the Keychain so a later restore can pick it up.
     private(set) var hasPendingSigner = false
 
+    #if DEBUG
+    /// UI tests inject a stub session: no Keychain reads/writes, live public
+    /// reads only, and writes are signed but never sent (see Publisher).
+    private(set) var isUITest = false
+    #endif
+
     private(set) var signer: ActiveSigner?
     private(set) var user: User?
 
@@ -207,6 +213,28 @@ final class SessionManager {
     /// registered before activating. Never trusts the Keychain alone.
     func restore() async {
         guard phase == .signedOut else { return }
+        #if DEBUG
+        let uiEnv = ProcessInfo.processInfo.environment
+        if uiEnv["OPENCASTER_UITEST_SIGNED_OUT"] == "1" { return }
+        if uiEnv["OPENCASTER_UITEST"] == "1" {
+            isUITest = true
+            phase = .restoring
+            do {
+                let fid = UInt64(uiEnv["OPENCASTER_UITEST_FID"] ?? "") ?? 2
+                let user = try await client.getUser(fid: fid)
+                signer = ActiveSigner(fid: fid, deviceKey: try Ed25519Key(), custodyPrivateKey: [],
+                                      custodyAddress: "0x0000000000000000000000000000000000000000",
+                                      scopes: Self.scopes)
+                self.user = user
+                lastError = nil
+                phase = .signedIn
+            } catch {
+                phase = .signedOut
+                lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+            return
+        }
+        #endif
         do {
             phase = .restoring
             guard var record = try KeychainStore.load() else { phase = .signedOut; return }
@@ -283,6 +311,9 @@ final class SessionManager {
 
     /// Custody-signed KEY_REMOVE for this device's signer, then local wipe.
     func revoke() async {
+        #if DEBUG
+        if isUITest { return signOut() }
+        #endif
         guard let signer else { return signOut() }
         var revokeError: String?
         do {
@@ -311,6 +342,15 @@ final class SessionManager {
     }
 
     func signOut() {
+        #if DEBUG
+        if isUITest {
+            signer = nil
+            user = nil
+            hasPendingSigner = false
+            phase = .signedOut
+            return
+        }
+        #endif
         do {
             try KeychainStore.delete()
         } catch {

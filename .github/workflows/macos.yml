@@ -1,0 +1,44 @@
+name: macOS
+on:
+  push:
+    paths: ['apps/macos/**', '.github/workflows/macos.yml']
+  pull_request:
+    paths: ['apps/macos/**', '.github/workflows/macos.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  uitests:
+    if: github.event.deleted != true
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - run: xcodegen generate
+        working-directory: apps/macos
+      - run: swift test
+        working-directory: apps/macos/HypersnapKit
+      - name: Build and run UI tests
+        working-directory: apps/macos
+        run: >-
+          xcodebuild -project Opencaster.xcodeproj -scheme Opencaster
+          -destination 'platform=macOS,arch=arm64' test
+          -resultBundlePath "$RUNNER_TEMP/ui.xcresult"
+          CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= CODE_SIGNING_REQUIRED=YES
+      - name: Summarize UI test results
+        if: always()
+        working-directory: apps/macos
+        run: |
+          ./scripts/ui-test-summary.sh "$RUNNER_TEMP/ui.xcresult" | tee "$RUNNER_TEMP/ui-test-summary.txt"
+          cat "$RUNNER_TEMP/ui-test-summary.txt" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload UI test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: macos-ui-test-results
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/ui.xcresult
+            ${{ runner.temp }}/ui-test-summary.txt

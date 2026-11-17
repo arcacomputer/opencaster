@@ -41,3 +41,21 @@ targets:
           CODE_SIGN_IDENTITY: "Apple Development"
         Release:
           CODE_SIGN_IDENTITY: "Developer ID Application"
+    scheme:
+      testTargets:
+        - OpencasterUITests
+  OpencasterUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: OpencasterUITests
+    dependencies:
+      - target: Opencaster
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.arcacomputer.opencaster.uitests
+        TEST_TARGET_NAME: Opencaster
+        GENERATE_INFOPLIST_FILE: YES
+        DEVELOPMENT_TEAM: 48H3WZWYU3
+        SWIFT_VERSION: "6.0"

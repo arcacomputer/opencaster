@@ -103,6 +103,7 @@ struct CastRowView: View {
             }
         }
         .padding(.vertical, 6)
+        .accessibilityIdentifier("castRow")
         .task { await loadReactionState() }
         .confirmationDialog("Delete this cast?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { Task { await remove() } }
