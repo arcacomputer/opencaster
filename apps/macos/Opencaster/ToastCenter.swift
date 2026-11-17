@@ -14,13 +14,19 @@ final class ToastCenter {
     }
 
     private(set) var current: Toast?
+    #if DEBUG
+    /// UI tests need the toast to outlive slow live reads and clicks.
+    private let lifetime: Duration = SessionManager.launchedForUITests ? .seconds(60) : .seconds(7)
+    #else
+    private let lifetime: Duration = .seconds(7)
+    #endif
     @ObservationIgnored private var dismissTask: Task<Void, Never>?
 
     func show(_ title: String, viewHash: String? = nil) {
         dismissTask?.cancel()
         current = Toast(title: title, viewHash: viewHash)
-        dismissTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(7))
+        dismissTask = Task { [weak self, lifetime] in
+            try? await Task.sleep(for: lifetime)
             guard !Task.isCancelled else { return }
             self?.current = nil
         }

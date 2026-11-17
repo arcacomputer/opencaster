@@ -76,8 +76,10 @@ struct FeedView: View {
                 } actions: {
                     Button("Retry") { Task { await list.refresh() } }
                 }
+                .accessibilityIdentifier("feedError")
             } else if list.items.isEmpty && !list.loading {
                 ContentUnavailableView("No casts", systemImage: "tray")
+                    .accessibilityIdentifier("feedEmpty")
             } else {
                 List {
                     ForEach(list.items, id: \.hash) { cast in

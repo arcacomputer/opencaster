@@ -57,6 +57,7 @@ struct CastRowView: View {
                 }
             }
             Text(cast.text).font(.body)
+                .accessibilityIdentifier("castText")
             ForEach(Array(cast.embeds.enumerated()), id: \.offset) { _, embed in
                 EmbedView(embed: embed)
             }
@@ -103,6 +104,7 @@ struct CastRowView: View {
             }
         }
         .padding(.vertical, 6)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("castRow")
         .task { await loadReactionState() }
         .confirmationDialog("Delete this cast?", isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -128,8 +130,11 @@ struct CastRowView: View {
         let target = HypersnapAPI.ReactionTarget(fid: cast.author.fid, hash: cast.hash)
         async let likeStatus = session.client.getReactionStatus(viewerFid: fid, target: target, kind: .like)
         async let recastStatus = session.client.getReactionStatus(viewerFid: fid, target: target, kind: .recast)
-        liked = try? await likeStatus
-        recasted = try? await recastStatus
+        let remoteLiked = try? await likeStatus
+        let remoteRecasted = try? await recastStatus
+        // Don't clobber an optimistic toggle the user made while this loaded.
+        if liked == nil { liked = remoteLiked }
+        if recasted == nil { recasted = remoteRecasted }
     }
 
     private func react(_ type: ReactionType) async {

@@ -88,7 +88,11 @@ final class SessionManager {
     #if DEBUG
     /// UI tests inject a stub session: no Keychain reads/writes, live public
     /// reads only, and writes are signed but never sent (see Publisher).
-    private(set) var isUITest = false
+    static let launchedForUITests: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        return env["OPENCASTER_UITEST"] == "1" || env["OPENCASTER_UITEST_SIGNED_OUT"] == "1"
+    }()
+    private(set) var isUITest = SessionManager.launchedForUITests
     #endif
 
     private(set) var signer: ActiveSigner?
@@ -133,6 +137,13 @@ final class SessionManager {
     /// Full sign-in: phrase → custody key → FID → device KEY_ADD → Keychain.
     func signIn(phrase rawPhrase: String) async {
         guard case .signedOut = phase else { return }
+        #if DEBUG
+        // UI tests must never derive keys or register a signer.
+        if isUITest {
+            lastError = "Sign-in is disabled in UI-test mode."
+            return
+        }
+        #endif
         lastError = nil
         var custody: [UInt8] = []
         do {
@@ -217,7 +228,6 @@ final class SessionManager {
         let uiEnv = ProcessInfo.processInfo.environment
         if uiEnv["OPENCASTER_UITEST_SIGNED_OUT"] == "1" { return }
         if uiEnv["OPENCASTER_UITEST"] == "1" {
-            isUITest = true
             phase = .restoring
             do {
                 let fid = UInt64(uiEnv["OPENCASTER_UITEST_FID"] ?? "") ?? 2

@@ -15,11 +15,13 @@ struct ConversationView: View {
                 ContentUnavailableView {
                     Label("Couldn't load the conversation", systemImage: "exclamationmark.triangle")
                 } description: { Text(error) }
+                .accessibilityIdentifier("conversationError")
             } else if let root {
                 List {
                     NodeView(node: root, depth: 0)
                 }
                 .listStyle(.plain)
+                .accessibilityIdentifier("conversationView")
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }

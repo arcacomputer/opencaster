@@ -54,7 +54,9 @@ struct MainView: View {
     var body: some View {
         NavigationSplitView {
             List(SidebarItem.allCases, selection: $selection) { item in
-                Label(item.rawValue, systemImage: item.icon).tag(item)
+                Label(item.rawValue, systemImage: item.icon)
+                    .accessibilityIdentifier("sidebar.\(item.rawValue)")
+                    .tag(item)
             }
             .listStyle(.sidebar)
             .navigationTitle("Opencaster")
@@ -131,6 +133,7 @@ struct MainView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                     Text(toast.title).font(.callout)
+                        .accessibilityIdentifier("toastTitle")
                     if toast.viewHash != nil {
                         Button("View") {
                             if let hash = toast.viewHash { path.append(CastRoute(hash: hash)) }
@@ -146,6 +149,7 @@ struct MainView: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("toastDismiss")
                 }
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("toast")
                 .padding(.horizontal, 14)
                 .padding(.vertical, 9)

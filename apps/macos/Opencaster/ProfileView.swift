@@ -30,6 +30,7 @@ struct ProfileView: View {
                 ContentUnavailableView {
                     Label("Couldn't load the profile", systemImage: "exclamationmark.triangle")
                 } description: { Text(error) }
+                .accessibilityIdentifier("profileError")
             } else {
                 ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
             }
@@ -85,6 +86,7 @@ struct ProfileView: View {
             }
             Text(user.displayName ?? user.username).font(.title3.bold())
             Text("@\(user.username)").font(.callout).foregroundStyle(.secondary)
+                .accessibilityIdentifier("profileUsername")
             if let bio = user.profile?.bio.text, !bio.isEmpty {
                 Text(bio).font(.callout)
             }

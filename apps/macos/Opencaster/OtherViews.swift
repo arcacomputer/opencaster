@@ -9,31 +9,47 @@ struct NotificationsView: View {
     var body: some View {
         Group {
             if let list {
-                List {
-                    ForEach(list.items, id: \.id) { item in
-                        HStack(spacing: 10) {
-                            Image(systemName: icon(item.type)).foregroundStyle(.secondary)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(title(item)).font(.callout)
-                                if let cast = item.cast {
-                                    Text(cast.text).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                if let error = list.error, list.items.isEmpty {
+                    ContentUnavailableView {
+                        Label("Couldn't load notifications", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(error)
+                    } actions: {
+                        Button("Retry") { Task { await list.refresh() } }
+                    }
+                    .accessibilityIdentifier("notificationsError")
+                } else if list.items.isEmpty && list.exhausted && !list.loading {
+                    ContentUnavailableView("No notifications", systemImage: "bell")
+                        .accessibilityIdentifier("notificationsEmpty")
+                } else {
+                    List {
+                        ForEach(list.items, id: \.id) { item in
+                            HStack(spacing: 10) {
+                                Image(systemName: icon(item.type)).foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(title(item)).font(.callout)
+                                    if let cast = item.cast {
+                                        Text(cast.text).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                    }
                                 }
+                                Spacer()
+                                Text(relativeTime(item.timestamp)).font(.caption).foregroundStyle(.tertiary)
                             }
-                            Spacer()
-                            Text(relativeTime(item.timestamp)).font(.caption).foregroundStyle(.tertiary)
+                            .padding(.vertical, 4)
+                            .contentShape(Rectangle())
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("notificationRow")
+                            .onTapGesture {
+                                if let cast = item.cast { navigator.openCast(cast.hash) }
+                                else if let actor = item.actors.first { navigator.openProfile(actor.fid) }
+                            }
                         }
-                        .padding(.vertical, 4)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if let cast = item.cast { navigator.openCast(cast.hash) }
-                            else if let actor = item.actors.first { navigator.openProfile(actor.fid) }
+                        if !list.exhausted {
+                            HStack { Spacer(); Button("Load more") { Task { await list.loadMore() } }; Spacer() }
                         }
                     }
-                    if !list.exhausted {
-                        HStack { Spacer(); Button("Load more") { Task { await list.loadMore() } }; Spacer() }
-                    }
+                    .listStyle(.plain)
                 }
-                .listStyle(.plain)
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -82,6 +98,7 @@ struct ChannelsView: View {
                 ContentUnavailableView {
                     Label("Couldn't load channels", systemImage: "exclamationmark.triangle")
                 } description: { Text(error) }
+                .accessibilityIdentifier("channelsError")
             } else if channels.isEmpty {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -99,6 +116,7 @@ struct ChannelsView: View {
                             }
                         }
                     }
+                    .accessibilityIdentifier("channelRow")
                 }
             }
         }
@@ -201,6 +219,7 @@ struct SettingsView: View {
             }
             Section {
                 Toggle("Dry run (validate only, don't publish)", isOn: Bindable(session.publisher).dryRun)
+                    .accessibilityIdentifier("dryRunToggle")
             } footer: {
                 Text("Casts, replies, likes and follows are signed and checked by the node's validator, but never published to the network.")
                     .font(.caption)
