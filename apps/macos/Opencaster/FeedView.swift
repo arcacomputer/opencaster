@@ -22,7 +22,6 @@ struct FeedView: View {
                 .labelsHidden()
                 .frame(maxWidth: 320)
                 .padding(.vertical, 8)
-                .onChange(of: timeWindow) { Task { await list?.refresh() } }
             }
             content
         }
@@ -38,15 +37,21 @@ struct FeedView: View {
                     .accessibilityLabel("New cast")
             }
         }
-        .task(id: kind) {
+        .task(id: FeedKey(kind: kind, window: timeWindow)) {
+            let window = timeWindow
             list = PagedList<Cast> { cursor in
                 let page = try await session.client.getFeed(kind: kind,
-                                                            timeWindow: isTrending ? timeWindow : nil,
+                                                            timeWindow: isTrending ? window : nil,
                                                             cursor: cursor, limit: 25)
                 return (page.casts, page.next.cursor)
             }
             await list?.refresh()
         }
+    }
+
+    private struct FeedKey: Equatable {
+        let kind: FeedKind
+        let window: TrendingTimeWindow
     }
 
     private var isTrending: Bool { if case .trending = kind { return true }; return false }

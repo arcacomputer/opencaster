@@ -88,8 +88,8 @@ struct ChannelsView: View {
                 List(channels, id: \.id) { channel in
                     NavigationLink(value: channel) {
                         HStack {
-                            if let url = channel.imageUrl {
-                                AsyncImage(url: URL(string: url)) { $0.resizable().scaledToFill() }
+                            if let url = safeRemoteImageURL(channel.imageUrl) {
+                                AsyncImage(url: url) { $0.resizable().scaledToFill() }
                                     placeholder: { Image(systemName: "number").foregroundStyle(.tertiary) }
                                     .frame(width: 28, height: 28).clipShape(RoundedRectangle(cornerRadius: 6))
                             }
@@ -208,6 +208,9 @@ struct SettingsView: View {
                 Button("Sign out", role: .destructive) { session.signOut() }
                 Button("Revoke signer and sign out", role: .destructive) {
                     Task { await session.revoke() }
+                }
+                if session.isSignedIn, let error = session.lastError {
+                    Text(error).font(.caption).foregroundStyle(.red)
                 }
             } footer: {
                 Text("Revocation removes this device's signer from your account on the node. Sign out only clears this Mac's Keychain — the signer stays registered until it expires.")

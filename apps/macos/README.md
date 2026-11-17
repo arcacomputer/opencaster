@@ -76,11 +76,14 @@ app derives the custody key locally from your 24-word phrase:
    `/v2/farcaster/user/custody-address`.
 4. A fresh Ed25519 device key is generated and authorized with two EIP-712
    custody signatures (`KeyAdd` + `SignedKeyRequest`, domain `Farcaster KeyAdd`
-   v1, chain id 1) — then submitted as a KEY_ADD message to
-   `/v1/submitMessage`. No on-chain transaction and no ETH are involved.
+   v1, chain id 1). No on-chain transaction and no ETH are involved.
 5. The session record — FID, custody address, custody key, device seed — is
-   stored in the login Keychain, marked `ThisDeviceOnly` and non-synchronizable.
-   It never enters iCloud Keychain or another Mac.
+   stored in the login Keychain **before** the KEY_ADD is submitted to
+   `/v1/submitMessage`, marked `ThisDeviceOnly` and non-synchronizable. It
+   never enters iCloud Keychain or another Mac. The record is flagged pending
+   until the node confirms the registration; if confirmation hasn't landed,
+   sign-in stays signed out and offers **Check again** instead of losing the
+   registered signer.
 
 Requested signer scopes are the full client set `[1,2,3,4,5,6,11]` (casts,
 cast removal, reactions, follows, profile updates) with the standard 7-day
@@ -88,7 +91,9 @@ sliding TTL — the same `FULL_CLIENT_SCOPES` the web client uses for its own
 expanded-approval flow.
 
 On launch the app restores the Keychain record, then **re-verifies the device
-signer is still registered** on the node before activating the session.
+signer is still registered** on the node before activating the session. A
+pending record whose registration hasn't landed yet stays in the Keychain
+within the 15-minute pairing window; an expired pending record is cleared.
 
 **Revoke** (Settings) submits a custody-signed KEY_REMOVE for this device's
 signer and clears the Keychain. **Sign out** only clears the local record —

@@ -21,6 +21,9 @@ struct SessionRecord: Codable, Sendable {
     /// Message-type scopes the signer was registered with.
     var scopes: [Int32]
     var ttl: UInt64
+    /// Unix seconds until which a saved-but-unconfirmed KEY_ADD may still
+    /// merge; nil once the registration is confirmed.
+    var pendingUntil: UInt64?
 }
 
 enum SessionError: Error, LocalizedError {
@@ -47,7 +50,7 @@ enum SessionError: Error, LocalizedError {
         case .revoked:
             return "This signer was revoked. Sign in again."
         case .timedOutWaitingForSigner:
-            return "The node accepted the registration but hasn't confirmed it yet. Try 'Check status' in Settings shortly."
+            return "The node accepted the registration but hasn't confirmed it yet. Use 'Check again' shortly."
         }
     }
 }
@@ -77,6 +80,10 @@ final class SessionManager {
 
     private(set) var phase: Phase = .signedOut
     var lastError: String?
+
+    /// A KEY_ADD was submitted but the node hasn't confirmed it; the record
+    /// stays in the Keychain so a later restore can pick it up.
+    private(set) var hasPendingSigner = false
 
     private(set) var signer: ActiveSigner?
     private(set) var user: User?
@@ -163,18 +170,31 @@ final class SessionManager {
                                           deadline: deadline, nonce: nonce, metadata: metadata,
                                           scopes: Self.scopes, ttl: Self.ttlSeconds)),
                 signer: deviceKey)
-            _ = try await client.submitMessage(message.envelope)
-
-            phase = .signingIn(step: "Confirming registration…")
-            try await waitForSigner(fid: fid, publicKeyHex: bytesToHex(deviceKey.publicKey))
-
-            let record = SessionRecord(
+            // Persist the record before submitting so a submitted-but-
+            // unconfirmed KEY_ADD can't orphan a registered signer.
+            var record = SessionRecord(
                 fid: fid, username: user.username, custodyAddress: derived.address,
                 custodyPrivateKeyHex: bytesToHex(custody),
                 deviceSeedHex: bytesToHex(deviceKey.seed),
                 signerPublicKeyHex: bytesToHex(deviceKey.publicKey),
-                scopes: Self.scopes, ttl: Self.ttlSeconds)
+                scopes: Self.scopes, ttl: Self.ttlSeconds,
+                pendingUntil: nowSeconds + Self.pairingWindowSeconds)
             try KeychainStore.save(record)
+            do {
+                _ = try await client.submitMessage(message.envelope)
+            } catch let apiError as ApiError where apiError.code != "submission_unknown" {
+                // Definitive rejection: the KEY_ADD never reached the node.
+                try? KeychainStore.delete()
+                hasPendingSigner = false
+                throw apiError
+            }
+            hasPendingSigner = true
+
+            phase = .signingIn(step: "Confirming registration…")
+            try await waitForSigner(fid: fid, publicKeyHex: bytesToHex(deviceKey.publicKey))
+
+            record.pendingUntil = nil
+            try? KeychainStore.save(record)
             activate(record: record, user: user)
         } catch {
             wipe(&custody)
@@ -189,19 +209,38 @@ final class SessionManager {
         guard phase == .signedOut else { return }
         do {
             phase = .restoring
-            guard let record = try KeychainStore.load() else { phase = .signedOut; return }
+            guard var record = try KeychainStore.load() else { phase = .signedOut; return }
             let signers = try await client.getSigners(fid: record.fid)
             let active = signers.signers.contains { Self.signerKeyMatches($0.key, publicKeyHex: record.signerPublicKeyHex) }
+            if !active, let pendingUntil = record.pendingUntil {
+                phase = .signedOut
+                if UInt64(Date().timeIntervalSince1970) < pendingUntil {
+                    // The KEY_ADD may still merge; keep the record for retry.
+                    hasPendingSigner = true
+                    lastError = SessionError.timedOutWaitingForSigner.errorDescription
+                } else {
+                    try? KeychainStore.delete()
+                    hasPendingSigner = false
+                    lastError = "The device registration did not complete. Sign in again."
+                }
+                return
+            }
             guard active else {
                 try? KeychainStore.delete()
+                hasPendingSigner = false
                 phase = .signedOut
                 lastError = SessionError.signerNotRegistered.errorDescription
                 return
+            }
+            if record.pendingUntil != nil {
+                record.pendingUntil = nil
+                try? KeychainStore.save(record)
             }
             let user = try await client.getUser(fid: record.fid)
             activate(record: record, user: user)
         } catch {
             phase = .signedOut
+            hasPendingSigner = ((try? KeychainStore.load()) ?? nil)?.pendingUntil != nil
             lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
@@ -214,11 +253,13 @@ final class SessionManager {
                                   custodyAddress: record.custodyAddress, scopes: record.scopes)
             self.user = user
             lastError = nil
+            hasPendingSigner = false
             phase = .signedIn
         } catch {
             phase = .signedOut
             lastError = "The saved session could not be read. Sign in again."
             try? KeychainStore.delete()
+            hasPendingSigner = false
         }
     }
 
@@ -243,6 +284,7 @@ final class SessionManager {
     /// Custody-signed KEY_REMOVE for this device's signer, then local wipe.
     func revoke() async {
         guard let signer else { return signOut() }
+        var revokeError: String?
         do {
             let signers = try await client.getSigners(fid: signer.fid)
             let nowSeconds = UInt64(Date().timeIntervalSince1970)
@@ -258,15 +300,27 @@ final class SessionManager {
                 deadline: deadline, nonce: nonce)), type: .keyRemove)
             _ = try await client.submitMessage(message.envelope)
         } catch {
-            lastError = "Revocation could not be submitted: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription). The local session was still cleared."
+            revokeError = "Revocation could not be submitted: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)."
         }
         signOut()
+        if let revokeError {
+            lastError = isSignedIn
+                ? lastError.map { "\(revokeError) \($0)" } ?? revokeError
+                : "\(revokeError) The local session was still cleared."
+        }
     }
 
     func signOut() {
+        do {
+            try KeychainStore.delete()
+        } catch {
+            // Keep the session: a half-signed-out state would strand the record.
+            lastError = "Couldn't remove the saved session from Keychain: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+            return
+        }
         signer = nil
         user = nil
-        try? KeychainStore.delete()
+        hasPendingSigner = false
         phase = .signedOut
     }
 }

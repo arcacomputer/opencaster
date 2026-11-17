@@ -165,10 +165,16 @@ struct AvatarView: View {
     var size: CGFloat = 36
 
     var body: some View {
-        AsyncImage(url: URL(string: url ?? "")) { phase in
-            switch phase {
-            case .success(let image): image.resizable().scaledToFill()
-            default: Image(systemName: "person.circle.fill").resizable().foregroundStyle(.tertiary)
+        Group {
+            if let url = safeRemoteImageURL(url) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image): image.resizable().scaledToFill()
+                    default: Image(systemName: "person.circle.fill").resizable().foregroundStyle(.tertiary)
+                    }
+                }
+            } else {
+                Image(systemName: "person.circle.fill").resizable().foregroundStyle(.tertiary)
             }
         }
         .frame(width: size, height: size)
@@ -192,8 +198,12 @@ struct EmbedView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else if let url = URL(string: raw), url.scheme == "http" || url.scheme == "https" {
+                Link(raw, destination: url)
+                    .font(.caption)
+                    .lineLimit(2)
             } else {
-                Link(raw, destination: URL(string: raw) ?? URL(filePath: "/")!)
+                Text(raw)
                     .font(.caption)
                     .lineLimit(2)
             }
@@ -249,10 +259,11 @@ struct QuotedCastView: View {
 }
 
 private func isImageUrl(_ url: URL) -> Bool {
+    guard safeRemoteImageURL(url.absoluteString) != nil else { return false }
     let path = url.path.lowercased()
-    return url.scheme == "https" && (path.hasSuffix(".png") || path.hasSuffix(".jpg") || path.hasSuffix(".jpeg")
+    return path.hasSuffix(".png") || path.hasSuffix(".jpg") || path.hasSuffix(".jpeg")
         || path.hasSuffix(".webp") || path.hasSuffix(".gif")
-        || url.host == "imagedelivery.net" || url.host == "imagedelivery.cloud")
+        || url.host == "imagedelivery.net" || url.host == "imagedelivery.cloud"
 }
 
 func relativeTime(_ iso: String) -> String {

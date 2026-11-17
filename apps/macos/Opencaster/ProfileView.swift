@@ -38,17 +38,19 @@ struct ProfileView: View {
         .navigationTitle(user?.displayName ?? user?.username ?? "Profile")
         .sheet(isPresented: $editing) { if let user { EditProfileView(user: user) } }
         .task(id: fid) { await load() }
-    }
-
-    private func load() async {
-        do {
-            let loaded = try await session.client.getUser(fid: fid)
-            user = loaded
+        .task(id: tab) {
+            let tab = tab
             list = PagedList { cursor in
                 let page = try await session.client.getProfileFeed(fid: fid, tab: tab, cursor: cursor, limit: 20)
                 return (page.casts, page.next.cursor)
             }
             await list?.refresh()
+        }
+    }
+
+    private func load() async {
+        do {
+            user = try await session.client.getUser(fid: fid)
             if let viewerFid = session.signer?.fid, viewerFid != fid {
                 following = try? await session.client.getFollowStatus(viewerFid: viewerFid, targetFid: fid)
             }
@@ -59,7 +61,7 @@ struct ProfileView: View {
 
     @ViewBuilder
     private func header(_ user: User) -> some View {
-        if let banner = user.profile?.banner?.url, let url = URL(string: banner) {
+        if let url = safeRemoteImageURL(user.profile?.banner?.url) {
             AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.gray.opacity(0.2) }
                 .frame(height: 120).clipped()
         }
@@ -103,13 +105,6 @@ struct ProfileView: View {
         .labelsHidden()
         .padding(.horizontal)
         .padding(.bottom, 8)
-        .onChange(of: tab) {
-            list = PagedList { cursor in
-                let page = try await session.client.getProfileFeed(fid: fid, tab: tab, cursor: cursor, limit: 20)
-                return (page.casts, page.next.cursor)
-            }
-            Task { await list?.refresh() }
-        }
     }
 
     @ViewBuilder

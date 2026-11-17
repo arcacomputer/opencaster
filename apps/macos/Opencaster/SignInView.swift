@@ -61,6 +61,10 @@ struct SignInView: View {
             .keyboardShortcut(.return, modifiers: .command)
             .disabled(wordCount != 24)
 
+            if session.hasPendingSigner {
+                Button("Check again") { Task { await session.restore() } }
+            }
+
             Text("This registers an Ed25519 device signer (casts, deletes, reactions, follows, profile updates) with a 7-day sliding window, kept only on this Mac.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)

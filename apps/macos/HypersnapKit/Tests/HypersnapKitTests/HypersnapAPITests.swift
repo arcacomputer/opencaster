@@ -104,4 +104,18 @@ struct ValidationTests {
         #expect(!validDecimalCursor("12a4"))
         #expect(!validDecimalCursor(""))
     }
+
+    @Test func remoteImageURL() {
+        #expect(safeRemoteImageURL("https://i.imgur.com/a.png") != nil)
+        #expect(safeRemoteImageURL(nil) == nil)
+        #expect(safeRemoteImageURL("") == nil)
+        #expect(safeRemoteImageURL("http://example.com/a.png") == nil)
+        #expect(safeRemoteImageURL("https://localhost/a.png") == nil)
+        #expect(safeRemoteImageURL("https://printer.local/a.png") == nil)
+        #expect(safeRemoteImageURL("https://127.0.0.1/a.png") == nil)
+        #expect(safeRemoteImageURL("https://10.0.0.5/a.png") == nil)
+        #expect(safeRemoteImageURL("https://[::1]/a.png") == nil)
+        #expect(safeRemoteImageURL("https://user:pw@example.com/a.png") == nil)
+        #expect(safeRemoteImageURL("file:///etc/passwd") == nil)
+    }
 }

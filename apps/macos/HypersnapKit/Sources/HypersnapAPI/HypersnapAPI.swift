@@ -944,6 +944,25 @@ public func isoDateString(ms: Double) -> String {
 
 private let imageHostAllowlist: Set<String> = ["imagedelivery.net", "imagedelivery.cloud"]
 
+/// Remote images must come from a plain https host: no credentials, no
+/// localhost/link-local names, and no IP literals (SSRF-style local targets
+/// would otherwise be fetched by AsyncImage).
+public func safeRemoteImageURL(_ raw: String?) -> URL? {
+    guard let raw, let url = URL(string: raw), url.scheme == "https",
+          let host = url.host, !host.isEmpty,
+          url.user == nil, url.password == nil else { return nil }
+    let lower = host.lowercased()
+    guard lower != "localhost", !lower.hasSuffix(".localhost"),
+          !lower.hasSuffix(".local"), !isIPLiteralHost(lower) else { return nil }
+    return url
+}
+
+private func isIPLiteralHost(_ host: String) -> Bool {
+    if host.contains(":") { return true } // bracketed IPv6 literal
+    let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+    return parts.count == 4 && parts.allSatisfy { UInt8($0) != nil }
+}
+
 /// Image formats rendered by this client (same allowlist as the web client).
 public func hasImageEmbed(_ cast: Cast) -> Bool {
     cast.embeds.contains { embed in
