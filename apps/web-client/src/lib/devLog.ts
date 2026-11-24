@@ -22,6 +22,20 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'inline-cast-video-and-audio',
+    date: '2026-11-24',
+    timestamp: '2026-11-24T16:21:51-03:00',
+    title: 'Cast videos play inline',
+    summary: 'Videos and audio play directly in casts, and failed images keep a link to the original.',
+    changes: [
+      'Current and legacy Farcaster video streams and supported HTTPS video and audio files have inline players. Playback starts when you press Play. If a host or format prevents playback, you can open the original.',
+      'Casts display AVIF, additional browser image formats, and extensionless images from supported CDNs. Failed cast images show an original link. Unavailable avatars, profile banners, and channel images use placeholders.',
+      'Quotes with a video or audio attachment point you to playback in the quoted cast.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/eda51941dfd58d1b225b7925462abce2a5f6613c',
+    tag: 'Social',
+  },
+  {
     id: 'supported-background-reply-batches',
     date: '2026-11-15',
     timestamp: '2026-11-15T18:50:56-03:00',
