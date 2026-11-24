@@ -1,3 +1,36 @@
+# Cast media playback deployed · 2026-11-24
+
+[Release source `acd2ffba`](https://github.com/arcacomputer/opencaster/commit/acd2ffba049a63a9bae450d914016513cf813bab)
+was deployed at **16:24:08 America/Santiago** (`2026-11-24T19:24:08.287453Z`) as
+Worker `56c8f889-94bd-49ee-ae9e-7a227d3246f2`, deployment
+`1ed683e4-651f-4d41-b7c3-f5e8b9263a99`, at 100% traffic. The active pre-release
+source was `1ef48c3736cf5da3ff91d1d71e6b5da47489db3b`, Worker
+`03db1572-c98a-4263-b796-cb4d7d4bed2e`. The published branch is
+`codex/restore-cast-media`.
+
+The dev-log check passed against the active pre-release source. Root
+`yarn verify` passed **2,296 tests in 93 files**, the workspace typechecks and
+the browser and offline signer builds. Wrangler packaged the Worker in a dry
+run before deploying the inspected directory
+`/tmp/arca-release-cast-media-20261124-acd2ffba`. The 50 file fingerprints matched
+after deployment. Public reads of the browser entry, player, player worker,
+license and dev-log assets matched their inspected hashes. Cloudflare metadata
+matched the previous deployment's runtime variables and binding names. The
+build reported a size advisory for the lazy HLS chunk and the existing
+WalletConnect annotation advisory. GitHub Actions could not start the hosted
+job because of an account billing lock. [GitHub check](https://github.com/arcacomputer/opencaster/actions/runs/45469505950/job/138713300552)
+
+Fresh Chrome sessions reproduced the original link-only behavior and then
+confirmed inline playback on the deployed [reported cast](https://opencaster.org/ahn.eth/0x91620040)
+and two other public Farcaster streams. All three decoded video and audio, and
+the reported cast fit and played at a 390-pixel mobile viewport. The live
+`/devlog` showed the new milestone and implementation link. The isolated build
+also played a direct MP4 and MP3, decoded an extensionless image in the cast
+and viewer, and kept an original link for an unavailable image. Production
+verification used public reads and navigation.
+
+---
+
 # Cloudflare traffic and TLS hardening deployed · 2026-11-09
 
 Source [`d089f558`](https://github.com/arcacomputer/opencaster/commit/d089f558b9bf99e7623d3e377245484006e493dd)
