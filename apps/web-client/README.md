@@ -95,6 +95,14 @@ CI validates that an entry exists and its source is real; release review still c
 
 ## Link previews
 
+Video and audio files attached by HTTPS URL play inline using the browser's
+media controls. Opencaster plays current and legacy Farcaster HLS streams using
+native support or HLS.js from the verified stream hosts. Players load near the
+viewport and start when you press Play. An original link stays available for
+unsupported formats or failed playback. Cast images include AVIF and
+extensionless URLs from supported image CDNs. Failed images in casts keep an
+original link, and unavailable avatars and channel images use placeholders.
+
 URL attachments in casts display supported X posts and YouTube, Vimeo and
 Spotify players inline. They load near the viewport in sandboxed provider
 frames, without running provider scripts in the wallet page. X posts follow

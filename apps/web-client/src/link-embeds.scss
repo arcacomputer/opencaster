@@ -2,6 +2,9 @@
 .cast__attachments--multiple > .rich-embed--x { flex-basis: 100%; }
 .rich-embed__frame { display: block; width: 100%; border: 0; background: var(--surface-00); }
 .rich-embed--youtube .rich-embed__frame, .rich-embed--vimeo .rich-embed__frame { aspect-ratio: 16 / 9; min-height: 200px; }
+.rich-embed__media { display: block; width: 100%; }
+.rich-embed--video .rich-embed__media, .rich-embed--video .rich-embed__media-placeholder { aspect-ratio: auto 16 / 9; max-height: 25rem; object-fit: contain; background: var(--surface-1); }
+.rich-embed--audio .rich-embed__media, .rich-embed--audio .rich-embed__media-placeholder { margin-block: .45rem; min-height: 3.4rem; }
 .rich-embed__status { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; padding: 1rem; font-size: .8rem; color: var(--color-text-subtle); }
 .rich-embed__status .button { font-size: .8rem; }
 .rich-embed__original { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .7rem .85rem; border-top: 1px solid var(--border); color: var(--color-text-subtle); font-size: .75rem; }

@@ -3,27 +3,18 @@ import { IconArrowUpRight, IconLink } from '@tabler/icons-react';
 import { linkEmbedProvider, type LinkEmbedProvider } from '@opencaster/client-core/linkEmbeds';
 import { publicUrl } from '@opencaster/client-core/navigation';
 import { quorumSocialPath } from '../lib/socialLinks';
+import { useNearViewport } from '../lib/useNearViewport';
 import { Button } from './ui';
 import '../link-embeds.scss';
 
 function ProviderEmbed({ provider, dark }: { provider: LinkEmbedProvider; dark: boolean }) {
-  const container = useRef<HTMLDivElement>(null);
+  const { container, visible } = useNearViewport();
   const frame = useRef<HTMLIFrameElement>(null);
-  const [visible, setVisible] = useState(false);
   const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const [height, setHeight] = useState(360);
   const [attempt, setAttempt] = useState(0);
   const label = { x: 'X', youtube: 'YouTube', vimeo: 'Vimeo', spotify: 'Spotify' }[provider.kind];
   const embedId = `opencaster-x-${provider.id}`;
-
-  useEffect(() => {
-    if (!container.current || typeof IntersectionObserver === 'undefined') { setVisible(true); return; }
-    const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) { setVisible(true); observer.disconnect(); }
-    }, { rootMargin: '300px' });
-    observer.observe(container.current);
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     if (!visible || status === 'unavailable' || (provider.kind !== 'x' && status === 'ready')) return;

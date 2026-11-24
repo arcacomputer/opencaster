@@ -3,6 +3,7 @@
  */
 import { handleMediaRequest, type MediaEnv } from './media';
 import { APP_ORIGIN } from '@opencaster/client-core/appOrigins';
+import { HLS_CONNECT_ORIGINS } from '@opencaster/client-core/castAttachments';
 import { readLimited, ReadAbortedError, SizeLimitError } from '@opencaster/client-core/boundedRead';
 import { normalizeHypersnapEnsName } from '@opencaster/client-core/ensName';
 import { API_LIMITS, CAST_HASH, CHANNEL_ID, PAGE_CURSOR, WALLET_ADDRESS, validDecimalCursor, validPageToken, validSearchQuery } from '@opencaster/client-core/apiRules';
@@ -38,7 +39,13 @@ const AGGREGATE_LOOKUP_MS = 200;
 const SUBMISSION_UNKNOWN = 'Submission status is unknown. Check your profile or signer state before trying again.';
 
 const SECURITY_HEADERS: Record<string, string> = {
-  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; font-src 'self'; connect-src 'self' wss://relay.walletconnect.org wss://relay.walletconnect.com https://verify.walletconnect.org https://verify.walletconnect.com; frame-src https://verify.walletconnect.org https://verify.walletconnect.com https://platform.twitter.com https://www.youtube-nocookie.com https://player.vimeo.com https://open.spotify.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests",
+  'Content-Security-Policy': [
+    "default-src 'self'", "script-src 'self'", "style-src 'self'", "img-src 'self' https: data:", "font-src 'self'",
+    "media-src 'self' https: blob:", "worker-src 'self'",
+    `connect-src 'self' wss://relay.walletconnect.org wss://relay.walletconnect.com https://verify.walletconnect.org https://verify.walletconnect.com ${HLS_CONNECT_ORIGINS.join(' ')}`,
+    'frame-src https://verify.walletconnect.org https://verify.walletconnect.com https://platform.twitter.com https://www.youtube-nocookie.com https://player.vimeo.com https://open.spotify.com',
+    "object-src 'none'", "base-uri 'none'", "frame-ancestors 'none'", "form-action 'self'", 'upgrade-insecure-requests',
+  ].join('; '),
   'Referrer-Policy': 'no-referrer',
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',

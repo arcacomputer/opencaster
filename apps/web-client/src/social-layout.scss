@@ -202,6 +202,9 @@
 .cast__attachments .embed { display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: .7rem; overflow: hidden; background: var(--surface-1); }
 .cast__attachments .embed img { display: block; width: 100%; height: auto; max-height: 25rem; object-fit: contain; border: 0; border-radius: 0; }
 .cast--featured .cast__attachments .embed img { max-height: 23rem; }
+.cast__attachments .embed--unavailable { justify-content: flex-start; align-self: flex-start; gap: .65rem; padding: .85rem; color: var(--color-text-subtle); }
+.embed--unavailable span { flex: 1; }
+.embed--unavailable strong, .embed--unavailable small { display: block; }
 .cast__attachments .link-embed { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 0; overflow: hidden; border-color: var(--border); background: var(--surface-00); color: var(--color-text-strong); }
 .link-embed__visual { display: grid; place-items: center; flex: 1; min-height: 8rem; background: var(--surface-2); color: var(--color-text-subtle); }
 .link-embed .link-embed__caption { flex: 0 0 auto; padding: .75rem; font-size: .85rem; }
@@ -216,6 +219,7 @@
 .quoted-cast__author time { color: var(--color-text-subtle); font-size: .8rem; flex-shrink: 0; }
 .quoted-cast .quoted-cast__images { display: flex; gap: .35rem; }
 .quoted-cast__images img { display: block; width: 7.5rem; max-width: 45%; height: 7.5rem; object-fit: cover; border-radius: .6rem; }
+.quoted-cast__media { color: var(--color-text-subtle); font-size: .8rem; }
 .guest-prompt { padding: .55rem 1rem; }
 .guest-prompt > p { font-size: .9rem; }
 .guest-prompt > .button { min-height: 2.25rem; }

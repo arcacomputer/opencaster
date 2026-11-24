@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { transform } from 'esbuild';
+import { build, transform } from 'esbuild';
 import { replaceTestOrigins, replaceTestMediaGuards, viteTestOriginPlugin, testOriginTransform } from './e2e-media-runtime.mjs';
 
 const origin = 'http://127.0.0.1:5187';
@@ -18,11 +18,13 @@ const legacyOrigin = publicOrigin(originsSource, 'LEGACY_APP_ORIGIN');
 const rewrittenOrigins = replaceTestOrigins(originsSource, origin);
 // appOrigins.ts has no imports: load the (transformed) shared module itself.
 const loadOrigins = async source => import(`data:text/javascript;base64,${Buffer.from((await transform(source, { loader: 'ts', format: 'esm' })).code).toString('base64')}`);
-const photosGuard = (source, { isUploadedMediaLocation }) => {
-  const expression = source.match(/return ((?:url\.protocol|\(url\.protocol)[\s\S]*?);/)?.[1];
-  expect(expression).toBeTruthy();
-  const evaluate = new Function('url', 'isUploadedMediaLocation', `return ${expression};`);
-  return url => evaluate(url, isUploadedMediaLocation);
+async function photosGuard(testOrigin) {
+  const { outputFiles } = await build({
+    stdin: { contents: "export { hasImageEmbed } from './api.ts'", resolveDir: path.dirname(originsPath) },
+    bundle: true, format: 'esm', write: false, plugins: testOriginTransform(testOrigin),
+  });
+  const { hasImageEmbed } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
+  return url => hasImageEmbed({ embeds: [{ url }] });
 };
 
 describe('isolated media harness URL transformations', () => {
@@ -69,15 +71,11 @@ describe('isolated media harness URL transformations', () => {
     expect(new Function('url', `return !!(${productionExpression});`)(new URL(media))).toBe(true);
   });
   it('admits only the isolated hashed image URL through the Photos tab image guard', async () => {
-    const apiPath = fileURLToPath(new URL('../../../packages/client-core/src/api.ts', import.meta.url));
-    const source = await fs.readFile(apiPath, 'utf8');
-    const replaced = replaceTestMediaGuards(replaceTestOrigins(source, origin), apiPath, origin);
-    const accepted = photosGuard(replaced, await loadOrigins(rewrittenOrigins));
-    expect(accepted(new URL(media))).toBe(true);
-    for (const rejected of [`${origin}/photo.png`, `${origin}/media/${'a'.repeat(63)}`, `http://localhost:5187/media/${'a'.repeat(64)}`, `http://attacker.test/photo.png`]) expect(accepted(new URL(rejected))).toBe(false);
-    const production = photosGuard(source, await loadOrigins(originsSource));
-    expect(production(new URL(media))).toBe(false);
-    for (const productionOrigin of [primaryOrigin, legacyOrigin]) expect(production(new URL(`${productionOrigin}/media/${'a'.repeat(64)}`))).toBe(true);
+    const [accepted, production] = await Promise.all([photosGuard(origin), photosGuard(primaryOrigin)]);
+    expect(accepted(media)).toBe(true);
+    for (const rejected of [`${origin}/photo.png`, `${origin}/media/${'a'.repeat(63)}`, `http://localhost:5187/media/${'a'.repeat(64)}`, `http://attacker.test/photo.png`]) expect(accepted(rejected)).toBe(false);
+    expect(production(media)).toBe(false);
+    for (const productionOrigin of [primaryOrigin, legacyOrigin]) expect(production(`${productionOrigin}/media/${'a'.repeat(64)}`)).toBe(true);
   });
   it('admits only the configured loopback hashed media path through the shared safe-HTTPS guard', async () => {
     const guardPath = fileURLToPath(new URL('../../../packages/client-core/src/safeUrl.ts', import.meta.url));
@@ -102,10 +100,10 @@ describe('isolated media harness URL transformations', () => {
   });
 
   it('routes cast-card, viewer and profile-preview images through the shared guard and image classifier', async () => {
-    expect(castCard).toContain('hasImageEmbed({ ...cast, embeds: [{ url }] })');
-    for (const relative of ['../src/App.tsx', '../src/components/CastCard.tsx', '../src/components/MediaViewer.tsx', '../src/components/EditProfileDialog.tsx']) {
+    expect(castCard).toContain('castUrlAttachments(cast.embeds)');
+    for (const relative of ['../../../packages/client-core/src/castAttachments.ts', '../src/components/RemoteImage.tsx', '../src/components/MediaViewer.tsx', '../src/components/EditProfileDialog.tsx']) {
       const source = await fs.readFile(fileURLToPath(new URL(relative, import.meta.url)), 'utf8');
-      expect(source).toContain("import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';");
+      expect(source).toMatch(/import \{ safeHttpsUrl \} from '(?:@opencaster\/client-core\/|\.\/)safeUrl';/);
       expect(source).not.toMatch(/(?:url|parsed)\.protocol === 'https:'/);
     }
   });

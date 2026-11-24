@@ -181,10 +181,10 @@ describe('browser API client', () => {
   });
 
   it('recognizes our uploaded images and supported image delivery paths without accepting spoofed hostnames', () => {
-    for (const url of ['https://opencaster.org/media/' + 'a'.repeat(64), 'https://quorum.arca.computer/media/' + 'a'.repeat(64), 'https://imagedelivery.net/id/original', 'https://example.com/photo.PNG?size=2']) {
+    for (const url of ['https://opencaster.org/media/' + 'a'.repeat(64), 'https://quorum.arca.computer/media/' + 'a'.repeat(64), 'https://imagedelivery.net/id/original', 'https://example.com/photo.PNG?size=2', 'https://example.com/photo.avif#detail', 'https://pbs.twimg.com/media/photo?format=jpg&name=large']) {
       expect(hasImageEmbed(cast('a', { embeds: [{ url }] }))).toBe(true);
     }
-    for (const url of ['https://imagedelivery.net.attacker.test/id/original', 'https://example.com/imagedelivery.net', 'javascript:photo.png', 'https://example.com/page']) {
+    for (const url of ['https://imagedelivery.net.attacker.test/id/original', 'https://imagedelivery.net/video.mp4', 'https://pbs.twimg.com/account', 'https://example.com/imagedelivery.net', 'javascript:photo.png', 'https://user@example.com/photo.webp', 'https://example.com/page']) {
       expect(hasImageEmbed(cast('a', { embeds: [{ url }] }))).toBe(false);
     }
   });

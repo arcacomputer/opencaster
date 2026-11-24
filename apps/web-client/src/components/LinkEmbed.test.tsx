@@ -2,7 +2,12 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { PlaybackKind } from '@opencaster/client-core/castAttachments';
 import LinkEmbed from './LinkEmbed';
+import MediaEmbed from './MediaEmbed';
+
+const attachHls = vi.hoisted(() => vi.fn<(video: HTMLVideoElement, url: string, onError: () => void) => (() => void) | undefined>());
+vi.mock('../lib/hlsPlayback', () => ({ attachHls }));
 
 const X_ID = '463440424141459456';
 const X_URL = `https://x.com/Interior/status/${X_ID}?s=20`;
@@ -14,6 +19,7 @@ let onNavigate: ReturnType<typeof vi.fn<(path: string) => void>>;
 let observers: { callback: IntersectionObserverCallback; target?: Element; disconnect: ReturnType<typeof vi.fn<() => void>> }[];
 
 beforeEach(() => {
+  attachHls.mockReset();
   vi.useFakeTimers();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   // Happy DOM deliberately does not load iframe documents. Give each frame a
@@ -32,6 +38,66 @@ beforeEach(() => {
   });
   container = document.createElement('div'); document.body.append(container);
   root = createRoot(container); onNavigate = vi.fn();
+});
+
+describe('inline cast media', () => {
+  const stream = 'https://stream.farcaster.xyz/v1/video/01a20ddf-c35c-40fa-c6bd-f476eca836ad.m3u8';
+
+  async function renderMedia(url: string, kind: PlaybackKind) {
+    await act(async () => root!.render(<MediaEmbed key={url} url={url} kind={kind} />));
+  }
+
+  it('loads Farcaster HLS only near the viewport, recovers from an error, and detaches on navigation', async () => {
+    const detach = vi.fn();
+    attachHls.mockReturnValue(detach);
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('maybe');
+    await renderMedia(stream, 'hls');
+    expect(container.querySelector('video')).toBeNull();
+    expect(attachHls).not.toHaveBeenCalled();
+    await intersect();
+    await act(async () => { await vi.dynamicImportSettled(); });
+    const first = container.querySelector<HTMLVideoElement>('video')!;
+    expect(first.hasAttribute('playsinline')).toBe(true);
+    expect(attachHls).toHaveBeenCalledExactlyOnceWith(first, stream, expect.any(Function));
+    await act(async () => { attachHls.mock.calls[0][2](); });
+    expect(detach).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain('This video could not be played.');
+    expect(container.querySelector<HTMLAnchorElement>('a')?.href).toBe(stream);
+    await act(async () => { container.querySelector<HTMLButtonElement>('button')!.click(); });
+    await act(async () => { await vi.dynamicImportSettled(); });
+    expect(attachHls).toHaveBeenCalledTimes(2);
+    expect(attachHls.mock.calls[1][0]).not.toBe(first);
+    await act(async () => { root!.unmount(); });
+    root = undefined;
+    expect(detach).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses native HLS without loading the library on a browser with native support', async () => {
+    vi.stubGlobal('ManagedMediaSource', class {});
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('maybe');
+    await renderMedia(stream, 'hls'); await intersect();
+    expect(container.querySelector('video')?.src).toBe(stream);
+    expect(attachHls).not.toHaveBeenCalled();
+  });
+
+  it('keeps an original link for HLS outside the JavaScript playback origins when native HLS is unavailable', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('');
+    const url = 'https://stream.farcaster.xyz.example.org/video.m3u8';
+    await renderMedia(url, 'hls'); await intersect();
+    expect(attachHls).not.toHaveBeenCalled();
+    expect(container.querySelector('video')).toBeNull();
+    expect(container.querySelector<HTMLAnchorElement>('a')?.href).toBe(url);
+  });
+
+  it('uses native controls for direct audio without loading a video player', async () => {
+    const url = 'https://example.org/audio.ogg?download=0';
+    await renderMedia(url, 'audio'); await intersect();
+    const audio = container.querySelector<HTMLAudioElement>('audio')!;
+    expect(audio.src).toBe(url);
+    expect(audio.controls).toBe(true);
+    expect(container.querySelector('video')).toBeNull();
+    expect(attachHls).not.toHaveBeenCalled();
+  });
 });
 afterEach(async () => {
   if (root) await act(async () => root!.unmount());

@@ -4,7 +4,7 @@
  */
 import { API_LIMITS, CAST_HASH, CHANNEL_ID, PAGE_CURSOR, WALLET_ADDRESS, validDecimalCursor, validPageToken, validSearchQuery } from './apiRules';
 import { normalizeHypersnapEnsName } from './ensName';
-import { isUploadedMediaLocation } from './appOrigins';
+import { castUrlAttachments } from './castAttachments';
 import { FARCASTER_EPOCH_SECONDS } from './farcasterEpoch';
 import { castHistoryCursorKey, castHistoryHash, castHistoryMessageKey, validCastHistoryMessage } from './castHistory';
 import { isProfileTab, type ProfileTab } from './navigation';
@@ -784,15 +784,7 @@ async function readProfileReactions(options: { fid: number; tab: 'likes' | 'reca
 
 /** Image formats rendered by this client, including our content-addressed R2 URLs. */
 export function hasImageEmbed(cast: Cast): boolean {
-  return cast.embeds?.some(embed => {
-    if (!('url' in embed)) return false;
-    try {
-      const url = new URL(embed.url);
-      return url.protocol === 'https:' && (/\.(png|jpe?g|webp|gif)$/i.test(url.pathname)
-        || ['imagedelivery.net', 'imagedelivery.cloud'].includes(url.hostname)
-        || isUploadedMediaLocation(url));
-    } catch { return false; }
-  }) ?? false;
+  return castUrlAttachments(cast.embeds).some(attachment => attachment.kind === 'image');
 }
 
 /** Filter one real user-feed page without waiting for additional history reads.

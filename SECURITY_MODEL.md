@@ -72,6 +72,7 @@ Trust boundaries:
 - Per-IP Worker rate limit (120/10s) on `/api/`, `/_share/`, `/_analytics/`, fail-closed when enabled but missing.
 - Exact allowlist of upstream paths and query params; bounded reads (4 MiB response, 64 KiB message) and timeouts; upstream URL built from fixed origin, no credentials/redirects; token never forwarded on redirects; aggregate cache keyed only by upstream origin and public query.
 - Media: server-side image signature/dimension validation, no SVG/HTML, sandboxed CSP on media, replay protection, per-account and global daily quotas, fail closed on incomplete signer lists.
+- Cast playback uses browser media elements for HTTPS sources. The HLS.js player and its worker are served from Opencaster, and the browser's JavaScript connection policy adds only the two Farcaster streaming origins and their Cloudflare Stream delivery origin. The gateway does not proxy cast media.
 - Pairing: typed-data signatures verified locally against custody address and exact request hash before submission; scopes validated; 15-minute pairing window.
 - Signer: sandbox, deny-by-default CSP and network, IPC sender pinning.
 - Analytics dashboard: Access + JWT verification with config-sourced JWKS location; observability disabled.

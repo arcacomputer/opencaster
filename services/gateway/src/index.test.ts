@@ -601,8 +601,12 @@ describe('the fixed Hypersnap gateway', () => {
     const response = await handleRequest(new Request(BASE), env);
     const csp = response.headers.get('Content-Security-Policy');
     expect(csp).toContain("script-src 'self'");
-    expect(csp).toContain("connect-src 'self'");
-    expect(csp).toContain('wss://relay.walletconnect.org');
+    expect(csp).toContain("media-src 'self' https: blob:; worker-src 'self';");
+    expect(csp?.split('; ').find(directive => directive.startsWith('connect-src '))?.split(' ')).toEqual([
+      'connect-src', "'self'", 'wss://relay.walletconnect.org', 'wss://relay.walletconnect.com',
+      'https://verify.walletconnect.org', 'https://verify.walletconnect.com', 'https://stream.farcaster.xyz',
+      'https://stream.warpcast.com', 'https://customer-1sfsx5osnbu5jfyw.cloudflarestream.com',
+    ]);
     expect(csp).toContain("frame-src https://verify.walletconnect.org https://verify.walletconnect.com https://platform.twitter.com https://www.youtube-nocookie.com https://player.vimeo.com https://open.spotify.com;");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toContain('unsafe-inline');

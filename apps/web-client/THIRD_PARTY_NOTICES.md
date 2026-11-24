@@ -9,6 +9,13 @@ License 1.1; their copyright notices and complete license are shipped in
 [public/licenses/fonts-OFL-1.1.txt](public/licenses/fonts-OFL-1.1.txt), served
 at `/licenses/fonts-OFL-1.1.txt`.
 
+## HLS.js 1.7.4
+
+The browser loads [HLS.js 1.7.4](https://github.com/video-dev/hls.js/tree/v1.7.4)
+for Farcaster video streams when JavaScript playback is needed. The Apache 2.0
+license and upstream copyright notices are shipped in
+[public/licenses/hls-js-1.7.4.txt](public/licenses/hls-js-1.7.4.txt).
+
 ## resvg WebAssembly 2.6.2
 
 The server-side cast and profile preview renderer uses the unmodified

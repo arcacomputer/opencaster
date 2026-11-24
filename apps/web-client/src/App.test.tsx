@@ -924,6 +924,47 @@ describe('isolated App feature integration', () => {
     expect(dialog('Cast images')).toBeUndefined();
   });
 
+  it('keeps a failed image accessible and plays a second attachment without opening the cast', async () => {
+    const imageUrl = 'https://example.org/photo.avif?size=large';
+    const videoUrl = 'https://example.org/video.MP4?quality=high';
+    const source = { ...otherCast, text: `Two attachments\n${videoUrl}`, embeds: [{ url: videoUrl }, { url: imageUrl }] };
+    vi.mocked(getFeed).mockResolvedValue({ casts: [source], next: {} });
+    await start();
+    const card = container.querySelector('.feed .cast')!;
+    expect(card.querySelector('.cast__text')?.textContent).toBe('Two attachments');
+    await act(async () => { card.querySelector('.embed img')!.dispatchEvent(new Event('error')); });
+    const original = card.querySelector<HTMLAnchorElement>('.embed--unavailable')!;
+    expect(original.href).toBe(imageUrl);
+    expect(original.textContent).toContain('Image unavailable');
+    expect(original.target).toBe('_blank');
+
+    expect(card.querySelector('video')).toBeNull();
+    const observer = feedObservers.find(entry => entry.target?.matches('.rich-embed--video'))!;
+    await act(async () => observer.callback([{ target: observer.target!, isIntersecting: true } as IntersectionObserverEntry], observer.observer));
+    const video = card.querySelector<HTMLVideoElement>('video')!;
+    expect(video.src).toBe(videoUrl);
+    expect(video.controls).toBe(true);
+    expect(video.autoplay).toBe(false);
+    await click(video);
+    expect(thread()).toBeUndefined();
+  });
+
+  it('uses the existing profile and channel placeholders when their images fail', async () => {
+    const profile = person(20);
+    vi.mocked(getUser).mockResolvedValue({ ...profile, pfp_url: 'https://example.org/avatar.png', profile: { ...profile.profile, banner: { url: 'https://example.org/banner.jpg' } } });
+    vi.mocked(getChannels).mockResolvedValue({ channels: [{ id: 'photos', name: 'Photos', url: 'https://example.org/photos', image_url: 'https://example.org/channel.png' }], next: {} });
+    await start('/profile/20');
+    const avatar = container.querySelector('.profile .avatar')!;
+    const banner = container.querySelector('.profile-cover')!;
+    const channel = container.querySelector('.rail-channels li')!;
+    await act(async () => {
+      for (const element of [avatar, banner, channel]) element.querySelector('img')!.dispatchEvent(new Event('error'));
+    });
+    expect(avatar.textContent).toBe('PE');
+    expect(banner.querySelector('img')).toBeNull();
+    expect(channel.querySelector('.channel-mark')).not.toBeNull();
+  });
+
   it('saves a channel shortcut in the sidebar and restores it after remount without a protocol write', async () => {
     const channel = { id: 'isolated', name: 'Isolated channel', url: 'https://example.org/channels/isolated' };
     vi.mocked(getChannel).mockResolvedValue(channel);

@@ -22,6 +22,7 @@
     "@tabler/icons-react": "^3.40.0",
     "@walletconnect/core": "2.26.0",
     "@walletconnect/sign-client": "2.26.0",
+    "hls.js": "1.7.4",
     "qrcode": "1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

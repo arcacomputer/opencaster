@@ -3,9 +3,9 @@ import { IconBell, IconBookmark, IconChevronRight, IconHash, IconHeart, IconMess
 import { getChannels, getNotifications, searchCasts, searchUsers, type ActivityItem, type Cast, type Channel, type User } from '@opencaster/client-core/api';
 import { castPath, PROFILE_TABS, profilePath, type ProfileTab } from '@opencaster/client-core/navigation';
 import { Button, Input } from './ui';
+import RemoteImage from './RemoteImage';
 import { errorMessage } from '../lib/errors';
 import '../feature.scss';
-import { safeHttpsUrl } from '@opencaster/client-core/safeUrl';
 
 type Page<T> = { items: T[]; next: { cursor?: string | null } };
 type PageOptions = { cursor?: string | null; signal?: AbortSignal; limit?: number };
@@ -98,9 +98,8 @@ function localClick(event: MouseEvent<HTMLAnchorElement>, callback: () => void) 
 // eslint-disable-next-line no-control-regex -- Search validation intentionally rejects ASCII control characters.
 function validQuery(value: string): boolean { return Boolean(value.trim()) && new TextEncoder().encode(value.trim()).length <= 256 && !/[\u0000-\u001f\u007f]/.test(value); }
 function ProfileAvatar({ user, size = 44 }: { user: User; size?: number }) {
-  return safeHttpsUrl(user.pfp_url)
-    ? <img className="feature-avatar" src={user.pfp_url} alt="" width={size} height={size} loading="lazy" referrerPolicy="no-referrer" />
-    : <span className="feature-avatar feature-avatar--fallback" aria-hidden="true">{(user.display_name || user.username || String(user.fid)).slice(0, 1).toUpperCase()}</span>;
+  return <RemoteImage className="feature-avatar" src={user.pfp_url} alt="" width={size} height={size} loading="lazy"
+    fallback={<span className="feature-avatar feature-avatar--fallback" aria-hidden="true">{(user.display_name || user.username || String(user.fid)).slice(0, 1).toUpperCase()}</span>} />;
 }
 function UserResult({ user, onProfile }: { user: User; onProfile(user: User): void }) {
   return <a data-analytics="profile-open" className="feature-user" href={profilePath(user.fid)} onClick={event => localClick(event, () => onProfile(user))}>
@@ -223,7 +222,7 @@ function ChannelRows({ channels, savedIds, onChannel, onToggleSave }: { channels
   return <ul className="feature-channels">{channels.map(channel => {
     const saved = savedIds.has(channel.id);
     return <li key={channel.id}><a data-analytics="nav-channel" href={`/channel/${encodeURIComponent(channel.id)}`} onClick={event => localClick(event, () => onChannel(channel))}>
-      {safeHttpsUrl(channel.image_url) ? <img src={channel.image_url} alt="" width={46} height={46} loading="lazy" referrerPolicy="no-referrer" /> : <span className="feature-channel-mark" aria-hidden="true"><IconHash size={23} /></span>}
+      <RemoteImage src={channel.image_url} alt="" width={46} height={46} loading="lazy" fallback={<span className="feature-channel-mark" aria-hidden="true"><IconHash size={23} /></span>} />
       <span className="feature-channel__body"><strong>{channel.name || channel.id}</strong><span>/{channel.id}</span>{channel.description && <p>{channel.description}</p>}{typeof channel.member_count === 'number' && <small><IconUsers size={13} aria-hidden="true" />{channel.member_count.toLocaleString()} participants</small>}</span><IconChevronRight size={17} aria-hidden="true" />
     </a>{onToggleSave && <Button data-analytics={saved ? 'channel-unsave' : 'channel-save'} variant="ghost" className="feature-channel-save" aria-pressed={saved} aria-label={saved ? `Remove /${channel.id} from saved channels` : `Save /${channel.id} on this browser`} onClick={() => onToggleSave(channel)}><IconBookmark size={17} fill={saved ? 'currentColor' : 'none'} aria-hidden="true" /><span>{saved ? 'Saved' : 'Save'}</span></Button>}</li>;
   })}</ul>;
@@ -260,7 +259,10 @@ export function ChannelsView({ onChannel, savedChannels = [], onToggleSave }: { 
 
 export function ChannelHeader({ channel, saved = false, onToggleSave, onPeople }: { channel: Channel; saved?: boolean; onToggleSave?(channel: Channel): void; onPeople?(): void }) {
   return <div className="feature-channel-header">
-    <div className="feature-channel-header__identity">{safeHttpsUrl(channel.image_url) ? <img src={channel.image_url} alt="" width={64} height={64} referrerPolicy="no-referrer" /> : <span className="feature-channel-mark" aria-hidden="true"><IconHash size={30} /></span>}<div><span className="feature-kicker">HYPERSNAP CHANNEL</span><h2>{channel.name || channel.id}</h2><p>/{channel.id}</p></div></div>
+    <div className="feature-channel-header__identity">
+      <RemoteImage src={channel.image_url} alt="" width={64} height={64} fallback={<span className="feature-channel-mark" aria-hidden="true"><IconHash size={30} /></span>} />
+      <div><span className="feature-kicker">HYPERSNAP CHANNEL</span><h2>{channel.name || channel.id}</h2><p>/{channel.id}</p></div>
+    </div>
     {channel.description && <p className="feature-channel-header__description">{channel.description}</p>}
     <div className="feature-channel-header__footer">{typeof channel.member_count === 'number' && <span><IconUsers size={15} aria-hidden="true" />{channel.member_count.toLocaleString()} participants</span>}{onPeople && <Button data-analytics="channel-participants-open" variant="secondary" onClick={onPeople}><IconUsers size={16} aria-hidden="true" />View participants</Button>}{onToggleSave && <Button data-analytics={saved ? 'channel-unsave' : 'channel-save'} variant="secondary" aria-pressed={saved} onClick={() => onToggleSave(channel)}><IconBookmark size={16} fill={saved ? 'currentColor' : 'none'} aria-hidden="true" />{saved ? 'Saved on this browser' : 'Save channel'}</Button>}</div>
     {onToggleSave && <p className="feature-note">Saved channels are local shortcuts on this browser.</p>}
