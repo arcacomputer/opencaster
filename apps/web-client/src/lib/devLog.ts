@@ -22,6 +22,34 @@ export const PROJECT_STARTED_AT = '2026-10-19T04:13:15-03:00';
 /** Newest first. Each source link identifies the code behind that milestone. */
 export const DEV_LOG: readonly DevLogMilestone[] = [
   {
+    id: 'supported-background-reply-batches',
+    date: '2026-11-15',
+    timestamp: '2026-11-15T18:50:56-03:00',
+    title: 'Full reply batches can finish their spam checks',
+    summary: 'Busy conversations split background checks into requests the model service accepts.',
+    changes: [
+      'The model service accepts at most 16 replies per request. A background workload of up to 32 replies now uses two supported requests under one budget reservation, instead of sending an oversized request that could stall scoring.',
+      'Completed parts are saved before the next part starts. A lost later acknowledgement recovers that same request without repeating completed work. Existing unresolved submissions retain their original identity and quarantine.',
+      'Reply loading and visibility are preserved. Suspected spam can move lower among siblings after the checks finish, and Node order restores the order supplied by the node.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/0ce3f6ac120328e7ffdd6cdb03fc6c7f8d12b2f3',
+    tag: 'Reliability',
+  },
+  {
+    id: 'background-reply-spam-ranking',
+    date: '2026-11-15',
+    timestamp: '2026-11-15T15:21:53-03:00',
+    title: 'Suspected spam moves lower in replies',
+    summary: 'Background scoring helps put ordinary replies first while keeping suspected spam visible.',
+    changes: [
+      'Replies load immediately. Public reply text and earlier node context can then be scored in small batches by the Opencaster Qwen3.5-0.8B model on Overmind. Strong spam signals move a reply lower among its siblings, with its children still attached. No scoring action hides, deletes, reports or blocks a cast or account.',
+      'The reply order selector restores the order supplied by the node. Existing conversation limits apply before ranking, so reordering preserves the same visible replies. Missing, ambiguous or unavailable scores leave replies in their original order.',
+      'Shared caching and a $5 monthly scoring target limit new work to ten batches of up to 32 replies each. Coverage is intentionally limited, and the allowance is an application reservation rather than a provider-enforced invoice cap. The model uses AI-assisted training labels and bounded public history; mistakes remain possible. Opinions, language, useful bots and ordinary game updates alone are excluded by its policy.',
+    ],
+    commit: 'https://github.com/arcacomputer/opencaster/commit/8f1624fa81a0a607309140e415a0e5e21b26febf',
+    tag: 'Social',
+  },
+  {
     id: 'route-scoped-node-information-status',
     date: '2026-11-11',
     timestamp: '2026-11-11T21:33:41+00:00',

@@ -11,7 +11,9 @@
     "HYPERSNAP_AGGREGATE_CACHE": "disabled",
     "HYPERSNAP_READ_FALLBACK": "haatz-v1",
     "HYPERSNAP_NATIVE_READS": "profiles-v1",
-    "HYPERSNAP_READ_ORIGIN": "https://node.opencaster.org"
+    "HYPERSNAP_READ_ORIGIN": "https://node.opencaster.org",
+    "SPAM_RANKING": "disabled",
+    "SPAM_MONTHLY_BUDGET_CENTS": "0"
   },
   "compatibility_date": "2026-10-19",
   "workers_dev": false,
@@ -34,6 +36,6 @@
     { "name": "CLIENT_RATE_LIMITER", "namespace_id": "10920261109", "simple": { "limit": 120, "period": 10 } }
   ],
   "r2_buckets": [{ "binding": "MEDIA_BUCKET", "bucket_name": "hypersnap-quorum-media" }],
-  "durable_objects": { "bindings": [{ "name": "MEDIA_QUOTA", "class_name": "MediaUploadQuota" }] },
-  "migrations": [{ "tag": "media-quota-v1", "new_sqlite_classes": ["MediaUploadQuota"] }]
+  "durable_objects": { "bindings": [{ "name": "MEDIA_QUOTA", "class_name": "MediaUploadQuota" }, { "name": "REPLY_RANKING", "class_name": "ReplyRanking" }] },
+  "migrations": [{ "tag": "media-quota-v1", "new_sqlite_classes": ["MediaUploadQuota"] }, { "tag": "reply-ranking-v1", "new_sqlite_classes": ["ReplyRanking"] }]
 }

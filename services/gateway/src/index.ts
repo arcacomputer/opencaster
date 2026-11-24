@@ -10,8 +10,10 @@ import { handleAnalyticsEvents, recordRequestMetric, type AnalyticsEnv } from '.
 import { fetchUpstream, InvalidUpstreamResponseError, parseUpstreamObject, resolveProxyUpstream, resolveReadFallback, validTimelineCursor, type UpstreamConfig } from './upstream';
 import { withShareUrl } from './sharing';
 import { handleShareImage } from './shareImages';
+import { observeConversation, readReplyRanking, type RankingEnv } from './replyRanking';
 export { MediaUploadQuota } from './media';
-export interface Env extends MediaEnv, AnalyticsEnv {
+export { ReplyRanking } from './replyRanking';
+export interface Env extends MediaEnv, AnalyticsEnv, RankingEnv {
   ASSETS: { fetch(request: Request): Promise<Response> };
   HYPERSNAP_AGGREGATE_CACHE?: string;
   CLIENT_RATE_LIMIT?: string;
@@ -91,6 +93,7 @@ const castHistoryPageToken: Rule = value => { try { return reactionPageToken(val
 
 interface Endpoint { required?: string[]; query: QueryRules; validate?: (params: URLSearchParams) => boolean }
 const READ_ENDPOINTS: Record<string, Endpoint> = {
+  '/reply-ranking': { required: ['identifier'], query: { identifier: hash } },
   '/v1/info': { query: {} },
   '/v1/fidByName': { required: ['name', 'type'], query: { name: ensName, type: value => value === 'ens' || value === 'basename' }, validate: params => normalizeHypersnapEnsName(params.get('name')!).type === params.get('type') },
   '/v1/castsByFid': { required: ['fid', 'pageSize', 'reverse'], query: { fid: integer(0xffffffff), pageSize: value => value === '250', reverse: value => value === 'true', pageToken: castHistoryPageToken } },
@@ -316,6 +319,7 @@ async function proxy(request: Request, url: URL, env: Env, ctx?: WorkerExecution
   const origin = request.headers.get('Origin');
   if ((origin && origin !== url.origin) || request.headers.get('Sec-Fetch-Site') === 'cross-site') return failure(403, 'origin_denied', 'Cross-site API requests are unavailable.');
   if (isWrite ? url.search !== '' : !validQuery(url.searchParams, endpoint)) return failure(400, 'invalid_query', 'Invalid API query.');
+  if (path === '/reply-ranking') return secure(await readReplyRanking(url.searchParams.get('identifier')!, env));
 
   let config: UpstreamConfig;
   try { config = resolveProxyUpstream(env, path, request.method); }
@@ -413,6 +417,10 @@ async function proxy(request: Request, url: URL, env: Env, ctx?: WorkerExecution
         const bytes = await readResponse(MAX_RESPONSE_BYTES);
         const value = parseUpstreamObject(bytes, config);
         const response = validatedJson(bytes);
+        if (path === '/v2/farcaster/cast/conversation' && ctx) {
+          try { ctx.waitUntil(observeConversation(value, url.searchParams.get('identifier')!, env).catch(() => undefined)); }
+          catch { /* Background ranking cannot fail or delay the conversation. */ }
+        }
         // Only the authenticated gate can attest that its no-store header guards
         // transport authentication, not personalized data. Browser hints never count.
         const trustedAggregate = !!target.token && env.HYPERSNAP_AGGREGATE_CACHE === 'trusted-origin-v1'

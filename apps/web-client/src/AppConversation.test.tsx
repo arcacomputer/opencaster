@@ -7,6 +7,12 @@ import { getCast, getChannels, getConversation, getFeed, getInfo, getProfileFeed
 import { contentPreferencesKey, emptyContentPreferences, hideCast } from './lib/contentPreferences';
 import { EXPLORE_STORAGE_KEY } from './lib/storageKeys';
 
+// Background ranking is isolated; these app fixtures make no external reads.
+vi.mock('@opencaster/client-core/replyRanking', async original => ({
+  ...await original<typeof import('@opencaster/client-core/replyRanking')>(),
+  getReplyRanking: vi.fn().mockResolvedValue({ status: 'off', suspected: [] }),
+}));
+
 // Exercise the production conversation, cards, mention rendering and quotes.
 // All public responses are isolated fixtures; no account is connected.
 vi.mock('./lib/auth', () => ({

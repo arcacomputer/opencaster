@@ -14,11 +14,29 @@ The workspace is named `@opencaster/web-client`; use `yarn workspace @opencaster
 
 Follow the [release checklist](#release-notes), including the dev log check, verification and a build in a fresh external directory. `services/gateway/wrangler.jsonc` targets the Arca Cloudflare account, the `hypersnap-quorum` Worker, and the `opencaster.org` custom domain and the old domain redirect. Use your own account/domain when deploying another fork. Authentication is handled by the local Wrangler CLI; credentials never belong in source or browser environment variables.
 
+**Preserve the live operator settings on production releases.** The November 15
+reply-ranking pilot uses `--var HYPERSNAP_NATIVE_READS:disabled --var SPAM_RANKING:enabled --var SPAM_MONTHLY_BUDGET_CENTS:500`
+in addition to the deployment command below. The checked-in scoring defaults are
+disabled/zero, and the source native-read opt-in differs from the current live
+Haatz policy. A bare deploy would change those settings. Keep the existing
+`OVERMIND_API_KEY` Worker secret; deployments retain it. See
+[ranking operation](../../services/gateway/REPLY_RANKING.md) and the
+[release verification](../../services/gateway/REPLY_RANKING_VERIFICATION.md).
+
 Copy `apps/web-client/.env.example` to your own ignored `apps/web-client/.env.local` for local development, or provide `VITE_WALLETCONNECT_PROJECT_ID` in your build environment for wallet app connections. Obtain your own public project ID from the [Reown Dashboard](https://dashboard.reown.com). Allowlist the precise deployed origins in its project configuration. No Dashboard API secret, private wallet key, social login, or hosted account authentication is needed. Vite embeds this public ID into the browser bundle; changes require a rebuild. Missing configuration disables WalletConnect while browser wallet and offline approval remain available.
 
 The Worker serves static assets and adds CSP, no-referrer, no-store HTML, and other browser security headers. API routes use a configured server-only primary, an explicit route/query allowlist, response size/time bounds, and signed binary submissions limited to 64 KiB. Production configuration currently uses the public Haatz node as its primary during the private-node reinstall, with both private settings absent; returning to the private `https://node.opencaster.org` origin with the fixed Haatz read backup is a separate approved change described in [PRIVATE_ORIGIN.md](PRIVATE_ORIGIN.md#returning-to-the-private-origin). Incomplete private configuration fails closed. Fork/development configurations with both private settings absent retain the public Haatz default. Eligible reads make at most one backup attempt after transport failure, timeout or HTTP 5xx, within one 20-second deadline. Signed submissions are never replayed automatically, media signer checks remain primary-only, and the origin credential never goes to the backup. `X-Opencaster-Upstream` identifies the selected backend without exposing credentials. See [PRIVATE_ORIGIN.md](PRIVATE_ORIGIN.md) for the complete contract and bounded public-aggregate cache. The private primary retains its index-readiness guards; eligible unavailable reads can use the backup. This does not claim that the private indexes are complete.
 
 The gateway forwards neither browser cookies nor authorization headers, follows no redirects, and emits no custom application request logs. Cloudflare persists platform invocation logs with request metadata and redacted query strings; automatic traces remain disabled. First-party aggregate usage and request-health measurements use the separate Cloudflare Analytics Engine dataset; see [OBSERVABILITY.md](OBSERVABILITY.md) for dashboard links, coverage, schema and visitor opt-out. A separate operator dashboard is configured in `services/analytics/wrangler.jsonc` for `analytics.opencaster.org`, with Cloudflare Access and Worker-side Access application verification before any analytics query. It requires its own Access application, exact-email policy and deployment; missing authentication configuration denies access. The private local HTML report remains available through `yarn analytics:report`. Public images use a dedicated R2 bucket; a SQLite-backed Durable Object enforces upload nonces and daily quotas. Deploy the R2/DO bindings and migration declared in `services/gateway/wrangler.jsonc`; see [MEDIA.md](MEDIA.md) for provisioning, retention, and limits. Both nodes remain availability dependencies; the gateway is not an independent indexer. Apply appropriate account-level abuse/rate controls before scaling traffic.
+
+## Reply order
+
+Conversation replies support [background spam ranking](../../services/gateway/REPLY_RANKING.md).
+Suspected spam moves lower among siblings and stays visible with its descendants.
+The reply order selector restores node order. Server-only scoring uses public node
+context, a shared cache and a monthly work allowance. Unavailable or unscored
+replies retain their original order. The checked-in default is disabled until an
+operator supplies a project-scoped Worker secret and budget.
 
 ## Signing model
 
